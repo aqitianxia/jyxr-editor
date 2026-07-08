@@ -35,11 +35,13 @@ body {
 button,
 input,
 select,
-textarea {
+textarea,
+.button-link {
   font: inherit;
 }
 
-button {
+button,
+.button-link {
   border: 1px solid var(--border);
   border-radius: 6px;
   background: var(--panel);
@@ -49,18 +51,29 @@ button {
   cursor: pointer;
 }
 
-button:hover {
+button:hover,
+.button-link:hover {
   border-color: #9ca8b4;
 }
 
-button.primary {
+button.primary,
+.button-link.primary {
   background: var(--accent);
   border-color: var(--accent);
   color: #ffffff;
 }
 
-button.primary:hover {
+button.primary:hover,
+.button-link.primary:hover {
   background: var(--accent-dark);
+}
+
+.button-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+  white-space: nowrap;
 }
 
 button:disabled {
@@ -151,6 +164,72 @@ body.story-mode #saveButton {
 
 body.story-mode .editor-pane {
   grid-template-rows: 44px minmax(0, 1fr);
+}
+
+body.help-page {
+  min-height: 100%;
+  height: auto;
+  overflow: auto;
+  background: #f6f7f8;
+}
+
+.help-content {
+  width: min(920px, calc(100vw - 32px));
+  margin: 0 auto;
+  padding: 24px 0 48px;
+}
+
+.help-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 18px;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel);
+}
+
+.help-section {
+  margin-top: 14px;
+  padding: 18px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel);
+  line-height: 1.65;
+}
+
+.help-section h1,
+.help-section h2 {
+  margin: 0 0 10px;
+  font-size: 18px;
+}
+
+.help-section h2 {
+  font-size: 16px;
+}
+
+.help-section p,
+.help-section ul,
+.help-section ol {
+  margin: 8px 0;
+}
+
+.help-section code {
+  font-family: var(--mono);
+}
+
+.help-section pre {
+  overflow: auto;
+  margin: 10px 0 0;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: #f8fafc;
+  font-family: var(--mono);
+  font-size: 13px;
+  line-height: 1.5;
 }
 
 .sidebar,

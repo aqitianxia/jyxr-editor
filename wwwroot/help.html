@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>JYXR JSON 编辑器帮助</title>
+  <link rel="stylesheet" href="/styles.css?v=20260708-help-1">
+</head>
+<body class="help-page">
+  <main class="help-content">
+    <header class="help-header">
+      <div>
+        <div class="brand">JYXR JSON 编辑器帮助</div>
+        <div class="path-line">本地内容工具 · 默认地址 http://localhost:5127</div>
+      </div>
+      <a class="button-link" href="/" aria-label="返回编辑器">返回编辑器</a>
+    </header>
+
+    <section class="help-section">
+      <h1>启动前准备</h1>
+      <ul>
+        <li>安装 <code>.NET 10 SDK</code>。</li>
+        <li>确认当前目录是完整工程，根目录里有 <code>project.godot</code>。</li>
+        <li>确认要编辑的 MOD 有 <code>mods/&lt;modId&gt;/mod.json</code> 和 <code>mods/&lt;modId&gt;/data/</code>。</li>
+        <li>图片、音频等预览资源来自仓库根目录 <code>assets/</code>。</li>
+      </ul>
+    </section>
+
+    <section class="help-section">
+      <h2>Windows 启动</h2>
+      <p>PowerShell：</p>
+      <pre><code>cd C:\path\to\jyxr-web-editor
+dotnet run --project .\tools\JsonEditor\JsonEditor.csproj</code></pre>
+      <p>CMD：</p>
+      <pre><code>cd /d C:\path\to\jyxr-web-editor
+dotnet run --project tools\JsonEditor\JsonEditor.csproj</code></pre>
+    </section>
+
+    <section class="help-section">
+      <h2>macOS 启动</h2>
+      <pre><code>cd /path/to/jyxr-web-editor
+dotnet run --project tools/JsonEditor/JsonEditor.csproj</code></pre>
+    </section>
+
+    <section class="help-section">
+      <h2>打开和停止</h2>
+      <p>启动后浏览器打开：</p>
+      <pre><code>http://localhost:5127</code></pre>
+      <p>停止服务：回到启动服务的命令行窗口，按 <code>Ctrl+C</code>。</p>
+    </section>
+
+    <section class="help-section">
+      <h2>常用命令</h2>
+      <pre><code>dotnet --list-sdks
+dotnet run --project tools/JsonEditor/JsonEditor.csproj
+dotnet build tools/JsonEditor/JsonEditor.csproj
+node --check tools/JsonEditor/wwwroot/app.js
+dotnet test
+dotnet build engine-free-rpg.csproj</code></pre>
+    </section>
+
+    <section class="help-section">
+      <h2>基本流程</h2>
+      <ol>
+        <li>右上角选择当前 MOD。</li>
+        <li>左侧切换“数据 / 剧情 / 资产”。</li>
+        <li>选择 JSON 文件，用“表单”或“JSON”编辑。</li>
+        <li>点击“格式化”和“校验”。</li>
+        <li>确认无误后点击“保存”。保存会生成备份并再次校验。</li>
+      </ol>
+    </section>
+
+    <section class="help-section">
+      <h2>常见问题</h2>
+      <p><strong>找不到 project.godot：</strong>先 <code>cd</code> 到仓库根目录再启动。</p>
+      <p><strong>页面没有 MOD：</strong>检查 <code>mods/</code>、<code>mod.json</code> 和 <code>data/</code> 是否存在。</p>
+      <p><strong>端口被占用：</strong>关闭另一个占用 <code>5127</code> 的进程后重新启动。</p>
+      <p><strong>保存失败：</strong>查看右侧校验信息；旧文件备份在 <code>tools/JsonEditor/.backups</code>。</p>
+    </section>
+  </main>
+</body>
+</html>
