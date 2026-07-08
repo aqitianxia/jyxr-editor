@@ -1732,6 +1732,19 @@ body.help-page {
   color: var(--bad);
 }
 
+.validation-title {
+  font-weight: 700;
+}
+
+.validation-detail {
+  margin-top: 6px;
+}
+
+.validation-actions {
+  display: flex;
+  margin-top: 8px;
+}
+
 .message.muted,
 .muted {
   color: var(--muted);

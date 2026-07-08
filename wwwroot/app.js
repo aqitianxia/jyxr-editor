@@ -974,6 +974,48 @@ function showValidation(ok, message) {
   elements.validationBox.textContent = message;
 }
 
+function showStoryDslValidation(errors, warnings, segmentCount) {
+  elements.validationBox.replaceChildren();
+
+  if (errors.length === 0) {
+    elements.validationBox.className = "message ok";
+    elements.validationBox.textContent = `Story DSL 校验通过：${segmentCount} 个剧情段，${warnings.length} 个提醒。`;
+    return;
+  }
+
+  const first = errors[0];
+  elements.validationBox.className = "message bad";
+
+  const summary = document.createElement("div");
+  summary.className = "validation-title";
+  summary.textContent = `Story DSL 存在 ${errors.length} 个错误`;
+
+  const detail = document.createElement("div");
+  detail.className = "validation-detail";
+  detail.textContent = `第 ${first.span.start.line} 行，第 ${first.span.start.column} 列：${first.message}`;
+
+  const actions = document.createElement("div");
+  actions.className = "validation-actions";
+  const locateButton = document.createElement("button");
+  locateButton.type = "button";
+  locateButton.textContent = "定位第一个错误";
+  locateButton.addEventListener("click", () => {
+    if (state.viewMode !== "dsl") {
+      setViewMode("dsl");
+    }
+    setEditorCursorToLine(first.span.start.line, first.span.start.column);
+  });
+  actions.appendChild(locateButton);
+
+  elements.validationBox.append(summary, detail, actions);
+  if (errors.length > 1) {
+    const more = document.createElement("div");
+    more.className = "validation-detail";
+    more.textContent = `还有 ${errors.length - 1} 个错误，右侧 Story DSL 诊断区可逐条定位。`;
+    elements.validationBox.appendChild(more);
+  }
+}
+
 function updateStoryDslAnalysis({ showSuccess }) {
   const sourceText = state.viewMode === "json" ? state.storySource.text : elements.editor.value;
   state.storySource.text = sourceText;
@@ -995,9 +1037,9 @@ function updateStoryDslAnalysis({ showSuccess }) {
   const errors = diagnostics.filter((item) => item.severity === "error");
   const warnings = diagnostics.filter((item) => item.severity === "warning");
   if (errors.length > 0) {
-    showValidation(false, `Story DSL 存在 ${errors.length} 个错误。`);
+    showStoryDslValidation(errors, warnings, analysis.ast.segments.length);
   } else if (showSuccess) {
-    showValidation(true, `Story DSL 校验通过：${analysis.ast.segments.length} 个剧情段，${warnings.length} 个提醒。`);
+    showStoryDslValidation(errors, warnings, analysis.ast.segments.length);
   }
 
   return analysis;
