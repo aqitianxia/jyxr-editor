@@ -168,6 +168,7 @@ mods/jyxr-expansion/data/story/book-shujian.story
 - `JSON` 是只读编译预览。
 - 保存 `.story` 时会先编译 DSL，再生成同名 `.story.json`，例如 `book-shujian.story.json`。
 - 游戏运行时仍只读取 `.story.json`。
+- DSL 会做轻量静态检查：`jump` 目标剧情段、`battle` 战斗、`map` 地图、`shop` 商店，以及 `item` / `cost_item` / `random_item` 物品引用不存在时会在右侧显示错误。
 
 DSL 支持剧情段、对白、命令、选择、条件、战斗分支和跳转：
 

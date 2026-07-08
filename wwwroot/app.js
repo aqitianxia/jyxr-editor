@@ -977,13 +977,23 @@ function showValidation(ok, message) {
 function updateStoryDslAnalysis({ showSuccess }) {
   const sourceText = state.viewMode === "json" ? state.storySource.text : elements.editor.value;
   state.storySource.text = sourceText;
-  const analysis = window.StoryDsl.analyzeStory(sourceText);
-  state.storySource.diagnostics = analysis.diagnostics;
+  const baseAnalysis = window.StoryDsl.analyzeStory(sourceText);
+  const diagnostics = [
+    ...baseAnalysis.diagnostics,
+    ...analyzeStoryDslReferences(baseAnalysis.ast),
+  ];
+  const hasErrors = diagnostics.some((item) => item.severity === "error");
+  const analysis = {
+    ...baseAnalysis,
+    diagnostics,
+    jsonText: hasErrors ? null : baseAnalysis.jsonText,
+  };
+  state.storySource.diagnostics = diagnostics;
   state.storySource.jsonText = analysis.jsonText || "";
   renderStoryDslStatus();
 
-  const errors = analysis.diagnostics.filter((item) => item.severity === "error");
-  const warnings = analysis.diagnostics.filter((item) => item.severity === "warning");
+  const errors = diagnostics.filter((item) => item.severity === "error");
+  const warnings = diagnostics.filter((item) => item.severity === "warning");
   if (errors.length > 0) {
     showValidation(false, `Story DSL 存在 ${errors.length} 个错误。`);
   } else if (showSuccess) {
@@ -991,6 +1001,143 @@ function updateStoryDslAnalysis({ showSuccess }) {
   }
 
   return analysis;
+}
+
+function analyzeStoryDslReferences(ast) {
+  if (!ast || !state.contentIndex.ready) {
+    return [];
+  }
+
+  const diagnostics = [];
+  const currentSegmentIds = new Set(ast.segments.map((segment) => segment.name).filter(Boolean));
+  const knownStorySegmentIds = new Set(currentSegmentIds);
+  for (const definitions of state.contentIndex.definitionsById.values()) {
+    for (const definition of definitions) {
+      if (definition.type === "story") {
+        knownStorySegmentIds.add(definition.id);
+      }
+    }
+  }
+
+  for (const segment of ast.segments) {
+    analyzeStoryDslStatements(segment.statements, diagnostics, knownStorySegmentIds);
+  }
+
+  return diagnostics;
+}
+
+function analyzeStoryDslStatements(statements, diagnostics, knownStorySegmentIds) {
+  for (const statement of statements || []) {
+    switch (statement.type) {
+      case "jump":
+        addMissingReferenceDiagnostic(
+          diagnostics,
+          knownStorySegmentIds.has(statement.target),
+          `jump 目标剧情段不存在：${statement.target}`,
+          statement.span);
+        break;
+      case "battle":
+        addMissingReferenceDiagnostic(
+          diagnostics,
+          hasDefinitionOfType(statement.battleId, "battles"),
+          `战斗不存在：${statement.battleId}`,
+          statement.span);
+        for (const outcome of statement.outcomes || []) {
+          analyzeStoryDslStatements(outcome.statements, diagnostics, knownStorySegmentIds);
+        }
+        break;
+      case "command":
+        analyzeStoryDslCommand(statement, diagnostics);
+        break;
+      case "choice":
+        for (const option of statement.options || []) {
+          analyzeStoryDslStatements(option.statements, diagnostics, knownStorySegmentIds);
+        }
+        break;
+      case "if":
+        for (const branch of statement.branches || []) {
+          analyzeStoryDslStatements(branch.statements, diagnostics, knownStorySegmentIds);
+        }
+        break;
+    }
+  }
+}
+
+function analyzeStoryDslCommand(statement, diagnostics) {
+  const firstArg = statement.args?.[0];
+  switch (statement.name) {
+    case "item":
+    case "cost_item":
+      validateStoryDslItemArg(diagnostics, firstArg, statement.span, statement.name);
+      break;
+    case "random_item":
+      validateStoryDslItemArg(diagnostics, firstArg, statement.span, statement.name);
+      break;
+    case "map":
+      validateStoryDslDefinitionArg(diagnostics, firstArg, "maps", "地图", statement.span, statement.name);
+      break;
+    case "shop":
+      validateStoryDslDefinitionArg(diagnostics, firstArg, "shops", "商店", statement.span, statement.name);
+      break;
+  }
+}
+
+function validateStoryDslItemArg(diagnostics, arg, span, commandName) {
+  for (const value of getStoryDslLiteralArgValues(arg)) {
+    addMissingReferenceDiagnostic(
+      diagnostics,
+      hasDefinitionOfType(value, "items"),
+      `${commandName} 引用的物品不存在：${value}`,
+      span);
+  }
+}
+
+function validateStoryDslDefinitionArg(diagnostics, arg, definitionType, label, span, commandName) {
+  for (const value of getStoryDslLiteralArgValues(arg)) {
+    addMissingReferenceDiagnostic(
+      diagnostics,
+      hasDefinitionOfType(value, definitionType),
+      `${commandName} 引用的${label}不存在：${value}`,
+      span);
+  }
+}
+
+function getStoryDslLiteralArgValues(arg) {
+  if (!arg) {
+    return [];
+  }
+
+  if (arg.type === "literal" && typeof arg.value === "string" && arg.value.length > 0) {
+    return [arg.value];
+  }
+
+  if (arg.type === "list") {
+    return (arg.items || []).flatMap(getStoryDslLiteralArgValues);
+  }
+
+  return [];
+}
+
+function addMissingReferenceDiagnostic(diagnostics, exists, message, span) {
+  if (exists) {
+    return;
+  }
+
+  diagnostics.push({
+    message,
+    span,
+    severity: "error",
+    code: "semantic",
+  });
+}
+
+function hasDefinitionOfType(id, type) {
+  if (typeof id !== "string" || id.length === 0) {
+    return false;
+  }
+
+  const definitions = state.contentIndex.definitionsById.get(id) || [];
+  return definitions.some((definition) => definition.type === type);
 }
 
 function renderStoryDslStatus() {
