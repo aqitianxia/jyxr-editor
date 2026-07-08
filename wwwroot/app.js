@@ -73,11 +73,13 @@ const elements = {
   currentPath: document.getElementById("currentPath"),
   dirtyState: document.getElementById("dirtyState"),
   contentSearch: document.getElementById("contentSearch"),
+  outlineSelect: document.getElementById("outlineSelect"),
   findPreviousButton: document.getElementById("findPreviousButton"),
   findNextButton: document.getElementById("findNextButton"),
   searchState: document.getElementById("searchState"),
   formView: document.getElementById("formView"),
   storyView: document.getElementById("storyView"),
+  monacoHost: document.getElementById("monacoHost"),
   editor: document.getElementById("editor"),
   cursorState: document.getElementById("cursorState"),
   saveState: document.getElementById("saveState"),
@@ -88,6 +90,13 @@ const elements = {
   portraitCheckBox: document.getElementById("portraitCheckBox"),
   characterCheckBox: document.getElementById("characterCheckBox"),
   assetPreview: document.getElementById("assetPreview"),
+};
+
+const monacoState = {
+  ready: false,
+  editor: null,
+  language: "json",
+  suppressChange: false,
 };
 
 elements.dataTab.addEventListener("click", () => setMode("data"));
@@ -115,15 +124,8 @@ elements.contentSearch.addEventListener("keydown", (event) => {
 });
 elements.findPreviousButton.addEventListener("click", () => jumpSearch(-1));
 elements.findNextButton.addEventListener("click", () => jumpSearch(1));
-elements.editor.addEventListener("input", () => {
-  state.dirty = true;
-  if (isStorySourceFile() && state.viewMode === "dsl") {
-    updateStoryDslAnalysis({ showSuccess: false });
-  }
-  updateSearchMatches();
-  renderDirtyState();
-  renderCursorState();
-});
+elements.outlineSelect.addEventListener("change", jumpToSelectedOutline);
+elements.editor.addEventListener("input", handleTextEditorInput);
 elements.editor.addEventListener("click", renderCursorState);
 elements.editor.addEventListener("keyup", renderCursorState);
 elements.editor.addEventListener("select", () => {
@@ -143,7 +145,328 @@ window.addEventListener("beforeunload", (event) => {
 
 boot();
 
+function initializeMonacoEditor() {
+  if (!elements.monacoHost || !window.require) {
+    useLegacyTextEditor();
+    return Promise.resolve(false);
+  }
+
+  return new Promise((resolve) => {
+    window.require.config({ paths: { vs: "/vendor/monaco/vs" } });
+    window.require(["vs/editor/editor.main"], () => {
+      registerStoryDslMonacoLanguage();
+      monacoState.editor = monaco.editor.create(elements.monacoHost, {
+        value: elements.editor.value,
+        language: "json",
+        theme: "vs",
+        automaticLayout: true,
+        minimap: { enabled: true },
+        fontSize: 13,
+        lineNumbersMinChars: 3,
+        scrollBeyondLastLine: false,
+        wordWrap: "off",
+        tabSize: 2,
+        insertSpaces: true,
+        renderLineHighlight: "line",
+        padding: { top: 10, bottom: 10 },
+      });
+      monacoState.editor.onDidChangeModelContent(() => {
+        if (monacoState.suppressChange) {
+          return;
+        }
+
+        elements.editor.value = monacoState.editor.getValue();
+        handleTextEditorInput();
+      });
+      monacoState.editor.onDidChangeCursorPosition(renderCursorState);
+      monacoState.editor.onDidChangeCursorSelection(renderCursorState);
+      monacoState.ready = true;
+      syncMonacoFromEditor();
+      resolve(true);
+    }, () => {
+      useLegacyTextEditor();
+      resolve(false);
+    });
+  });
+}
+
+function useLegacyTextEditor() {
+  elements.editor.classList.remove("legacy-editor");
+  elements.monacoHost?.classList.add("hidden");
+}
+
+function registerStoryDslMonacoLanguage() {
+  if (!window.monaco || monaco.languages.getLanguages().some((language) => language.id === "storydsl")) {
+    return;
+  }
+
+  monaco.languages.register({
+    id: "storydsl",
+    extensions: [".story"],
+    aliases: ["Story DSL", "storydsl"],
+  });
+  monaco.languages.setLanguageConfiguration("storydsl", {
+    comments: { lineComment: "//" },
+    brackets: [["(", ")"], ["[", "]"]],
+    autoClosingPairs: [
+      { open: "(", close: ")" },
+      { open: "[", close: "]" },
+    ],
+  });
+  monaco.languages.setMonarchTokensProvider("storydsl", {
+    defaultToken: "",
+    keywords: ["if", "elif", "else", "battle", "jump", "and", "or", "not", "win", "lose", "timeout"],
+    tokenizer: {
+      root: [
+        [/\/\/.*$/, "comment"],
+        [/^(#)(.*)$/, ["keyword", "type.identifier"]],
+        [/^(\s*)(-)(\s*)(win|lose|timeout)\b/, ["", "keyword", "", "keyword"]],
+        [/^(\s*)(-)(\s*)(.*)$/, ["", "keyword", "", "string"]],
+        [/^(\s*)(if|elif|else|battle|jump)\b/, ["", "keyword"]],
+        [/^(\s*)([A-Za-z_][\w.]*)\b/, ["", "identifier"]],
+        [/^(\s*)([^:：\s][^:：]*)([:：])/, ["", "type.identifier", "delimiter"]],
+        [/\$[A-Za-z_][\w\u4e00-\u9fa5]*/, "variable"],
+        [/[+-]?\d+(?:\.\d+)?/, "number"],
+        [/[=!<>]=?|&&|\|\||!/, "operator"],
+        [/[\[\],()]/, "delimiter"],
+      ],
+    },
+  });
+}
+
+function handleTextEditorInput() {
+  state.dirty = true;
+  if (isStorySourceFile() && state.viewMode === "dsl") {
+    updateStoryDslAnalysis({ showSuccess: false });
+  }
+  updateSearchMatches();
+  renderEditorOutline();
+  renderDirtyState();
+  renderCursorState();
+}
+
+function setTextEditorVisible(visible) {
+  elements.monacoHost.classList.toggle("hidden", !visible);
+  if (!monacoState.editor) {
+    elements.editor.classList.toggle("hidden", !visible);
+  }
+  if (visible) {
+    scheduleEditorLayout();
+  }
+}
+
+function setEditorValue(value) {
+  elements.editor.value = value;
+  if (!monacoState.editor) {
+    return;
+  }
+
+  if (monacoState.editor.getValue() === value) {
+    return;
+  }
+
+  monacoState.suppressChange = true;
+  monacoState.editor.setValue(value);
+  monacoState.suppressChange = false;
+}
+
+function resetEditorViewport() {
+  if (monacoState.editor) {
+    const position = { lineNumber: 1, column: 1 };
+    monacoState.editor.setPosition(position);
+    monacoState.editor.setScrollPosition({ scrollTop: 0, scrollLeft: 0 });
+    monacoState.editor.revealPosition(position);
+    scheduleEditorLayout();
+  } else {
+    elements.editor.setSelectionRange(0, 0);
+    elements.editor.scrollTop = 0;
+    elements.editor.scrollLeft = 0;
+  }
+
+  renderCursorState();
+}
+
+function getEditorValue() {
+  return monacoState.editor ? monacoState.editor.getValue() : elements.editor.value;
+}
+
+function isEditorReadOnly() {
+  return elements.editor.readOnly;
+}
+
+function setEditorReadOnly(readOnly) {
+  elements.editor.readOnly = readOnly;
+  monacoState.editor?.updateOptions({ readOnly });
+}
+
+function setEditorLanguage(language) {
+  monacoState.language = language;
+  if (monacoState.editor && window.monaco) {
+    monaco.editor.setModelLanguage(monacoState.editor.getModel(), language);
+    if (language !== "storydsl") {
+      setMonacoDiagnostics([]);
+    }
+  }
+}
+
+function syncMonacoFromEditor() {
+  if (!monacoState.editor) {
+    return;
+  }
+
+  setEditorValue(elements.editor.value);
+  setEditorLanguage(monacoState.language);
+  scheduleEditorLayout();
+}
+
+function focusTextEditor() {
+  if (monacoState.editor && !elements.monacoHost.classList.contains("hidden")) {
+    monacoState.editor.focus();
+  } else {
+    elements.editor.focus();
+  }
+}
+
+function scheduleEditorLayout() {
+  if (!monacoState.editor) {
+    return;
+  }
+
+  monacoState.editor.layout();
+  window.requestAnimationFrame(() => {
+    monacoState.editor?.layout();
+    window.requestAnimationFrame(() => monacoState.editor?.layout());
+  });
+}
+
+function getEditorCursorPosition() {
+  if (monacoState.editor) {
+    const position = monacoState.editor.getPosition();
+    if (position) {
+      return {
+        line: position.lineNumber,
+        column: position.column,
+      };
+    }
+  }
+
+  const position = elements.editor.selectionStart ?? 0;
+  const textBeforeCursor = elements.editor.value.slice(0, position);
+  const lines = textBeforeCursor.split("\n");
+  return {
+    line: lines.length,
+    column: lines[lines.length - 1].length + 1,
+  };
+}
+
+function getEditorSelectedText() {
+  if (monacoState.editor) {
+    const model = monacoState.editor.getModel();
+    const selection = monacoState.editor.getSelection();
+    if (!model || !selection || selection.isEmpty()) {
+      return "";
+    }
+
+    return model.getValueInRange(selection);
+  }
+
+  const start = elements.editor.selectionStart ?? 0;
+  const end = elements.editor.selectionEnd ?? 0;
+  return start === end ? "" : elements.editor.value.slice(start, end);
+}
+
+function setEditorSelectionByOffsets(start, end) {
+  const textLength = getEditorValue().length;
+  const safeStart = Math.max(0, Math.min(start, textLength));
+  const safeEnd = Math.max(safeStart, Math.min(end, textLength));
+  if (monacoState.editor) {
+    const model = monacoState.editor.getModel();
+    if (!model) {
+      return;
+    }
+
+    const startPosition = model.getPositionAt(safeStart);
+    const endPosition = model.getPositionAt(safeEnd);
+    const selection = new monaco.Selection(
+      startPosition.lineNumber,
+      startPosition.column,
+      endPosition.lineNumber,
+      endPosition.column);
+    monacoState.editor.setSelection(selection);
+    monacoState.editor.revealRangeInCenter(selection);
+    monacoState.editor.focus();
+    renderCursorState();
+    return;
+  }
+
+  elements.editor.focus();
+  elements.editor.setSelectionRange(safeStart, safeEnd);
+  renderCursorState();
+}
+
+function setEditorCursorToPosition(lineNumber, columnNumber = 1) {
+  const text = getEditorValue();
+  const lines = text.split("\n");
+  const lineIndex = Math.max(0, Math.min(lineNumber - 1, Math.max(0, lines.length - 1)));
+  const columnIndex = Math.max(0, Math.min(columnNumber - 1, lines[lineIndex]?.length || 0));
+
+  if (monacoState.editor) {
+    const position = {
+      lineNumber: lineIndex + 1,
+      column: columnIndex + 1,
+    };
+    monacoState.editor.setPosition(position);
+    monacoState.editor.revealPositionInCenter(position);
+    monacoState.editor.focus();
+    renderCursorState();
+    return;
+  }
+
+  let offset = 0;
+  for (let index = 0; index < lineIndex; index += 1) {
+    offset += lines[index].length + 1;
+  }
+
+  setEditorSelectionByOffsets(offset + columnIndex, offset + columnIndex);
+}
+
+function setMonacoDiagnostics(diagnostics) {
+  if (!window.monaco || !monacoState.editor) {
+    return;
+  }
+
+  const model = monacoState.editor.getModel();
+  if (!model) {
+    return;
+  }
+
+  const markers = (diagnostics || []).map((diagnostic) => {
+    const start = diagnostic.span?.start || { line: 1, column: 1 };
+    const end = diagnostic.span?.end || start;
+    const startLineNumber = Math.max(1, start.line || 1);
+    const startColumn = Math.max(1, start.column || 1);
+    const endLineNumber = Math.max(startLineNumber, end.line || startLineNumber);
+    const endColumn = endLineNumber === startLineNumber
+      ? Math.max(startColumn + 1, end.column || startColumn + 1)
+      : Math.max(1, end.column || 1);
+    return {
+      severity: diagnostic.severity === "warning"
+        ? monaco.MarkerSeverity.Warning
+        : monaco.MarkerSeverity.Error,
+      message: diagnostic.message,
+      code: diagnostic.code || "storydsl",
+      startLineNumber,
+      startColumn,
+      endLineNumber,
+      endColumn,
+    };
+  });
+
+  monaco.editor.setModelMarkers(model, "storydsl", markers);
+}
+
 async function boot() {
+  await initializeMonacoEditor();
   await loadWorkspace();
   await Promise.all([loadDataFiles(), loadAssetFiles()]);
   await rebuildContentIndex();
@@ -224,7 +547,9 @@ async function switchMod(modId) {
   };
   state.selectedStoryGroupId = "";
   state.selectedStoryNodeId = "";
-  elements.editor.value = "";
+  setEditorValue("");
+  setEditorReadOnly(false);
+  setEditorLanguage("json");
   elements.currentPath.textContent = "未选择文件";
   elements.saveState.textContent = "";
   renderWorkspacePath();
@@ -288,10 +613,11 @@ function setMode(mode) {
     elements.formModeButton.disabled = true;
     elements.jsonModeButton.disabled = true;
     elements.formView.classList.add("hidden");
-    elements.editor.classList.add("hidden");
+    setTextEditorVisible(false);
     elements.storyView.classList.remove("hidden");
     renderDirtyState();
     renderStoryView();
+    renderEditorOutline();
   } else {
     elements.storyView.classList.add("hidden");
     if (isStorySourceFile()) {
@@ -302,8 +628,9 @@ function setMode(mode) {
       elements.formModeButton.disabled = state.formRecords.length === 0;
       elements.jsonModeButton.disabled = false;
       elements.formView.classList.toggle("hidden", state.viewMode !== "form");
-      elements.editor.classList.toggle("hidden", state.viewMode !== "json");
+      setTextEditorVisible(state.viewMode === "json");
     }
+    renderEditorOutline();
   }
 
   renderFileList();
@@ -740,8 +1067,10 @@ async function openDataFile(path) {
   const file = await requestJson(`/api/data/file?path=${encodeURIComponent(path)}`);
   state.currentPath = file.path;
   state.dirty = false;
-  elements.editor.value = file.content;
-  elements.editor.readOnly = false;
+  setEditorValue(file.content);
+  setEditorReadOnly(false);
+  setEditorLanguage(isStorySourceFile(file.path) ? "storydsl" : "json");
+  resetEditorViewport();
   elements.currentPath.textContent = file.path;
   elements.assetPreview.textContent = "未选择资产";
   elements.saveState.textContent = "";
@@ -760,9 +1089,11 @@ async function openDataFile(path) {
     };
     elements.formModeButton.textContent = "表单";
     elements.jsonModeButton.textContent = "JSON";
-    refreshFormFromEditor({ preferForm: true });
+    const supportsForm = refreshFormFromEditor({ preferForm: true });
+    showValidation(true, supportsForm ? "JSON 已载入，可使用表单视图。" : "JSON 已载入。");
   }
   updateSearchMatches();
+  renderEditorOutline();
   renderIndexPanel();
   renderSelectionLookup();
   renderDirtyState();
@@ -779,13 +1110,16 @@ function openAssetFile(path) {
     jsonText: "",
     diagnostics: [],
   };
-  elements.editor.value = `assets/${path}`;
-  elements.editor.readOnly = true;
+  setEditorValue(`assets/${path}`);
+  setEditorReadOnly(true);
+  setEditorLanguage("plaintext");
+  resetEditorViewport();
   elements.currentPath.textContent = path;
   elements.saveState.textContent = "";
   setViewMode("json");
   elements.formModeButton.disabled = true;
   updateSearchMatches();
+  renderEditorOutline();
   renderIndexPanel();
   renderSelectionLookup();
   renderDirtyState();
@@ -843,17 +1177,18 @@ async function saveCurrentFile() {
 
   elements.saveButton.disabled = true;
   try {
-    JSON.parse(elements.editor.value);
+    const content = getEditorValue();
+    JSON.parse(content);
     const result = await requestJson("/api/data/file", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         path: state.currentPath,
-        content: elements.editor.value,
+        content,
       }),
     });
 
-    elements.editor.value = result.content;
+    setEditorValue(result.content);
     state.dirty = false;
     refreshFormFromEditor({ preferForm: state.viewMode === "form" });
     renderDirtyState();
@@ -887,19 +1222,20 @@ async function saveCurrentStorySource() {
 
   elements.saveButton.disabled = true;
   try {
+    const content = getEditorValue();
     const result = await requestJson("/api/story/source", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         path: state.currentPath,
-        content: elements.editor.value,
+        content,
         compiledJson: analysis.jsonText,
       }),
     });
 
     state.storySource.text = result.content;
     state.storySource.jsonText = result.compiledJsonContent;
-    elements.editor.value = result.content;
+    setEditorValue(result.content);
     state.dirty = false;
     renderDirtyState();
     renderCursorState();
@@ -920,7 +1256,7 @@ async function saveCurrentStorySource() {
 }
 
 function formatCurrentJson() {
-  if (state.mode !== "data" || elements.editor.readOnly) {
+  if (state.mode !== "data" || isEditorReadOnly()) {
     return;
   }
 
@@ -933,12 +1269,13 @@ function formatCurrentJson() {
   }
 
   try {
-    elements.editor.value = `${JSON.stringify(JSON.parse(elements.editor.value), null, 2)}\n`;
+    setEditorValue(`${JSON.stringify(JSON.parse(getEditorValue()), null, 2)}\n`);
     state.dirty = true;
     elements.saveState.textContent = "已格式化，尚未保存";
     showValidation(true, "JSON format is valid.");
     refreshFormFromEditor({ preferForm: state.viewMode === "form" });
     updateSearchMatches();
+    renderEditorOutline();
     renderDirtyState();
     renderCursorState();
   } catch (error) {
@@ -960,13 +1297,88 @@ function renderDirtyState() {
 }
 
 function renderCursorState() {
-  const position = elements.editor.selectionStart ?? 0;
-  const textBeforeCursor = elements.editor.value.slice(0, position);
-  const lines = textBeforeCursor.split("\n");
-  const line = lines.length;
-  const column = lines[lines.length - 1].length + 1;
+  const { line, column } = getEditorCursorPosition();
   elements.cursorState.textContent = `行 ${line}，列 ${column}`;
   renderSelectionLookup();
+}
+
+function renderEditorOutline() {
+  const entries = getEditorOutlineEntries();
+  elements.outlineSelect.replaceChildren();
+
+  const placeholder = document.createElement("option");
+  placeholder.value = "";
+  placeholder.textContent = entries.length > 0 ? `跳转剧情段 (${entries.length})` : "无剧情段";
+  elements.outlineSelect.appendChild(placeholder);
+  elements.outlineSelect.disabled = entries.length === 0;
+
+  for (const entry of entries) {
+    const option = document.createElement("option");
+    option.value = String(entry.line);
+    option.textContent = `${entry.line}: ${entry.title}`;
+    elements.outlineSelect.appendChild(option);
+  }
+}
+
+function getEditorOutlineEntries() {
+  if (state.mode !== "data" || !state.currentPath) {
+    return [];
+  }
+
+  if (isStorySourceFile() && state.viewMode === "dsl") {
+    return getStoryDslOutlineEntries(getEditorValue());
+  }
+
+  if ((isStorySourceFile() && state.viewMode === "json") || isStoryJsonFile()) {
+    return getStoryJsonOutlineEntries(getEditorValue());
+  }
+
+  return [];
+}
+
+function getStoryDslOutlineEntries(text) {
+  return text
+    .split("\n")
+    .map((line, index) => {
+      const match = line.match(/^\s*#\s*(.+?)\s*$/);
+      return match ? { line: index + 1, title: match[1] } : null;
+    })
+    .filter(Boolean);
+}
+
+function getStoryJsonOutlineEntries(text) {
+  return text
+    .split("\n")
+    .map((line, index) => {
+      const match = line.match(/^\s*"name"\s*:\s*"((?:\\.|[^"\\])*)"/);
+      if (!match) {
+        return null;
+      }
+
+      return {
+        line: index + 1,
+        title: decodeJsonStringLiteral(match[1]),
+      };
+    })
+    .filter(Boolean);
+}
+
+function decodeJsonStringLiteral(value) {
+  try {
+    return JSON.parse(`"${value}"`);
+  } catch {
+    return value;
+  }
+}
+
+function jumpToSelectedOutline() {
+  const line = Number(elements.outlineSelect.value);
+  if (!Number.isFinite(line) || line <= 0) {
+    return;
+  }
+
+  setEditorCursorToLine(line, 1);
+  elements.outlineSelect.value = "";
 }
 
 function showValidation(ok, message) {
@@ -1017,7 +1429,7 @@ function showStoryDslValidation(errors, warnings, segmentCount) {
 }
 
 function updateStoryDslAnalysis({ showSuccess }) {
-  const sourceText = state.viewMode === "json" ? state.storySource.text : elements.editor.value;
+  const sourceText = state.viewMode === "json" ? state.storySource.text : getEditorValue();
   state.storySource.text = sourceText;
   const baseAnalysis = window.StoryDsl.analyzeStory(sourceText);
   const diagnostics = [
@@ -1032,6 +1444,7 @@ function updateStoryDslAnalysis({ showSuccess }) {
   };
   state.storySource.diagnostics = diagnostics;
   state.storySource.jsonText = analysis.jsonText || "";
+  setMonacoDiagnostics(state.viewMode === "dsl" ? diagnostics : []);
   renderStoryDslStatus();
 
   const errors = diagnostics.filter((item) => item.severity === "error");
@@ -1228,18 +1641,23 @@ function setViewMode(mode) {
         showValidation(false, "Story DSL 存在错误，无法预览 JSON。");
         mode = "dsl";
       } else {
-        state.storySource.text = state.viewMode === "dsl" ? elements.editor.value : state.storySource.text;
+        state.storySource.text = state.viewMode === "dsl" ? getEditorValue() : state.storySource.text;
         state.storySource.jsonText = analysis.jsonText;
-        elements.editor.value = analysis.jsonText;
-        elements.editor.readOnly = true;
+        setEditorValue(analysis.jsonText);
+        setEditorReadOnly(true);
+        setEditorLanguage("json");
+        resetEditorViewport();
       }
     }
 
     if (mode === "dsl") {
-      elements.editor.value = state.viewMode === "json"
+      setEditorValue(state.viewMode === "json"
         ? state.storySource.text
-        : elements.editor.value;
-      elements.editor.readOnly = false;
+        : getEditorValue());
+      setEditorReadOnly(false);
+      setEditorLanguage("storydsl");
+      setMonacoDiagnostics(state.storySource.diagnostics);
+      resetEditorViewport();
     }
 
     state.viewMode = mode === "json" ? "json" : "dsl";
@@ -1250,9 +1668,10 @@ function setViewMode(mode) {
     elements.formModeButton.classList.toggle("active", state.viewMode === "dsl");
     elements.jsonModeButton.classList.toggle("active", state.viewMode === "json");
     elements.formView.classList.add("hidden");
-    elements.editor.classList.remove("hidden");
+    setTextEditorVisible(true);
     renderStoryDslStatus();
     updateSearchMatches();
+    renderEditorOutline();
     renderCursorState();
     return;
   }
@@ -1268,13 +1687,14 @@ function setViewMode(mode) {
   elements.formModeButton.classList.toggle("active", mode === "form");
   elements.jsonModeButton.classList.toggle("active", mode === "json");
   elements.formView.classList.toggle("hidden", mode !== "form");
-  elements.editor.classList.toggle("hidden", mode !== "json");
+  setTextEditorVisible(mode === "json");
   renderFormView();
+  renderEditorOutline();
 }
 
 function refreshFormFromEditor({ preferForm }) {
   try {
-    const json = JSON.parse(elements.editor.value);
+    const json = JSON.parse(getEditorValue());
     if (!Array.isArray(json) || !json.every((record) => record && typeof record === "object" && !Array.isArray(record))) {
       state.formRecords = [];
       elements.formModeButton.disabled = true;
@@ -1284,7 +1704,7 @@ function refreshFormFromEditor({ preferForm }) {
 
       setViewModeButtons();
       elements.formView.classList.add("hidden");
-      elements.editor.classList.remove("hidden");
+      setTextEditorVisible(true);
       return false;
     }
 
@@ -1297,7 +1717,7 @@ function refreshFormFromEditor({ preferForm }) {
 
     setViewModeButtons();
     elements.formView.classList.toggle("hidden", state.viewMode !== "form");
-    elements.editor.classList.toggle("hidden", state.viewMode !== "json");
+    setTextEditorVisible(state.viewMode === "json");
     renderFormView();
     return true;
   } catch {
@@ -1309,7 +1729,7 @@ function refreshFormFromEditor({ preferForm }) {
 
     setViewModeButtons();
     elements.formView.classList.add("hidden");
-    elements.editor.classList.remove("hidden");
+    setTextEditorVisible(true);
     return false;
   }
 }
@@ -4560,10 +4980,11 @@ function structuredCloneCompat(value) {
 }
 
 function syncFormToEditor() {
-  elements.editor.value = `${JSON.stringify(state.formRecords, null, 2)}\n`;
+  setEditorValue(`${JSON.stringify(state.formRecords, null, 2)}\n`);
   state.dirty = true;
   elements.saveState.textContent = "表单已修改，尚未保存";
   updateSearchMatches();
+  renderEditorOutline();
   renderDirtyState();
   renderCursorState();
   renderIndexPanel();
@@ -6543,13 +6964,7 @@ function createToolField(label, control) {
 }
 
 function getSelectedLookupText() {
-  const start = elements.editor.selectionStart ?? 0;
-  const end = elements.editor.selectionEnd ?? 0;
-  if (start === end) {
-    return "";
-  }
-
-  return elements.editor.value.slice(start, end).trim().replace(/^"|"$/g, "");
+  return getEditorSelectedText().trim().replace(/^"|"$/g, "");
 }
 
 async function revealDefinition(definition) {
@@ -6578,7 +6993,7 @@ async function revealStoryLocation(path, line) {
 }
 
 function selectLine(lineNumber) {
-  const lines = elements.editor.value.split("\n");
+  const lines = getEditorValue().split("\n");
   const lineIndex = Math.max(0, Math.min(lineNumber - 1, lines.length - 1));
   let start = 0;
   for (let index = 0; index < lineIndex; index += 1) {
@@ -6586,23 +7001,11 @@ function selectLine(lineNumber) {
   }
 
   const end = start + lines[lineIndex].length;
-  elements.editor.focus();
-  elements.editor.setSelectionRange(start, end);
-  renderCursorState();
+  setEditorSelectionByOffsets(start, end);
 }
 
 function setEditorCursorToLine(lineNumber, columnNumber = 1) {
-  const lines = elements.editor.value.split("\n");
-  const lineIndex = Math.max(0, Math.min(lineNumber - 1, lines.length - 1));
-  let position = 0;
-  for (let index = 0; index < lineIndex; index += 1) {
-    position += lines[index].length + 1;
-  }
-
-  position += Math.max(0, Math.min(columnNumber - 1, lines[lineIndex].length));
-  elements.editor.focus();
-  elements.editor.setSelectionRange(position, position);
-  renderCursorState();
+  setEditorCursorToPosition(lineNumber, columnNumber);
 }
 
 async function openLastDataFile() {
@@ -6636,7 +7039,7 @@ function updateSearchMatches() {
     return;
   }
 
-  const lowerText = elements.editor.value.toLowerCase();
+  const lowerText = getEditorValue().toLowerCase();
   const lowerQuery = query.toLowerCase();
   let index = lowerText.indexOf(lowerQuery);
   while (index >= 0) {
@@ -6664,10 +7067,8 @@ function jumpSearch(direction) {
   state.searchIndex = (state.searchIndex + direction + state.searchMatches.length) % state.searchMatches.length;
   const start = state.searchMatches[state.searchIndex];
   const end = start + elements.contentSearch.value.length;
-  elements.editor.focus();
-  elements.editor.setSelectionRange(start, end);
+  setEditorSelectionByOffsets(start, end);
   elements.searchState.textContent = `${state.searchIndex + 1} / ${state.searchMatches.length}`;
-  renderCursorState();
 }
 
 function handleGlobalKeydown(event) {
@@ -6699,7 +7100,7 @@ function formatJsonError(error) {
   }
 
   const position = Number(positionMatch[1]);
-  const lines = elements.editor.value.slice(0, position).split("\n");
+  const lines = getEditorValue().slice(0, position).split("\n");
   return `JSON parse failed near 行 ${lines.length}，列 ${lines[lines.length - 1].length + 1}: ${message}`;
 }
 

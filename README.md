@@ -111,7 +111,7 @@ dotnet build engine-free-rpg.csproj
 1. 启动服务并打开 `http://localhost:5127`。
 2. 在右上角“当前 MOD”选择要编辑的内容包。
 3. 在左侧切换“数据 / 剧情 / 资产”。
-4. 选择 JSON 文件后，可以用“JSON”直接编辑，也可以用“表单”编辑顶层数组记录。
+4. 选择 JSON 文件后，可以用“JSON”直接编辑，也可以用“表单”编辑顶层数组记录；文本编辑区使用 Monaco，支持行号、缩略代码地图、JSON/DSL 高亮、错误标记和光标定位。
 5. 修改后点击“格式化”检查 JSON 格式。
 6. 点击“校验”运行内容校验。
 7. 确认无误后点击“保存”。
@@ -166,9 +166,12 @@ mods/jyxr-expansion/data/story/book-shujian.story
 
 - `DSL` 是可编辑源文件。
 - `JSON` 是只读编译预览。
+- 顶部“跳转剧情段”下拉会读取当前文件里的段名，选择后直接跳到对应行。
+- 左侧如果同时存在 `.story` 和同名 `.story.json`，点击生成的 `.story.json` 会优先打开源 `.story`，避免误改生成物。
 - 保存 `.story` 时会先编译 DSL，再生成同名 `.story.json`，例如 `book-shujian.story.json`。
 - 游戏运行时仍只读取 `.story.json`。
 - DSL 会做轻量静态检查：`jump` 目标剧情段、`battle` 战斗、`map` 地图、`shop` 商店，以及 `item` / `cost_item` / `random_item` 物品引用不存在时会在右侧显示错误。
+- 如果 Monaco 静态资源加载失败，页面会退回普通文本框，仍可编辑和保存。
 
 DSL 支持剧情段、对白、命令、选择、条件、战斗分支和跳转：
 
@@ -178,6 +181,7 @@ DSL 支持剧情段、对白、命令、选择、条件、战斗分支和跳转�
 主角：要做什么？
 - 领取奖励
   random_item [小还丹, 王母蟠桃] 1
+  log 书剑剧情已领取奖励
   jump 书剑结束
 
 # 书剑结束
@@ -185,6 +189,94 @@ DSL 支持剧情段、对白、命令、选择、条件、战斗分支和跳转�
 ```
 
 列表参数使用 `[甲, 乙, 丙]`，保存后会编译为运行时支持的 `["list", "甲", "乙", "丙"]`。
+
+### DSL 基本语法
+
+剧情段使用顶格标题：
+
+```text
+# 段名
+```
+
+对白使用“说话人 + 冒号 + 文本”，中英文冒号都可以：
+
+```text
+南贤：少侠，且慢。
+主角: 我听着。
+```
+
+普通剧情命令直接写命令名和参数。参数按空格分隔，列表参数使用方括号：
+
+```text
+item 小还丹 1
+cost_item 银票 2
+get_money 500
+random_item [小还丹, 王母蟠桃] 1
+```
+
+跳转使用 `jump`：
+
+```text
+jump 下一段剧情
+```
+
+选择题写法是“提示对白”后面紧跟同级 `- 选项`，选项内容缩进 2 个空格：
+
+```text
+南贤：你要去哪？
+- 去洛阳
+  map 洛阳
+- 继续聊
+  jump 继续聊天
+```
+
+条件分支支持 `if` / `elif` / `else`，分支内容缩进 2 个空格：
+
+```text
+if money >= 500
+  cost_money 500
+  南贤：银两收下了。
+elif morality > 30
+  南贤：看你为人不错。
+else
+  南贤：条件还不够。
+```
+
+战斗分支使用 `battle 战斗id`，结果分支只允许 `win` / `lose` / `timeout`：
+
+```text
+battle 新手战斗
+- win
+  get_money 100
+  jump 战斗胜利
+- lose
+  jump 战斗失败
+```
+
+缩进规则：
+
+- 不使用 Tab。
+- 每一级缩进固定 2 个空格。
+- `jump` 之后同级语句不可达，会作为错误提示。
+
+### 常用剧情命令速查
+
+DSL 的普通命令会编译为 story JSON 的 `kind: "command"`，实际执行仍由应用层剧情命令系统负责。当前常用命令包括：
+
+| 类别 | 命令 | 示例 |
+| --- | --- | --- |
+| 物品 | `item` / `cost_item` / `random_item` | `item 小还丹 1` |
+| 银两 / 元宝 | `get_money` / `cost_money` / `yuanbao` | `get_money 500` |
+| 时间 | `cost_day` / `set_time_key` / `clear_time_key` | `cost_day 1` |
+| 状态 | `set_flag` / `clear_flag` / `daode` / `haogan` / `rank` / `menpai` | `set_flag 初遇南贤` |
+| 角色 | `join` / `follow` / `leave` / `leave_follow` / `leave_all` | `join 郭靖` |
+| 成长 | `upgrade` / `grant_point` / `get_exp` / `levelup` / `maxlevel` | `grant_exp 主角 100` |
+| 技能 | `learn` / `remove` / `growtemplate` | `learn 主角 野球拳` |
+| 档案 | `nick` | `nick 武林新星` |
+| 流程 | `map` / `shop` / `battle` / `jump` | `map 洛阳` |
+| 宿主表现 | `music` / `effect` / `background` / `suggest` / `toast` / `shake` / `head` / `animation` | `music music/main` |
+
+命令参数是否有效取决于当前内容库。编辑器目前会静态检查 `jump`、`battle`、`map`、`shop` 和物品类引用；其他命令仍以运行时校验和内容校验结果为准。
 
 ## 资产视图
 

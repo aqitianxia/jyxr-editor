@@ -353,7 +353,7 @@ body.help-page {
 
 .editor-tools {
   display: grid;
-  grid-template-columns: auto auto minmax(160px, 280px) auto auto 1fr;
+  grid-template-columns: auto auto minmax(160px, 280px) minmax(120px, 190px) auto auto 1fr;
   align-items: center;
   gap: 8px;
   padding: 6px 14px;
@@ -361,11 +361,18 @@ body.help-page {
   background: #ffffff;
 }
 
-.content-search {
+.content-search,
+.outline-select {
   border: 1px solid var(--border);
   border-radius: 6px;
   min-height: 30px;
   padding: 0 9px;
+  min-width: 0;
+}
+
+.outline-select {
+  color: #314155;
+  background: #ffffff;
 }
 
 .editor-tools button {
@@ -406,6 +413,18 @@ body.help-page {
   font-size: 13px;
   line-height: 1.55;
   tab-size: 2;
+}
+
+.legacy-editor {
+  display: none !important;
+}
+
+.monaco-host {
+  position: relative;
+  min-height: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
 }
 
 .form-view {

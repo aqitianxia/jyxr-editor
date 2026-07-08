@@ -4,7 +4,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>JYXR JSON 编辑器</title>
-  <link rel="stylesheet" href="/styles.css?v=20260706-mod-switch-1">
+  <link rel="stylesheet" data-name="vs/editor/editor.main" href="/vendor/monaco/vs/editor/editor.main.css?v=20260708-monaco-1">
+  <link rel="stylesheet" href="/styles.css?v=20260708-monaco-4">
 </head>
 <body>
   <div class="app-shell">
@@ -45,13 +46,15 @@
           <button id="formModeButton" type="button">表单</button>
           <button id="jsonModeButton" type="button">JSON</button>
           <input id="contentSearch" class="content-search" type="search" placeholder="搜索当前文件">
+          <select id="outlineSelect" class="outline-select" title="按剧情段标题跳转"></select>
           <button id="findPreviousButton" type="button">上一个</button>
           <button id="findNextButton" type="button">下一个</button>
           <div id="searchState" class="tool-state"></div>
         </div>
         <div id="formView" class="form-view hidden"></div>
         <div id="storyView" class="story-view hidden"></div>
-        <textarea id="editor" spellcheck="false" autocomplete="off" autocapitalize="off"></textarea>
+        <textarea id="editor" class="legacy-editor" spellcheck="false" autocomplete="off" autocapitalize="off"></textarea>
+        <div id="monacoHost" class="monaco-host hidden"></div>
         <div class="statusbar">
           <div id="cursorState">行 1，列 1</div>
           <div id="saveState"></div>
@@ -91,7 +94,8 @@
     </main>
   </div>
 
+  <script src="/vendor/monaco/vs/loader.js?v=20260708-monaco-1"></script>
   <script src="/story-dsl.js?v=20260708-dsl-1"></script>
-  <script src="/app.js?v=20260708-dsl-1"></script>
+  <script src="/app.js?v=20260708-monaco-4"></script>
 </body>
 </html>

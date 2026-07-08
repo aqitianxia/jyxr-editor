@@ -73,16 +73,67 @@ dotnet build engine-free-rpg.csproj</code></pre>
     <section class="help-section">
       <h2>Story DSL</h2>
       <p>新剧情可以在 <code>data/story/</code> 下创建 <code>.story</code> 文件。打开后使用 <code>DSL</code> 编写，<code>JSON</code> 可查看只读编译预览。</p>
+      <p>文本编辑区使用 Monaco，支持行号、缩略代码地图、DSL/JSON 高亮和错误定位。顶部“跳转剧情段”下拉会按 <code># 段名</code> 或 JSON 的 <code>name</code> 快速定位。</p>
       <pre><code># 书剑入口
 南贤：这里是书剑剧情。
 主角：要做什么？
 - 领取奖励
   random_item [小还丹, 王母蟠桃] 1
+  log 书剑剧情已领取奖励
   jump 书剑结束
 
 # 书剑结束
 南贤：结束。</code></pre>
       <p>保存 <code>.story</code> 时会生成同名 <code>.story.json</code>，游戏运行时仍读取 JSON 文件。右侧会检查 <code>jump</code>、战斗、地图、商店和物品引用是否存在。</p>
+    </section>
+
+    <section class="help-section">
+      <h2>DSL 写法速查</h2>
+      <p><strong>段落：</strong>顶格写 <code># 段名</code>。</p>
+      <pre><code># 初遇南贤</code></pre>
+      <p><strong>对白：</strong>写成 <code>说话人：文本</code>，中英文冒号都可以。</p>
+      <pre><code>南贤：少侠，且慢。
+主角: 我听着。</code></pre>
+      <p><strong>普通命令：</strong>命令名后接参数；列表参数使用方括号。</p>
+      <pre><code>item 小还丹 1
+get_money 500
+random_item [小还丹, 王母蟠桃] 1
+jump 下一段剧情</code></pre>
+      <p><strong>选择：</strong>提示对白后跟同级 <code>- 选项</code>，选项内容缩进 2 个空格。</p>
+      <pre><code>南贤：你要去哪？
+- 去洛阳
+  map 洛阳
+- 继续聊
+  jump 继续聊天</code></pre>
+      <p><strong>条件：</strong>支持 <code>if</code> / <code>elif</code> / <code>else</code>。</p>
+      <pre><code>if money &gt;= 500
+  cost_money 500
+  南贤：银两收下了。
+else
+  南贤：条件还不够。</code></pre>
+      <p><strong>战斗：</strong>使用 <code>battle 战斗id</code>，结果只允许 <code>win</code>、<code>lose</code>、<code>timeout</code>。</p>
+      <pre><code>battle 新手战斗
+- win
+  get_money 100
+  jump 战斗胜利
+- lose
+  jump 战斗失败</code></pre>
+      <p>缩进必须使用 2 个空格，不要使用 Tab。<code>jump</code> 后面的同级语句不可达，会作为错误提示。</p>
+    </section>
+
+    <section class="help-section">
+      <h2>常用剧情命令</h2>
+      <ul>
+        <li><strong>物品：</strong><code>item</code>、<code>cost_item</code>、<code>random_item</code></li>
+        <li><strong>银两 / 元宝：</strong><code>get_money</code>、<code>cost_money</code>、<code>yuanbao</code></li>
+        <li><strong>时间：</strong><code>cost_day</code>、<code>set_time_key</code>、<code>clear_time_key</code></li>
+        <li><strong>状态：</strong><code>set_flag</code>、<code>clear_flag</code>、<code>daode</code>、<code>haogan</code>、<code>rank</code>、<code>menpai</code></li>
+        <li><strong>角色：</strong><code>join</code>、<code>follow</code>、<code>leave</code>、<code>leave_follow</code>、<code>leave_all</code></li>
+        <li><strong>成长 / 技能：</strong><code>grant_exp</code>、<code>levelup</code>、<code>learn</code>、<code>remove</code>、<code>maxlevel</code></li>
+        <li><strong>流程：</strong><code>map</code>、<code>shop</code>、<code>battle</code>、<code>jump</code></li>
+        <li><strong>表现：</strong><code>music</code>、<code>effect</code>、<code>background</code>、<code>suggest</code>、<code>toast</code>、<code>shake</code>、<code>head</code>、<code>animation</code></li>
+      </ul>
+      <p>编辑器会静态检查 <code>jump</code>、<code>battle</code>、<code>map</code>、<code>shop</code> 和物品类引用；其他命令以运行时和内容校验为准。</p>
     </section>
 
     <section class="help-section">
