@@ -33,11 +33,16 @@ const state = {
     selectedAssetPath: "",
   },
   assetImageInfo: new Map(),
+  assetFilePathSet: new Set(),
   resourceValues: new Map(),
   portraitCheck: null,
   storyGraph: null,
   selectedStoryGroupId: "",
   selectedStoryNodeId: "",
+  fileGroups: {
+    basicData: { collapsed: false },
+    storyData: { collapsed: false },
+  },
   contentIndex: {
     ready: false,
     definitionsById: new Map(),
@@ -57,6 +62,29 @@ const storageKeys = {
   activeModId: "jyxr-json-editor:active-mod-id",
 };
 
+const dataFileDisplayNames = new Map([
+  ["battles.json", "战斗"],
+  ["buffs.json", "状态 / Buff"],
+  ["characters.json", "角色"],
+  ["equipment-random-affixes.json", "装备随机词缀"],
+  ["external-skills.json", "外功"],
+  ["form-skills.json", "招式"],
+  ["game-config.json", "游戏配置"],
+  ["game-tips.json", "游戏提示"],
+  ["grow-templates.json", "成长模板"],
+  ["internal-skills.json", "内功"],
+  ["items.json", "物品"],
+  ["legend-skills.json", "奥义"],
+  ["maps.json", "地图"],
+  ["resources.json", "资源"],
+  ["sects.json", "门派"],
+  ["shops.json", "商店"],
+  ["special-skills.json", "绝技"],
+  ["talents.json", "天赋"],
+  ["towers.json", "爬塔"],
+  ["world-triggers.json", "世界触发器"],
+]);
+
 const elements = {
   workspacePath: document.getElementById("workspacePath"),
   modSelect: document.getElementById("modSelect"),
@@ -71,6 +99,12 @@ const elements = {
   formModeButton: document.getElementById("formModeButton"),
   jsonModeButton: document.getElementById("jsonModeButton"),
   currentPath: document.getElementById("currentPath"),
+  currentFileSummary: document.getElementById("currentFileSummary"),
+  currentFileBox: document.getElementById("currentFileBox"),
+  newStoryButton: document.getElementById("newStoryButton"),
+  newSpeakerButton: document.getElementById("newSpeakerButton"),
+  portraitCheckButton: document.getElementById("portraitCheckButton"),
+  characterCheckButton: document.getElementById("characterCheckButton"),
   dirtyState: document.getElementById("dirtyState"),
   contentSearch: document.getElementById("contentSearch"),
   outlineSelect: document.getElementById("outlineSelect"),
@@ -108,6 +142,10 @@ elements.jsonModeButton.addEventListener("click", () => setViewMode("json"));
 elements.formatButton.addEventListener("click", formatCurrentJson);
 elements.validateButton.addEventListener("click", validateContent);
 elements.saveButton.addEventListener("click", saveCurrentFile);
+elements.newStoryButton.addEventListener("click", openNewStoryDialog);
+elements.newSpeakerButton.addEventListener("click", openSpeakerToolDialog);
+elements.portraitCheckButton.addEventListener("click", runPortraitCheckFromToolbar);
+elements.characterCheckButton.addEventListener("click", focusCheckResults);
 elements.modSelect.addEventListener("change", () => switchMod(elements.modSelect.value));
 elements.contentSearch.addEventListener("input", () => {
   if (state.mode === "story") {
@@ -577,6 +615,7 @@ async function loadDataFiles() {
 
 async function loadAssetFiles() {
   state.assetFiles = await requestJson("/api/assets/files");
+  state.assetFilePathSet = new Set(state.assetFiles.map((file) => file.path));
 }
 
 async function loadStoryGraph() {
@@ -618,6 +657,7 @@ function setMode(mode) {
     renderDirtyState();
     renderStoryView();
     renderEditorOutline();
+    renderCurrentFileInfo();
   } else {
     elements.storyView.classList.add("hidden");
     if (isStorySourceFile()) {
@@ -634,6 +674,7 @@ function setMode(mode) {
   }
 
   renderFileList();
+  renderCurrentFileInfo();
 }
 
 function renderFileList() {
@@ -643,38 +684,115 @@ function renderFileList() {
     return;
   }
 
-  const files = state.mode === "data" ? state.dataFiles : state.assetFiles;
+  if (state.mode === "data") {
+    renderDataFileGroupList(query);
+    return;
+  }
+
+  const files = state.assetFiles;
   elements.fileList.replaceChildren();
 
   for (const file of files) {
-    if (query && !file.path.toLowerCase().includes(query)) {
+    if (query && !getFileSearchText(file).includes(query)) {
       continue;
     }
 
-    const storySourcePath = state.mode === "data" ? getStorySourcePathForJson(file.path) : "";
-    const clickPath = storySourcePath || file.path;
-    const item = document.createElement("button");
-    item.type = "button";
-    item.className = "file-item";
-    item.title = file.path;
-    item.classList.toggle("active", state.currentPath === file.path || state.currentPath === storySourcePath);
-    const summary = state.contentIndex.fileSummaries.get(file.path);
-    const title = document.createElement("div");
-    title.className = "file-title";
-    title.textContent = file.path;
-    const meta = document.createElement("div");
-    meta.className = "file-meta";
-    meta.textContent = formatFileMeta(file, summary, storySourcePath);
-    item.append(title, meta);
-    item.addEventListener("click", () => {
-      if (state.mode === "data") {
-        openDataFile(clickPath);
-      } else {
-        openAssetFile(file.path);
-      }
-    });
-    elements.fileList.appendChild(item);
+    elements.fileList.appendChild(createFileListItem(file));
   }
+}
+
+function renderDataFileGroupList(query) {
+  elements.fileList.replaceChildren();
+
+  const groups = [
+    {
+      id: "basicData",
+      title: "基础数据",
+      files: state.dataFiles.filter((file) => !isStoryDataFile(file.path)),
+    },
+    {
+      id: "storyData",
+      title: "故事剧情",
+      files: state.dataFiles.filter((file) => isStoryDataFile(file.path)),
+    },
+  ];
+
+  let visibleGroupCount = 0;
+  for (const group of groups) {
+    const matchingFiles = group.files.filter((file) => !query || getFileSearchText(file).includes(query));
+    if (query && matchingFiles.length === 0) {
+      continue;
+    }
+
+    visibleGroupCount += 1;
+    const groupNode = document.createElement("section");
+    groupNode.className = "file-group";
+    const collapsed = !query && Boolean(state.fileGroups[group.id]?.collapsed);
+    groupNode.classList.toggle("collapsed", collapsed);
+
+    const header = document.createElement("button");
+    header.type = "button";
+    header.className = "file-group-header";
+    header.setAttribute("aria-expanded", collapsed ? "false" : "true");
+    header.title = collapsed ? `展开${group.title}` : `收起${group.title}`;
+
+    const icon = document.createElement("span");
+    icon.className = "file-group-icon";
+    icon.textContent = collapsed ? "▸" : "▾";
+    const title = document.createElement("span");
+    title.className = "file-group-title";
+    title.textContent = group.title;
+    const count = document.createElement("span");
+    count.className = "file-group-count";
+    count.textContent = query ? `${matchingFiles.length} / ${group.files.length}` : String(group.files.length);
+    header.append(icon, title, count);
+    header.addEventListener("click", () => {
+      state.fileGroups[group.id].collapsed = !state.fileGroups[group.id].collapsed;
+      renderFileList();
+    });
+    groupNode.appendChild(header);
+
+    if (!collapsed) {
+      for (const file of matchingFiles) {
+        groupNode.appendChild(createFileListItem(file));
+      }
+    }
+
+    elements.fileList.appendChild(groupNode);
+  }
+
+  if (visibleGroupCount === 0) {
+    const empty = document.createElement("div");
+    empty.className = "file-item muted";
+    empty.textContent = "没有匹配的文件";
+    elements.fileList.appendChild(empty);
+  }
+}
+
+function createFileListItem(file) {
+  const storySourcePath = state.mode === "data" ? getStorySourcePathForJson(file.path) : "";
+  const clickPath = storySourcePath || file.path;
+  const item = document.createElement("button");
+  item.type = "button";
+  item.className = "file-item";
+  item.title = file.path;
+  item.classList.toggle("active", state.currentPath === file.path || state.currentPath === storySourcePath);
+  const summary = state.contentIndex.fileSummaries.get(file.path);
+  const title = document.createElement("div");
+  title.className = "file-title";
+  title.textContent = getFileDisplayTitle(file);
+  const meta = document.createElement("div");
+  meta.className = "file-meta";
+  meta.textContent = formatFileMeta(file, summary, storySourcePath);
+  item.append(title, meta);
+  item.addEventListener("click", () => {
+    if (state.mode === "data") {
+      openDataFile(clickPath);
+    } else {
+      openAssetFile(file.path);
+    }
+  });
+  return item;
 }
 
 function renderStoryGroupList(query) {
@@ -710,6 +828,7 @@ function renderStoryGroupList(query) {
       state.selectedStoryNodeId = "";
       renderFileList();
       renderStoryView();
+      renderCurrentFileInfo();
     });
     elements.fileList.appendChild(item);
   }
@@ -1294,12 +1413,90 @@ async function validateContent() {
 
 function renderDirtyState() {
   elements.dirtyState.textContent = state.dirty ? "未保存" : "";
+  renderCurrentFileInfo();
 }
 
 function renderCursorState() {
   const { line, column } = getEditorCursorPosition();
   elements.cursorState.textContent = `行 ${line}，列 ${column}`;
   renderSelectionLookup();
+}
+
+function renderCurrentFileInfo() {
+  const info = getCurrentFileInfo();
+  elements.currentFileSummary.textContent = info.summary;
+  elements.currentFileBox.replaceChildren();
+  elements.currentFileBox.className = info.rows.length > 0 ? "index-box" : "index-box muted";
+
+  if (info.rows.length === 0) {
+    elements.currentFileBox.textContent = info.summary;
+    return;
+  }
+
+  for (const [label, value] of info.rows) {
+    appendIndexRow(elements.currentFileBox, label, value);
+  }
+}
+
+function getCurrentFileInfo() {
+  if (state.mode === "story") {
+    const graph = state.storyGraph;
+    const group = graph?.groups?.find((item) => item.id === state.selectedStoryGroupId) || graph?.groups?.[0] || null;
+    if (!group) {
+      return {
+        summary: "剧情图谱 · 暂无剧情段",
+        rows: [["视图", "剧情图谱"]],
+      };
+    }
+
+    return {
+      summary: `剧情图谱 · ${group.name} · ${group.nodeCount} 段 · ${group.diagnosticCount} 问题`,
+      rows: [
+        ["视图", "剧情图谱"],
+        ["当前分组", group.name],
+        ["剧情段", String(group.nodeCount)],
+        ["入口", String(group.entrypointCount)],
+        ["问题", String(group.diagnosticCount)],
+      ],
+    };
+  }
+
+  if (!state.currentPath) {
+    return { summary: "未选择文件", rows: [] };
+  }
+
+  const files = state.mode === "assets" ? state.assetFiles : state.dataFiles;
+  const file = files.find((item) => item.path === state.currentPath);
+  const summary = state.contentIndex.fileSummaries.get(state.currentPath);
+  const displayName = getDataFileDisplayName(state.currentPath);
+  const type = state.mode === "assets"
+    ? "资产"
+    : isStorySourceFile(state.currentPath)
+      ? "Story DSL"
+      : isStoryJsonFile(state.currentPath)
+        ? "Story JSON"
+        : displayName || summary?.type || "数据";
+  const size = file ? formatFileSize(file.size) : "-";
+  const rows = [
+    ["路径", state.currentPath],
+    ["类型", type],
+    ["大小", size],
+  ];
+
+  if (summary) {
+    rows.push(["定义", `${summary.definitions} 条`]);
+  }
+
+  if (isStorySourceFile(state.currentPath)) {
+    rows.push(["生成文件", `${state.currentPath}.json`]);
+  }
+
+  const title = displayName ? `${displayName} ${state.currentPath}` : state.currentPath;
+  const count = summary ? ` · ${summary.definitions} 条` : "";
+  return {
+    summary: `${type} · ${title}${count} · ${size}`,
+    rows,
+  };
 }
 
 function renderEditorOutline() {
@@ -1774,6 +1971,43 @@ function renderFormView() {
   restoreFormViewScrollState(scrollState);
 }
 
+function selectFormRecord(index) {
+  if (index === state.selectedRecordIndex) {
+    return;
+  }
+
+  state.selectedRecordIndex = index;
+  updateRecordCardSelection();
+  renderSelectedRecordDetail();
+  renderCharacterCheckTool();
+  renderPortraitPicker();
+  renderItemPicturePicker();
+}
+
+function updateRecordCardSelection() {
+  for (const card of elements.formView.querySelectorAll(".record-card[data-record-index]")) {
+    card.classList.toggle("active", Number(card.dataset.recordIndex) === state.selectedRecordIndex);
+  }
+}
+
+function renderSelectedRecordDetail() {
+  const detail = elements.formView.querySelector(".form-detail");
+  if (!detail) {
+    renderFormView();
+    return;
+  }
+
+  detail.replaceChildren();
+  if (isCharacterFile()) {
+    renderCharacterDetail(detail);
+  } else if (isItemFile()) {
+    renderItemDetail(detail);
+  } else {
+    renderGenericRecordDetail(detail);
+  }
+  detail.scrollTop = 0;
+}
+
 function captureFormViewScrollState() {
   return {
     recordListScrollTop: elements.formView.querySelector(".record-list")?.scrollTop ?? 0,
@@ -1902,10 +2136,10 @@ function renderGenericRecordCards(parent) {
     const card = document.createElement("button");
     card.type = "button";
     card.className = "record-card";
+    card.dataset.recordIndex = String(index);
     card.classList.toggle("active", index === state.selectedRecordIndex);
     card.addEventListener("click", () => {
-      state.selectedRecordIndex = index;
-      renderFormView();
+      selectFormRecord(index);
     });
 
     const text = document.createElement("div");
@@ -1942,10 +2176,10 @@ function renderCharacterRecordCards(parent, subtitleNode) {
     const card = document.createElement("button");
     card.type = "button";
     card.className = "record-card character-record-card";
+    card.dataset.recordIndex = String(index);
     card.classList.toggle("active", index === state.selectedRecordIndex);
     card.addEventListener("click", () => {
-      state.selectedRecordIndex = index;
-      renderFormView();
+      selectFormRecord(index);
     });
 
     const portraitInfo = getCharacterPortraitInfo(record);
@@ -2398,10 +2632,10 @@ function renderItemRecordCards(parent, subtitleNode) {
     const card = document.createElement("button");
     card.type = "button";
     card.className = "record-card character-record-card item-record-card";
+    card.dataset.recordIndex = String(index);
     card.classList.toggle("active", index === state.selectedRecordIndex);
     card.addEventListener("click", () => {
-      state.selectedRecordIndex = index;
-      renderFormView();
+      selectFormRecord(index);
     });
 
     const pictureInfo = getItemPictureInfo(record);
@@ -2583,7 +2817,7 @@ function createItemSummaryPicture(record, pictureInfo) {
   box.className = "character-summary-portrait item-summary-picture";
   if (pictureInfo.previewPath) {
     const image = document.createElement("img");
-    image.src = `/api/assets/file?path=${encodeURIComponent(pictureInfo.previewPath)}&v=${Date.now()}`;
+    image.src = `/api/assets/file?path=${encodeURIComponent(pictureInfo.previewPath)}`;
     image.alt = typeof record.name === "string" ? record.name : (record.id || "物品图片");
     box.appendChild(image);
   } else {
@@ -3021,7 +3255,7 @@ function createItemPictureSection(record, pictureInfo) {
 
   if (pictureInfo.previewPath) {
     const image = document.createElement("img");
-    image.src = `/api/assets/file?path=${encodeURIComponent(pictureInfo.previewPath)}&v=${Date.now()}`;
+    image.src = `/api/assets/file?path=${encodeURIComponent(pictureInfo.previewPath)}`;
     image.alt = pictureInfo.pictureId || "物品图片";
     preview.appendChild(image);
   } else {
@@ -3966,7 +4200,7 @@ function createCharacterPortraitHero(record, portraitInfo) {
   const previewPath = portraitInfo.previewPath;
   if (previewPath) {
     const image = document.createElement("img");
-    image.src = `/api/assets/file?path=${encodeURIComponent(previewPath)}&v=${Date.now()}`;
+    image.src = `/api/assets/file?path=${encodeURIComponent(previewPath)}`;
     image.alt = typeof record.name === "string" ? record.name : (record.id || "角色头像");
     box.appendChild(image);
   } else {
@@ -4184,7 +4418,7 @@ function createCharacterPortraitSection(record, portraitInfo) {
 
   if (portraitInfo.previewPath) {
     const image = document.createElement("img");
-    image.src = `/api/assets/file?path=${encodeURIComponent(portraitInfo.previewPath)}&v=${Date.now()}`;
+    image.src = `/api/assets/file?path=${encodeURIComponent(portraitInfo.previewPath)}`;
     image.alt = portraitInfo.portraitId || "角色头像";
     preview.appendChild(image);
   } else {
@@ -5089,7 +5323,7 @@ function findAssetPath(value, options = {}) {
   }
 
   for (const candidate of candidates) {
-    if (state.assetFiles.some((file) => file.path === candidate)) {
+    if (state.assetFilePathSet.has(candidate)) {
       return candidate;
     }
   }
@@ -5326,6 +5560,7 @@ async function rebuildContentIndex() {
   renderSpeakerTool();
   renderPortraitCheckTool();
   renderCharacterCheckTool();
+  renderCurrentFileInfo();
 }
 
 function extractDefinitions(path, content, json) {
@@ -5478,8 +5713,13 @@ function renderSelectionLookup() {
   elements.selectionBox.appendChild(list);
 }
 
-function renderSpeakerTool() {
-  elements.speakerToolBox.replaceChildren();
+function renderSpeakerTool(target = null) {
+  const container = target || elements.speakerToolBox;
+  if (!container) {
+    return;
+  }
+
+  container.replaceChildren();
 
   const description = document.createElement("div");
   description.className = "static-tool-note";
@@ -5599,7 +5839,7 @@ function renderSpeakerTool() {
     }
   });
 
-  elements.speakerToolBox.append(
+  container.append(
     description,
     createToolField("说话人 id", idInput),
     createToolField("显示名", nameInput),
@@ -5645,6 +5885,127 @@ function renderSpeakerTool() {
     speakerAutoValues = defaults;
     renderSpeakerAssetStatus(assetInput.value, assetStatus);
   }
+}
+
+function openSpeakerToolDialog() {
+  const content = document.createElement("div");
+  content.className = "tool-dialog-content";
+  const toolBox = document.createElement("div");
+  toolBox.className = "static-tool";
+  content.appendChild(toolBox);
+  openToolDialog("新建说话人", "创建可用于 dialogue speaker 的最小角色，并按需补头像资源。", content);
+  renderSpeakerTool(toolBox);
+}
+
+function openNewStoryDialog() {
+  const content = document.createElement("form");
+  content.className = "tool-dialog-content";
+
+  const fileInput = createToolInput("newStoryFileName", "文件名", "book-shujian");
+  const segmentInput = createToolInput("newStorySegmentName", "首段名", "书剑入口");
+  const status = document.createElement("div");
+  status.className = "static-tool-status muted";
+  const submitButton = document.createElement("button");
+  submitButton.type = "submit";
+  submitButton.className = "primary";
+  submitButton.textContent = "创建并打开";
+
+  content.append(
+    createToolField("文件名", fileInput),
+    createToolField("首段名", segmentInput),
+    submitButton,
+    status
+  );
+
+  content.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    if (!(await confirmDiscardChanges())) {
+      return;
+    }
+
+    submitButton.disabled = true;
+    status.className = "static-tool-status muted";
+    status.textContent = "正在创建...";
+    try {
+      const result = await requestJson("/api/story/source/new", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          fileName: fileInput.value,
+          segmentName: segmentInput.value,
+        }),
+      });
+      await loadDataFiles();
+      await rebuildContentIndex();
+      await loadStoryGraph();
+      renderFileList();
+      closeToolDialog();
+      state.dirty = false;
+      renderDirtyState();
+      setMode("data");
+      await openDataFile(result.path);
+      showValidation(true, `已创建 ${result.path}，保存后会生成 ${result.compiledJsonPath}。`);
+    } catch (error) {
+      status.className = "static-tool-status bad";
+      status.textContent = error instanceof Error ? error.message : String(error);
+    } finally {
+      submitButton.disabled = false;
+    }
+  });
+
+  openToolDialog("新建 Story", "在当前 MOD 的 data/story 目录下创建 .story 源文件。", content);
+  fileInput.focus();
+  fileInput.select();
+}
+
+function openToolDialog(title, subtitle, content) {
+  closeToolDialog();
+
+  const overlay = document.createElement("div");
+  overlay.id = "toolDialogOverlay";
+  overlay.className = "tool-dialog-overlay";
+  overlay.addEventListener("click", (event) => {
+    if (event.target === overlay) {
+      closeToolDialog();
+    }
+  });
+
+  const dialog = document.createElement("div");
+  dialog.className = "tool-dialog";
+
+  const header = document.createElement("div");
+  header.className = "tool-dialog-header";
+  const titleGroup = document.createElement("div");
+  const titleNode = document.createElement("div");
+  titleNode.className = "tool-dialog-title";
+  titleNode.textContent = title;
+  const subtitleNode = document.createElement("div");
+  subtitleNode.className = "tool-dialog-subtitle";
+  subtitleNode.textContent = subtitle;
+  titleGroup.append(titleNode, subtitleNode);
+  const closeButton = document.createElement("button");
+  closeButton.type = "button";
+  closeButton.textContent = "关闭";
+  closeButton.addEventListener("click", closeToolDialog);
+  header.append(titleGroup, closeButton);
+
+  dialog.append(header, content);
+  overlay.appendChild(dialog);
+  document.body.appendChild(overlay);
+}
+
+function closeToolDialog() {
+  document.getElementById("toolDialogOverlay")?.remove();
+}
+
+function runPortraitCheckFromToolbar() {
+  focusCheckResults();
+  const button = elements.portraitCheckBox.querySelector("button");
+  button?.click();
+}
+
+function focusCheckResults() {
+  elements.characterCheckBox.scrollIntoView({ block: "nearest" });
 }
 
 function getSpeakerDefaults(rawId, explicitPortraitId) {
@@ -7139,6 +7500,32 @@ function isStoryJsonFile(path = state.currentPath) {
   return typeof path === "string" && path.toLowerCase().endsWith(".story.json");
 }
 
+function isStoryDataFile(path) {
+  if (typeof path !== "string") {
+    return false;
+  }
+
+  const normalized = path.replaceAll("\\", "/").toLowerCase();
+  return normalized.startsWith("story/") || normalized.endsWith(".story") || normalized.endsWith(".story.json");
+}
+
+function getFileDisplayTitle(file) {
+  if (state.mode !== "data" || isStoryDataFile(file.path)) {
+    return file.path;
+  }
+
+  return getDataFileDisplayName(file.path) || file.path;
+}
+
+function getFileSearchText(file) {
+  return `${file.path} ${getDataFileDisplayName(file.path) || ""}`.toLowerCase();
+}
+
+function getDataFileDisplayName(path) {
+  const normalized = String(path || "").replaceAll("\\", "/").toLowerCase();
+  return normalized.includes("/") ? "" : dataFileDisplayNames.get(normalized) || "";
+}
+
 function getStorySourcePathForJson(path) {
   if (!isStoryJsonFile(path)) {
     return "";
@@ -7159,9 +7546,13 @@ function formatFileMeta(file, summary, storySourcePath) {
     return `由 ${storySourcePath} 生成 · ${formatFileSize(file.size)}`;
   }
 
-  return state.mode === "data" && summary
-    ? `${summary.type} · ${summary.definitions} 条 · ${formatFileSize(file.size)}`
-    : formatFileSize(file.size);
+  if (state.mode === "data" && summary) {
+    const displayName = getDataFileDisplayName(file.path);
+    const prefix = displayName ? `${file.path} · ` : "";
+    return `${prefix}${summary.type} · ${summary.definitions} 条 · ${formatFileSize(file.size)}`;
+  }
+
+  return formatFileSize(file.size);
 }
 
 function formatFileSize(bytes) {

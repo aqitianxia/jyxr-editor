@@ -122,6 +122,43 @@ app.MapPut("/api/story/source", IResult (SaveStorySourceRequest request, string?
     }
 });
 
+app.MapPost("/api/story/source/new", IResult (CreateStorySourceRequest request, string? modId) =>
+{
+    try
+    {
+        var modWorkspace = workspace.ForMod(modId);
+        if (!Directory.Exists(modWorkspace.DataPath))
+        {
+            return Results.BadRequest(new ErrorResponse($"Data directory was not found: {modWorkspace.DataPath}"));
+        }
+
+        var relativePath = NormalizeNewStorySourcePath(request.FileName);
+        var sourcePath = modWorkspace.ResolveStorySourceFile(relativePath);
+        var compiledRelativePath = GetCompiledStoryJsonPath(relativePath);
+        var compiledPath = modWorkspace.ResolveDataFile(compiledRelativePath);
+        if (File.Exists(sourcePath))
+        {
+            return Results.BadRequest(new ErrorResponse($"Story source already exists: {relativePath}"));
+        }
+
+        if (File.Exists(compiledPath))
+        {
+            return Results.BadRequest(new ErrorResponse($"Compiled story JSON already exists: {compiledRelativePath}"));
+        }
+
+        var segmentName = NormalizeNewStorySegmentName(request.SegmentName, Path.GetFileNameWithoutExtension(relativePath));
+        var content = CreateStorySourceTemplate(segmentName);
+        Directory.CreateDirectory(Path.GetDirectoryName(sourcePath)!);
+        File.WriteAllText(sourcePath, content, Encoding.UTF8);
+
+        return Results.Ok(new CreateStorySourceResponse(relativePath, content, compiledRelativePath));
+    }
+    catch (Exception ex)
+    {
+        return Results.BadRequest(new ErrorResponse(ex.Message));
+    }
+});
+
 app.MapGet("/api/validate", (string? modId) => Results.Ok(ValidateContent(workspace.ForMod(modId))));
 
 app.MapGet("/api/story/graph", IResult (string? modId) =>
@@ -542,6 +579,70 @@ static string FormatJson(string json)
 
 static string NormalizeTextFile(string text) =>
     text.EndsWith('\n') ? text : text + Environment.NewLine;
+
+static string NormalizeNewStorySourcePath(string? fileName)
+{
+    if (string.IsNullOrWhiteSpace(fileName))
+    {
+        throw new InvalidOperationException("Story file name is required.");
+    }
+
+    var normalized = fileName.Trim().Replace('\\', '/');
+    if (Path.IsPathRooted(normalized) || normalized.Contains("..", StringComparison.Ordinal))
+    {
+        throw new InvalidOperationException("Story file name must stay under data/story.");
+    }
+
+    if (normalized.StartsWith("data/", StringComparison.OrdinalIgnoreCase))
+    {
+        normalized = normalized["data/".Length..];
+    }
+
+    if (normalized.StartsWith("story/", StringComparison.OrdinalIgnoreCase))
+    {
+        normalized = normalized["story/".Length..];
+    }
+
+    normalized = normalized.Trim('/');
+    if (string.IsNullOrWhiteSpace(normalized))
+    {
+        throw new InvalidOperationException("Story file name is required.");
+    }
+
+    if (normalized.EndsWith(".story.json", StringComparison.OrdinalIgnoreCase))
+    {
+        throw new InvalidOperationException("Create the .story source file, not the generated .story.json file.");
+    }
+
+    if (!normalized.EndsWith(".story", StringComparison.OrdinalIgnoreCase))
+    {
+        normalized += ".story";
+    }
+
+    var invalidChars = Path.GetInvalidFileNameChars();
+    var parts = normalized.Split('/', StringSplitOptions.RemoveEmptyEntries);
+    if (parts.Length == 0 || parts.Any(part => part.Length == 0 || part.IndexOfAny(invalidChars) >= 0))
+    {
+        throw new InvalidOperationException("Story file name contains invalid path characters.");
+    }
+
+    return $"story/{string.Join('/', parts)}";
+}
+
+static string NormalizeNewStorySegmentName(string? segmentName, string fallback)
+{
+    var normalized = string.IsNullOrWhiteSpace(segmentName) ? fallback : segmentName.Trim();
+    normalized = normalized.EndsWith(".story", StringComparison.OrdinalIgnoreCase)
+        ? normalized[..^".story".Length]
+        : normalized;
+    return string.IsNullOrWhiteSpace(normalized) ? "新剧情入口" : normalized;
+}
+
+static string CreateStorySourceTemplate(string segmentName) =>
+    NormalizeTextFile($"""
+    # {segmentName}
+    旁白：新的剧情开始。
+    """);
 
 static string GetCompiledStoryJsonPath(string storySourceRelativePath)
 {
@@ -2442,6 +2543,15 @@ sealed record SaveStorySourceResponse(
     string? SourceBackupPath,
     string? JsonBackupPath,
     ValidationResponse Validation);
+
+sealed record CreateStorySourceRequest(
+    string FileName,
+    string? SegmentName);
+
+sealed record CreateStorySourceResponse(
+    string Path,
+    string Content,
+    string CompiledJsonPath);
 
 sealed record CreateSpeakerRequest(
     string Id,
