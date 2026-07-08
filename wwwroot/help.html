@@ -71,6 +71,21 @@ dotnet build engine-free-rpg.csproj</code></pre>
     </section>
 
     <section class="help-section">
+      <h2>Story DSL</h2>
+      <p>新剧情可以在 <code>data/story/</code> 下创建 <code>.story</code> 文件。打开后使用 <code>DSL</code> 编写，<code>JSON</code> 可查看只读编译预览。</p>
+      <pre><code># 书剑入口
+南贤：这里是书剑剧情。
+主角：要做什么？
+- 领取奖励
+  random_item [小还丹, 王母蟠桃] 1
+  jump 书剑结束
+
+# 书剑结束
+南贤：结束。</code></pre>
+      <p>保存 <code>.story</code> 时会生成同名 <code>.story.json</code>，游戏运行时仍读取 JSON 文件。</p>
+    </section>
+
+    <section class="help-section">
       <h2>常见问题</h2>
       <p><strong>找不到 project.godot：</strong>先 <code>cd</code> 到仓库根目录再启动。</p>
       <p><strong>页面没有 MOD：</strong>检查 <code>mods/</code>、<code>mod.json</code> 和 <code>data/</code> 是否存在。</p>

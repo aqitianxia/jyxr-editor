@@ -154,6 +154,37 @@ dotnet build engine-free-rpg.csproj
 
 剧情图目前偏只读分析，复杂剧情仍建议在 JSON 视图中编辑。
 
+## Story DSL 编辑
+
+新剧情推荐直接创建 `.story` 源文件，例如：
+
+```text
+mods/jyxr-expansion/data/story/book-shujian.story
+```
+
+在“数据”页打开 `.story` 文件时，编辑器会切换为 `DSL / JSON`：
+
+- `DSL` 是可编辑源文件。
+- `JSON` 是只读编译预览。
+- 保存 `.story` 时会先编译 DSL，再生成同名 `.story.json`，例如 `book-shujian.story.json`。
+- 游戏运行时仍只读取 `.story.json`。
+
+DSL 支持剧情段、对白、命令、选择、条件、战斗分支和跳转：
+
+```text
+# 书剑入口
+南贤：这里是书剑剧情。
+主角：要做什么？
+- 领取奖励
+  random_item [小还丹, 王母蟠桃] 1
+  jump 书剑结束
+
+# 书剑结束
+南贤：结束。
+```
+
+列表参数使用 `[甲, 乙, 丙]`，保存后会编译为运行时支持的 `["list", "甲", "乙", "丙"]`。
+
 ## 资产视图
 
 “资产”页浏览仓库根目录 `assets/`。

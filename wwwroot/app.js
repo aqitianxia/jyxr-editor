@@ -14,6 +14,12 @@ const state = {
   selectedRecordIndex: 0,
   formSearch: "",
   formFilter: "all",
+  storySource: {
+    path: "",
+    text: "",
+    jsonText: "",
+    diagnostics: [],
+  },
   characterTab: "talents",
   itemTab: "requirements",
   portraitPicker: {
@@ -88,7 +94,7 @@ elements.dataTab.addEventListener("click", () => setMode("data"));
 elements.storyTab.addEventListener("click", () => setMode("story"));
 elements.assetsTab.addEventListener("click", () => setMode("assets"));
 elements.fileSearch.addEventListener("input", renderFileList);
-elements.formModeButton.addEventListener("click", () => setViewMode("form"));
+elements.formModeButton.addEventListener("click", () => setViewMode(isStorySourceFile() ? "dsl" : "form"));
 elements.jsonModeButton.addEventListener("click", () => setViewMode("json"));
 elements.formatButton.addEventListener("click", formatCurrentJson);
 elements.validateButton.addEventListener("click", validateContent);
@@ -111,6 +117,9 @@ elements.findPreviousButton.addEventListener("click", () => jumpSearch(-1));
 elements.findNextButton.addEventListener("click", () => jumpSearch(1));
 elements.editor.addEventListener("input", () => {
   state.dirty = true;
+  if (isStorySourceFile() && state.viewMode === "dsl") {
+    updateStoryDslAnalysis({ showSuccess: false });
+  }
   updateSearchMatches();
   renderDirtyState();
   renderCursorState();
@@ -207,6 +216,12 @@ async function switchMod(modId) {
   state.dirty = false;
   state.formRecords = [];
   state.selectedRecordIndex = 0;
+  state.storySource = {
+    path: "",
+    text: "",
+    jsonText: "",
+    diagnostics: [],
+  };
   state.selectedStoryGroupId = "";
   state.selectedStoryNodeId = "";
   elements.editor.value = "";
@@ -279,10 +294,16 @@ function setMode(mode) {
     renderStoryView();
   } else {
     elements.storyView.classList.add("hidden");
-    elements.formModeButton.disabled = state.formRecords.length === 0;
-    elements.jsonModeButton.disabled = false;
-    elements.formView.classList.toggle("hidden", state.viewMode !== "form");
-    elements.editor.classList.toggle("hidden", state.viewMode !== "json");
+    if (isStorySourceFile()) {
+      setViewMode(state.viewMode === "json" ? "json" : "dsl");
+    } else {
+      elements.formModeButton.textContent = "表单";
+      elements.jsonModeButton.textContent = "JSON";
+      elements.formModeButton.disabled = state.formRecords.length === 0;
+      elements.jsonModeButton.disabled = false;
+      elements.formView.classList.toggle("hidden", state.viewMode !== "form");
+      elements.editor.classList.toggle("hidden", state.viewMode !== "json");
+    }
   }
 
   renderFileList();
@@ -303,24 +324,24 @@ function renderFileList() {
       continue;
     }
 
+    const storySourcePath = state.mode === "data" ? getStorySourcePathForJson(file.path) : "";
+    const clickPath = storySourcePath || file.path;
     const item = document.createElement("button");
     item.type = "button";
     item.className = "file-item";
     item.title = file.path;
-    item.classList.toggle("active", state.currentPath === file.path);
+    item.classList.toggle("active", state.currentPath === file.path || state.currentPath === storySourcePath);
     const summary = state.contentIndex.fileSummaries.get(file.path);
     const title = document.createElement("div");
     title.className = "file-title";
     title.textContent = file.path;
     const meta = document.createElement("div");
     meta.className = "file-meta";
-    meta.textContent = state.mode === "data" && summary
-      ? `${summary.type} · ${summary.definitions} 条 · ${formatFileSize(file.size)}`
-      : formatFileSize(file.size);
+    meta.textContent = formatFileMeta(file, summary, storySourcePath);
     item.append(title, meta);
     item.addEventListener("click", () => {
       if (state.mode === "data") {
-        openDataFile(file.path);
+        openDataFile(clickPath);
       } else {
         openAssetFile(file.path);
       }
@@ -725,7 +746,22 @@ async function openDataFile(path) {
   elements.assetPreview.textContent = "未选择资产";
   elements.saveState.textContent = "";
   localStorage.setItem(getLastDataPathStorageKey(), file.path);
-  refreshFormFromEditor({ preferForm: true });
+  if (isStorySourceFile(file.path)) {
+    state.storySource.path = file.path;
+    state.storySource.text = file.content;
+    setViewMode("dsl");
+    updateStoryDslAnalysis({ showSuccess: true });
+  } else {
+    state.storySource = {
+      path: "",
+      text: "",
+      jsonText: "",
+      diagnostics: [],
+    };
+    elements.formModeButton.textContent = "表单";
+    elements.jsonModeButton.textContent = "JSON";
+    refreshFormFromEditor({ preferForm: true });
+  }
   updateSearchMatches();
   renderIndexPanel();
   renderSelectionLookup();
@@ -737,6 +773,12 @@ async function openDataFile(path) {
 function openAssetFile(path) {
   state.currentPath = path;
   state.dirty = false;
+  state.storySource = {
+    path: "",
+    text: "",
+    jsonText: "",
+    diagnostics: [],
+  };
   elements.editor.value = `assets/${path}`;
   elements.editor.readOnly = true;
   elements.currentPath.textContent = path;
@@ -790,7 +832,12 @@ function previewAsset(path) {
 
 async function saveCurrentFile() {
   if (!state.currentPath || state.mode !== "data") {
-    showValidation(false, "请选择 data JSON 文件。");
+    showValidation(false, "请选择 data 文件。");
+    return;
+  }
+
+  if (isStorySourceFile()) {
+    await saveCurrentStorySource();
     return;
   }
 
@@ -826,8 +873,62 @@ async function saveCurrentFile() {
   }
 }
 
+async function saveCurrentStorySource() {
+  if (state.viewMode !== "dsl") {
+    setViewMode("dsl");
+  }
+
+  const analysis = updateStoryDslAnalysis({ showSuccess: false });
+  const errorCount = analysis.diagnostics.filter((item) => item.severity === "error").length;
+  if (errorCount > 0 || !analysis.jsonText) {
+    showValidation(false, `Story DSL 存在 ${errorCount} 个错误，未保存。`);
+    return;
+  }
+
+  elements.saveButton.disabled = true;
+  try {
+    const result = await requestJson("/api/story/source", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        path: state.currentPath,
+        content: elements.editor.value,
+        compiledJson: analysis.jsonText,
+      }),
+    });
+
+    state.storySource.text = result.content;
+    state.storySource.jsonText = result.compiledJsonContent;
+    elements.editor.value = result.content;
+    state.dirty = false;
+    renderDirtyState();
+    renderCursorState();
+    const backups = [result.sourceBackupPath, result.jsonBackupPath].filter(Boolean);
+    elements.saveState.textContent = backups.length > 0
+      ? `已保存，生成：${result.compiledJsonPath}，备份：${backups.join("、")}`
+      : `已保存，生成：${result.compiledJsonPath}`;
+    showValidation(result.validation.ok, result.validation.message);
+    await loadDataFiles();
+    await rebuildContentIndex();
+    await loadStoryGraph();
+    renderFileList();
+  } catch (error) {
+    showValidation(false, error.message);
+  } finally {
+    elements.saveButton.disabled = false;
+  }
+}
+
 function formatCurrentJson() {
   if (state.mode !== "data" || elements.editor.readOnly) {
+    return;
+  }
+
+  if (isStorySourceFile()) {
+    const analysis = updateStoryDslAnalysis({ showSuccess: true });
+    if (analysis.jsonText) {
+      state.storySource.jsonText = analysis.jsonText;
+    }
     return;
   }
 
@@ -873,7 +974,102 @@ function showValidation(ok, message) {
   elements.validationBox.textContent = message;
 }
 
+function updateStoryDslAnalysis({ showSuccess }) {
+  const sourceText = state.viewMode === "json" ? state.storySource.text : elements.editor.value;
+  state.storySource.text = sourceText;
+  const analysis = window.StoryDsl.analyzeStory(sourceText);
+  state.storySource.diagnostics = analysis.diagnostics;
+  state.storySource.jsonText = analysis.jsonText || "";
+  renderStoryDslStatus();
+
+  const errors = analysis.diagnostics.filter((item) => item.severity === "error");
+  const warnings = analysis.diagnostics.filter((item) => item.severity === "warning");
+  if (errors.length > 0) {
+    showValidation(false, `Story DSL 存在 ${errors.length} 个错误。`);
+  } else if (showSuccess) {
+    showValidation(true, `Story DSL 校验通过：${analysis.ast.segments.length} 个剧情段，${warnings.length} 个提醒。`);
+  }
+
+  return analysis;
+}
+
+function renderStoryDslStatus() {
+  if (!isStorySourceFile()) {
+    return;
+  }
+
+  const diagnostics = state.storySource.diagnostics || [];
+  const errors = diagnostics.filter((item) => item.severity === "error");
+  const warnings = diagnostics.filter((item) => item.severity === "warning");
+  elements.assetPreview.replaceChildren();
+
+  const title = document.createElement("div");
+  title.className = "asset-path";
+  title.textContent = `Story DSL · ${errors.length} 错误 · ${warnings.length} 提醒`;
+  elements.assetPreview.appendChild(title);
+
+  if (diagnostics.length === 0) {
+    const ok = document.createElement("div");
+    ok.className = "muted";
+    ok.textContent = "当前 DSL 可以编译为 story.json。";
+    elements.assetPreview.appendChild(ok);
+    return;
+  }
+
+  for (const diagnostic of diagnostics.slice(0, 12)) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "definition-link";
+    button.textContent = `${diagnostic.severity === "error" ? "错误" : "提醒"} ${diagnostic.span.start.line}:${diagnostic.span.start.column} ${diagnostic.message}`;
+    button.addEventListener("click", () => {
+      if (state.viewMode !== "dsl") {
+        setViewMode("dsl");
+      }
+      setEditorCursorToLine(diagnostic.span.start.line, diagnostic.span.start.column);
+    });
+    elements.assetPreview.appendChild(button);
+  }
+}
+
 function setViewMode(mode) {
+  if (isStorySourceFile()) {
+    if (mode === "json") {
+      const analysis = updateStoryDslAnalysis({ showSuccess: false });
+      if (!analysis.jsonText) {
+        showValidation(false, "Story DSL 存在错误，无法预览 JSON。");
+        mode = "dsl";
+      } else {
+        state.storySource.text = state.viewMode === "dsl" ? elements.editor.value : state.storySource.text;
+        state.storySource.jsonText = analysis.jsonText;
+        elements.editor.value = analysis.jsonText;
+        elements.editor.readOnly = true;
+      }
+    }
+
+    if (mode === "dsl") {
+      elements.editor.value = state.viewMode === "json"
+        ? state.storySource.text
+        : elements.editor.value;
+      elements.editor.readOnly = false;
+    }
+
+    state.viewMode = mode === "json" ? "json" : "dsl";
+    elements.formModeButton.textContent = "DSL";
+    elements.jsonModeButton.textContent = "JSON";
+    elements.formModeButton.disabled = false;
+    elements.jsonModeButton.disabled = false;
+    elements.formModeButton.classList.toggle("active", state.viewMode === "dsl");
+    elements.jsonModeButton.classList.toggle("active", state.viewMode === "json");
+    elements.formView.classList.add("hidden");
+    elements.editor.classList.remove("hidden");
+    renderStoryDslStatus();
+    updateSearchMatches();
+    renderCursorState();
+    return;
+  }
+
+  elements.formModeButton.textContent = "表单";
+  elements.jsonModeButton.textContent = "JSON";
   if (mode === "form" && !refreshFormFromEditor({ preferForm: false })) {
     showValidation(false, "当前 JSON 暂不支持表单视图。");
     mode = "json";
@@ -4429,6 +4625,14 @@ async function rebuildContentIndex() {
   const storySpeakers = new Map();
 
   for (const file of state.dataFiles) {
+    if (isStorySourceFile(file.path)) {
+      fileSummaries.set(file.path, {
+        definitions: 0,
+        type: "story-dsl",
+      });
+      continue;
+    }
+
     try {
       const response = await requestJson(`/api/data/file?path=${encodeURIComponent(file.path)}`);
       const json = JSON.parse(response.content);
@@ -6198,13 +6402,27 @@ function selectLine(lineNumber) {
   renderCursorState();
 }
 
+function setEditorCursorToLine(lineNumber, columnNumber = 1) {
+  const lines = elements.editor.value.split("\n");
+  const lineIndex = Math.max(0, Math.min(lineNumber - 1, lines.length - 1));
+  let position = 0;
+  for (let index = 0; index < lineIndex; index += 1) {
+    position += lines[index].length + 1;
+  }
+
+  position += Math.max(0, Math.min(columnNumber - 1, lines[lineIndex].length));
+  elements.editor.focus();
+  elements.editor.setSelectionRange(position, position);
+  renderCursorState();
+}
+
 async function openLastDataFile() {
   const lastPath = localStorage.getItem(getLastDataPathStorageKey());
   if (!lastPath || !state.dataFiles.some((file) => file.path === lastPath)) {
     return;
   }
 
-  await openDataFile(lastPath);
+  await openDataFile(getStorySourcePathForJson(lastPath) || lastPath);
 }
 
 function getLastDataPathStorageKey() {
@@ -6321,6 +6539,39 @@ function isImage(path) {
 
 function isAudio(path) {
   return [".ogg", ".wav", ".mp3"].some((extension) => path.endsWith(extension));
+}
+
+function isStorySourceFile(path = state.currentPath) {
+  return typeof path === "string" && path.toLowerCase().endsWith(".story");
+}
+
+function isStoryJsonFile(path = state.currentPath) {
+  return typeof path === "string" && path.toLowerCase().endsWith(".story.json");
+}
+
+function getStorySourcePathForJson(path) {
+  if (!isStoryJsonFile(path)) {
+    return "";
+  }
+
+  const sourcePath = path.slice(0, -".json".length);
+  return state.dataFiles.some((file) => file.path === sourcePath) ? sourcePath : "";
+}
+
+function formatFileMeta(file, summary, storySourcePath) {
+  if (isStorySourceFile(file.path)) {
+    const compiledPath = `${file.path}.json`;
+    const hasCompiledJson = state.dataFiles.some((candidate) => candidate.path === compiledPath);
+    return `Story DSL · ${hasCompiledJson ? "有生成 JSON" : "未生成 JSON"} · ${formatFileSize(file.size)}`;
+  }
+
+  if (storySourcePath) {
+    return `由 ${storySourcePath} 生成 · ${formatFileSize(file.size)}`;
+  }
+
+  return state.mode === "data" && summary
+    ? `${summary.type} · ${summary.definitions} 条 · ${formatFileSize(file.size)}`
+    : formatFileSize(file.size);
 }
 
 function formatFileSize(bytes) {

@@ -36,13 +36,13 @@ app.MapGet("/api/data/files", (string? modId) =>
         return Results.Ok(Array.Empty<FileEntry>());
     }
 
-    return Results.Ok(ListFiles(modWorkspace.DataPath, "*.json", includeImportFiles: true));
+    return Results.Ok(ListDataFiles(modWorkspace.DataPath));
 });
 
 app.MapGet("/api/data/file", IResult (string path, string? modId) =>
 {
     var modWorkspace = workspace.ForMod(modId);
-    var filePath = modWorkspace.ResolveDataFile(path);
+    var filePath = modWorkspace.ResolveDataTextFile(path);
     if (!File.Exists(filePath))
     {
         return Results.NotFound(new ErrorResponse($"Data file was not found: {path}"));
@@ -73,6 +73,48 @@ app.MapPut("/api/data/file", IResult (SaveFileRequest request, string? modId) =>
     catch (JsonException ex)
     {
         return Results.BadRequest(new ErrorResponse($"JSON parse failed: {ex.Message}"));
+    }
+    catch (Exception ex)
+    {
+        return Results.BadRequest(new ErrorResponse(ex.Message));
+    }
+});
+
+app.MapPut("/api/story/source", IResult (SaveStorySourceRequest request, string? modId) =>
+{
+    try
+    {
+        var modWorkspace = workspace.ForMod(modId);
+        if (!Directory.Exists(modWorkspace.DataPath))
+        {
+            return Results.BadRequest(new ErrorResponse($"Data directory was not found: {modWorkspace.DataPath}"));
+        }
+
+        var sourcePath = modWorkspace.ResolveStorySourceFile(request.Path);
+        var compiledRelativePath = GetCompiledStoryJsonPath(request.Path);
+        var compiledPath = modWorkspace.ResolveDataFile(compiledRelativePath);
+        var formattedJson = FormatJson(request.CompiledJson);
+        var sourceBackupPath = BackupFile(modWorkspace, sourcePath);
+        var jsonBackupPath = BackupFile(modWorkspace, compiledPath);
+
+        Directory.CreateDirectory(Path.GetDirectoryName(sourcePath)!);
+        Directory.CreateDirectory(Path.GetDirectoryName(compiledPath)!);
+        File.WriteAllText(sourcePath, NormalizeTextFile(request.Content), Encoding.UTF8);
+        File.WriteAllText(compiledPath, formattedJson, Encoding.UTF8);
+
+        var validation = ValidateContent(modWorkspace);
+        return Results.Ok(new SaveStorySourceResponse(
+            request.Path,
+            NormalizeTextFile(request.Content),
+            compiledRelativePath,
+            formattedJson,
+            sourceBackupPath,
+            jsonBackupPath,
+            validation));
+    }
+    catch (JsonException ex)
+    {
+        return Results.BadRequest(new ErrorResponse($"Compiled story JSON parse failed: {ex.Message}"));
     }
     catch (Exception ex)
     {
@@ -462,6 +504,26 @@ static IReadOnlyList<FileEntry> ListFiles(string rootPath, string pattern, bool 
         .ToArray();
 }
 
+static IReadOnlyList<FileEntry> ListDataFiles(string rootPath)
+{
+    return Directory.EnumerateFiles(rootPath, "*", SearchOption.AllDirectories)
+        .Where(path =>
+            path.EndsWith(".json", StringComparison.OrdinalIgnoreCase) ||
+            path.EndsWith(".story", StringComparison.OrdinalIgnoreCase))
+        .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
+        .Select(path =>
+        {
+            var info = new FileInfo(path);
+            return new FileEntry(
+                ToRelativePath(rootPath, path),
+                info.Name,
+                info.Extension,
+                info.Length,
+                info.LastWriteTimeUtc);
+        })
+        .ToArray();
+}
+
 static string FormatJson(string json)
 {
     using var document = JsonDocument.Parse(json);
@@ -476,6 +538,19 @@ static string FormatJson(string json)
     }
 
     return Encoding.UTF8.GetString(stream.ToArray()) + Environment.NewLine;
+}
+
+static string NormalizeTextFile(string text) =>
+    text.EndsWith('\n') ? text : text + Environment.NewLine;
+
+static string GetCompiledStoryJsonPath(string storySourceRelativePath)
+{
+    if (!storySourceRelativePath.EndsWith(".story", StringComparison.OrdinalIgnoreCase))
+    {
+        throw new InvalidOperationException("Story source path must end with .story.");
+    }
+
+    return storySourceRelativePath + ".json";
 }
 
 static string? BackupFile(WorkspacePaths workspace, string filePath)
@@ -2231,6 +2306,29 @@ sealed class WorkspacePaths
         return path;
     }
 
+    public string ResolveDataTextFile(string relativePath)
+    {
+        var path = ResolveChildPath(DataPath, relativePath);
+        if (!path.EndsWith(".json", StringComparison.OrdinalIgnoreCase) &&
+            !path.EndsWith(".story", StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException("Data file path must end with .json or .story.");
+        }
+
+        return path;
+    }
+
+    public string ResolveStorySourceFile(string relativePath)
+    {
+        var path = ResolveChildPath(DataPath, relativePath);
+        if (!path.EndsWith(".story", StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException("Story source path must end with .story.");
+        }
+
+        return path;
+    }
+
     public string ResolveAssetFile(string relativePath) => ResolveChildPath(AssetsPath, relativePath);
 
     private static string? TryGetManifestStringProperty(JsonObject? obj, string propertyName)
@@ -2329,6 +2427,20 @@ sealed record SaveFileResponse(
     string Path,
     string Content,
     string? BackupPath,
+    ValidationResponse Validation);
+
+sealed record SaveStorySourceRequest(
+    string Path,
+    string Content,
+    string CompiledJson);
+
+sealed record SaveStorySourceResponse(
+    string Path,
+    string Content,
+    string CompiledJsonPath,
+    string CompiledJsonContent,
+    string? SourceBackupPath,
+    string? JsonBackupPath,
     ValidationResponse Validation);
 
 sealed record CreateSpeakerRequest(
