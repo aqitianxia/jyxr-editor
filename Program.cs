@@ -333,6 +333,49 @@ app.MapPost("/api/static/item-resource", IResult (CreateItemResourceRequest requ
     }
 });
 
+app.MapPost("/api/static/resource", IResult (CreateResourceRequest request, string? modId) =>
+{
+    try
+    {
+        var modWorkspace = workspace.ForMod(modId);
+        if (!Directory.Exists(modWorkspace.DataPath))
+        {
+            return Results.BadRequest(new ErrorResponse($"Data directory was not found: {modWorkspace.DataPath}"));
+        }
+
+        var resourceId = NormalizeRequiredId(request.Id, "Resource id");
+        var group = NormalizeResourceGroup(request.Group);
+        var assetValue = NormalizeResourceAssetValue(request.Value, group);
+
+        var resourcesPath = modWorkspace.ResolveDataFile("resources.json");
+        var resources = ReadJsonArray(resourcesPath, "resources.json");
+        if (JsonArrayContainsStringProperty(resources, "id", resourceId))
+        {
+            return Results.BadRequest(new ErrorResponse($"Resource already exists: {resourceId}"));
+        }
+
+        var backupPath = BackupFile(modWorkspace, resourcesPath);
+        resources.Add(new JsonObject
+        {
+            ["id"] = resourceId,
+            ["group"] = group,
+            ["value"] = assetValue,
+        });
+        WriteJson(resourcesPath, resources);
+
+        var validation = ValidateContent(modWorkspace);
+        return Results.Ok(new CreateResourceResponse(resourceId, group, assetValue, backupPath, validation));
+    }
+    catch (JsonException ex)
+    {
+        return Results.BadRequest(new ErrorResponse($"JSON parse failed: {ex.Message}"));
+    }
+    catch (Exception ex)
+    {
+        return Results.BadRequest(new ErrorResponse(ex.Message));
+    }
+});
+
 app.MapGet("/api/static/portraits/check", (string? modId) =>
 {
     try
@@ -758,6 +801,67 @@ static string NormalizePortraitAssetValue(string? value, string speakerId)
 static string NormalizeItemAssetValue(string? value, string itemId)
 {
     return NormalizeArtAssetValue(value, $"item/{itemId}", "Item asset value is invalid.");
+}
+
+static string NormalizeResourceGroup(string value)
+{
+    var group = NormalizeRequiredId(value, "Resource group");
+    return group switch
+    {
+        "场景" or "地图" or "音乐" or "音效" or "物品" or "头像" => group,
+        _ => throw new InvalidOperationException($"Unsupported resource group: {group}"),
+    };
+}
+
+static string NormalizeResourceAssetValue(string? value, string group)
+{
+    var normalized = string.IsNullOrWhiteSpace(value)
+        ? throw new InvalidOperationException("Resource value is required.")
+        : value.Trim().Replace('\\', '/');
+
+    if (group is "音乐" or "音效")
+    {
+        foreach (var prefix in new[] { "res://assets/", "assets/" })
+        {
+            if (normalized.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+            {
+                normalized = normalized[prefix.Length..];
+                break;
+            }
+        }
+
+        var extension = Path.GetExtension(normalized).ToLowerInvariant();
+        if (extension is not (".ogg" or ".mp3" or ".wav" or ".flac"))
+        {
+            throw new InvalidOperationException("Audio resource value must point to OGG/MP3/WAV/FLAC.");
+        }
+    }
+    else
+    {
+        foreach (var prefix in new[] { "res://assets/art/", "assets/art/", "art/" })
+        {
+            if (normalized.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+            {
+                normalized = normalized[prefix.Length..];
+                break;
+            }
+        }
+
+        var extension = Path.GetExtension(normalized).ToLowerInvariant();
+        if (extension is not (".png" or ".jpg" or ".jpeg" or ".webp" or ".bmp" or ".gif"))
+        {
+            throw new InvalidOperationException("Image resource value must point to PNG/JPG/WEBP/BMP/GIF.");
+        }
+
+        normalized = normalized[..^extension.Length];
+    }
+
+    if (string.IsNullOrWhiteSpace(normalized) || normalized.Contains("..", StringComparison.Ordinal))
+    {
+        throw new InvalidOperationException("Resource value is invalid.");
+    }
+
+    return normalized;
 }
 
 static string NormalizeArtAssetValue(string? value, string defaultValue, string errorMessage)
@@ -2585,6 +2689,18 @@ sealed record CreateItemResourceRequest(
 sealed record CreateItemResourceResponse(
     string PictureId,
     string AssetValue,
+    string? BackupPath,
+    ValidationResponse Validation);
+
+sealed record CreateResourceRequest(
+    string Id,
+    string Group,
+    string Value);
+
+sealed record CreateResourceResponse(
+    string Id,
+    string Group,
+    string Value,
     string? BackupPath,
     ValidationResponse Validation);
 

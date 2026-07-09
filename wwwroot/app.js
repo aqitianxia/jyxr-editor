@@ -32,6 +32,12 @@ const state = {
     search: "",
     selectedAssetPath: "",
   },
+  shopResourcePicker: {
+    open: false,
+    field: "",
+    search: "",
+    selectedAssetPath: "",
+  },
   assetImageInfo: new Map(),
   assetFilePathSet: new Set(),
   resourceValues: new Map(),
@@ -1943,6 +1949,7 @@ function renderFormView() {
     renderCharacterCheckTool();
     renderPortraitPicker();
     renderItemPicturePicker();
+    renderShopResourcePicker();
     return;
   }
 
@@ -1954,6 +1961,7 @@ function renderFormView() {
     renderCharacterCheckTool();
     renderPortraitPicker();
     renderItemPicturePicker();
+    renderShopResourcePicker();
     return;
   }
 
@@ -1961,6 +1969,8 @@ function renderFormView() {
     renderCharacterFormView();
   } else if (isItemFile()) {
     renderItemFormView();
+  } else if (isShopFile()) {
+    renderShopFormView();
   } else {
     renderGenericFormView();
   }
@@ -1968,6 +1978,7 @@ function renderFormView() {
   renderCharacterCheckTool();
   renderPortraitPicker();
   renderItemPicturePicker();
+  renderShopResourcePicker();
   restoreFormViewScrollState(scrollState);
 }
 
@@ -1982,6 +1993,7 @@ function selectFormRecord(index) {
   renderCharacterCheckTool();
   renderPortraitPicker();
   renderItemPicturePicker();
+  renderShopResourcePicker();
 }
 
 function updateRecordCardSelection() {
@@ -2002,6 +2014,8 @@ function renderSelectedRecordDetail() {
     renderCharacterDetail(detail);
   } else if (isItemFile()) {
     renderItemDetail(detail);
+  } else if (isShopFile()) {
+    renderShopDetail(detail);
   } else {
     renderGenericRecordDetail(detail);
   }
@@ -2494,8 +2508,757 @@ const ITEM_WEAPON_TYPE_CHOICES = [
   { value: "internal_skill", label: "internal_skill 内功" },
 ];
 
+const SHOP_PRODUCT_FILTERS = [
+  { value: "all", label: "全部" },
+  { value: "limited", label: "限购" },
+  { value: "premium", label: "元宝价" },
+  { value: "fallbackPrice", label: "用基础价" },
+  { value: "ignored", label: "兼容忽略" },
+  { value: "missing", label: "引用缺失" },
+];
+
 function isCharacterFile() {
   return state.currentPath === "characters.json";
+}
+
+function isShopFile() {
+  return state.currentPath === "shops.json";
+}
+
+function renderShopFormView() {
+  if (!SHOP_PRODUCT_FILTERS.some((filter) => filter.value === state.formFilter)) {
+    state.formFilter = "all";
+  }
+
+  const recordPanel = document.createElement("aside");
+  recordPanel.className = "record-panel character-record-panel shop-record-panel";
+
+  const recordHeader = document.createElement("div");
+  recordHeader.className = "record-panel-header";
+  const headerTitle = document.createElement("div");
+  headerTitle.className = "record-panel-title";
+  headerTitle.textContent = "商店";
+  const headerSubtitle = document.createElement("div");
+  headerSubtitle.className = "record-panel-subtitle";
+  recordHeader.append(headerTitle, headerSubtitle);
+
+  const recordSearch = document.createElement("input");
+  recordSearch.className = "record-search";
+  recordSearch.type = "search";
+  recordSearch.placeholder = "搜索商店 id、名称、商品";
+  recordSearch.value = state.formSearch;
+  recordSearch.addEventListener("input", () => {
+    state.formSearch = recordSearch.value;
+    renderShopRecordCards(recordList, headerSubtitle);
+  });
+
+  const filterRow = document.createElement("div");
+  filterRow.className = "character-filter-row";
+  for (const filter of SHOP_PRODUCT_FILTERS) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "character-filter-button";
+    button.classList.toggle("active", state.formFilter === filter.value);
+    button.textContent = filter.label;
+    button.addEventListener("click", () => {
+      state.formFilter = filter.value;
+      renderFormView();
+    });
+    filterRow.appendChild(button);
+  }
+
+  const recordList = document.createElement("div");
+  recordList.className = "record-list";
+  renderShopRecordCards(recordList, headerSubtitle);
+
+  recordPanel.append(recordHeader, recordSearch, filterRow, recordList);
+
+  const detail = document.createElement("section");
+  detail.className = "form-detail character-form-detail shop-form-detail";
+  renderShopDetail(detail);
+
+  elements.formView.append(recordPanel, detail);
+}
+
+function renderShopRecordCards(parent, subtitleNode) {
+  parent.replaceChildren();
+  const query = state.formSearch.trim().toLowerCase();
+  let visibleCount = 0;
+
+  state.formRecords.forEach((record, index) => {
+    ensureShopShape(record);
+    if (!matchesShopSearch(record, query) || !matchesShopFilter(record, state.formFilter)) {
+      return;
+    }
+
+    visibleCount += 1;
+    const card = document.createElement("button");
+    card.type = "button";
+    card.className = "record-card character-record-card shop-record-card";
+    card.dataset.recordIndex = String(index);
+    card.classList.toggle("active", index === state.selectedRecordIndex);
+    card.addEventListener("click", () => {
+      selectFormRecord(index);
+    });
+
+    const stats = getShopRecordStats(record);
+    const text = document.createElement("div");
+    text.className = "character-record-text";
+
+    const titleRow = document.createElement("div");
+    titleRow.className = "character-record-title-row";
+    const title = document.createElement("div");
+    title.className = "record-title";
+    title.textContent = record.name || record.id || `#${index + 1}`;
+    const badge = document.createElement("span");
+    badge.className = "character-role-badge shop-badge";
+    badge.textContent = `${stats.effectiveProducts}/${stats.products}`;
+    titleRow.append(title, badge);
+
+    const subtitle = document.createElement("div");
+    subtitle.className = "record-subtitle";
+    subtitle.textContent = record.id || `#${index + 1}`;
+
+    const meta = document.createElement("div");
+    meta.className = "character-record-meta";
+    meta.textContent = [
+      `${stats.products} 商品`,
+      `${stats.limitedProducts} 限购`,
+      `${stats.premiumProducts} 元宝价`,
+      stats.ignoredProducts > 0 ? `${stats.ignoredProducts} 兼容忽略` : "无忽略",
+      stats.missingProducts > 0 ? `${stats.missingProducts} 缺引用` : "引用正常",
+    ].join(" · ");
+
+    text.append(titleRow, subtitle, meta);
+    card.append(createRecordThumb(record), text);
+    parent.appendChild(card);
+  });
+
+  subtitleNode.textContent = `${visibleCount} / ${state.formRecords.length} 条`;
+
+  if (visibleCount === 0) {
+    const empty = document.createElement("div");
+    empty.className = "record-empty";
+    empty.textContent = "没有匹配的商店";
+    parent.appendChild(empty);
+  }
+}
+
+function renderShopDetail(parent) {
+  const record = state.formRecords[state.selectedRecordIndex];
+  if (!record) {
+    parent.innerHTML = `<div class="form-error">未选择商店。</div>`;
+    return;
+  }
+
+  ensureShopShape(record);
+  const stats = getShopRecordStats(record);
+
+  const shell = document.createElement("div");
+  shell.className = "character-detail-shell shop-detail-shell";
+
+  const summaryCard = document.createElement("section");
+  summaryCard.className = "character-summary-card shop-summary-card";
+  const background = createShopSummaryBackground(record);
+  const content = document.createElement("div");
+  content.className = "character-summary-content";
+
+  const titleRow = document.createElement("div");
+  titleRow.className = "character-summary-title-row";
+  const titleGroup = document.createElement("div");
+  const title = document.createElement("div");
+  title.className = "form-detail-title";
+  title.textContent = record.name || record.id || "未命名商店";
+  const subtitle = document.createElement("div");
+  subtitle.className = "form-detail-subtitle";
+  subtitle.textContent = record.id || `#${state.selectedRecordIndex + 1}`;
+  titleGroup.append(title, subtitle);
+  const actions = document.createElement("div");
+  actions.className = "record-actions";
+  actions.append(
+    createActionButton("新增", addRecord),
+    createActionButton("复制", duplicateRecord),
+    createActionButton("删除", deleteRecord)
+  );
+  titleRow.append(titleGroup, actions);
+
+  const badgeRow = document.createElement("div");
+  badgeRow.className = "character-summary-badges";
+  badgeRow.append(
+    createPill(`商品 ${stats.products}`),
+    createPill(`可交易 ${stats.effectiveProducts}`, "ok"),
+    createPill(`限购 ${stats.limitedProducts}`),
+    createPill(`元宝价 ${stats.premiumProducts}`),
+    createPill(stats.ignoredProducts > 0 ? `兼容忽略 ${stats.ignoredProducts}` : "无兼容忽略", stats.ignoredProducts > 0 ? "warn" : "ok"),
+    createPill(stats.missingProducts > 0 ? `缺引用 ${stats.missingProducts}` : "引用正常", stats.missingProducts > 0 ? "warn" : "ok")
+  );
+
+  content.append(titleRow, badgeRow);
+  summaryCard.append(background, content);
+  shell.appendChild(summaryCard);
+
+  const intro = document.createElement("div");
+  intro.className = "form-summary character-form-summary";
+  intro.textContent = "这里只编辑 shops.json 已支持的数据字段；标为兼容忽略的元宝和残章条目会保留在 JSON 中，但当前游戏商店界面不会展示或交易。";
+  shell.appendChild(intro);
+
+  const basicSection = createCharacterSection("基础信息", "Basic");
+  const basicGrid = document.createElement("div");
+  basicGrid.className = "character-form-grid";
+  basicGrid.append(
+    createCharacterTextField(record, "商店ID", "id", {
+      placeholder: "例如：洛阳.商店",
+      rerenderOnChange: true,
+    }),
+    createCharacterTextField(record, "显示名", "name", {
+      placeholder: "例如：洛阳.商店",
+      rerenderOnChange: true,
+    }),
+    createShopResourceField(record, "背景资源", "background", "场景"),
+    createShopResourceField(record, "音乐资源", "music", "音乐")
+  );
+  basicSection.appendChild(basicGrid);
+  shell.appendChild(basicSection);
+
+  shell.appendChild(createShopProductSection(record));
+  shell.appendChild(createShopAdvancedJsonSection(record));
+  parent.appendChild(shell);
+}
+
+function createShopSummaryBackground(record) {
+  const box = document.createElement("div");
+  box.className = "character-summary-portrait shop-summary-background";
+  const assetPath = resolveAssetPath(record.background);
+  if (assetPath && isImage(assetPath.toLowerCase())) {
+    const image = document.createElement("img");
+    image.src = `/api/assets/file?path=${encodeURIComponent(assetPath)}`;
+    image.alt = record.name || record.id || "商店背景";
+    box.appendChild(image);
+  } else {
+    const placeholder = document.createElement("div");
+    placeholder.className = "character-summary-portrait-placeholder";
+    placeholder.textContent = "商店";
+    box.appendChild(placeholder);
+  }
+  return box;
+}
+
+function createShopResourceField(record, labelCn, key, group) {
+  const field = createCharacterFieldShell(labelCn, key, true);
+  field.classList.add("shop-resource-field");
+  const input = document.createElement("input");
+  input.type = "text";
+  input.value = record[key] == null ? "" : String(record[key]);
+  input.placeholder = group === "音乐" ? "例如：音乐.城市3" : "例如：场景.商店";
+  input.setAttribute("list", ensureResourceIdDatalist(group));
+  input.addEventListener("input", () => {
+    updateRecordField(record, key, input.value.trim() || null);
+  });
+  input.addEventListener("change", () => renderFormView());
+  field.appendChild(input);
+
+  const info = getShopResourceInfo(record, key, group);
+  field.appendChild(createShopResourcePreview(info));
+
+  const actions = document.createElement("div");
+  actions.className = "shop-resource-actions";
+  const pickerButton = document.createElement("button");
+  pickerButton.type = "button";
+  pickerButton.textContent = "选择/注册";
+  pickerButton.addEventListener("click", () => openShopResourcePicker(key));
+
+  const clearButton = document.createElement("button");
+  clearButton.type = "button";
+  clearButton.textContent = "清空";
+  clearButton.disabled = !info.resourceId;
+  clearButton.addEventListener("click", () => {
+    updateRecordField(record, key, null, { rerender: true });
+  });
+  actions.append(pickerButton, clearButton);
+  field.appendChild(actions);
+  return field;
+}
+
+function createShopResourcePreview(info) {
+  const preview = document.createElement("div");
+  preview.className = `shop-resource-preview ${info.status}`;
+  if (info.previewPath && isImage(info.previewPath.toLowerCase())) {
+    const image = document.createElement("img");
+    image.src = `/api/assets/file?path=${encodeURIComponent(info.previewPath)}`;
+    image.alt = info.resourceId || "商店资源";
+    preview.appendChild(image);
+  } else if (info.previewPath && isAudio(info.previewPath.toLowerCase())) {
+    const audio = document.createElement("audio");
+    audio.controls = true;
+    audio.src = `/api/assets/file?path=${encodeURIComponent(info.previewPath)}`;
+    preview.appendChild(audio);
+  }
+
+  const text = document.createElement("div");
+  text.className = "shop-resource-preview-text";
+  text.textContent = info.message;
+  preview.appendChild(text);
+  return preview;
+}
+
+function getShopResourceInfo(record, key, group) {
+  const resourceId = typeof record?.[key] === "string" ? record[key].trim() : "";
+  const resource = resourceId ? state.contentIndex.resourcesById.get(resourceId) : null;
+  const previewPath = resource ? resolveResourceAssetPath(resource) : "";
+  const expectedKind = group === "音乐" ? "audio" : "image";
+  const status = !resourceId
+    ? "empty"
+    : !resource
+      ? "missing"
+      : !previewPath
+        ? "broken"
+        : "ok";
+  let message = "未设置资源";
+  if (status === "missing") {
+    message = `resources.json 中不存在：${resourceId}`;
+  } else if (status === "broken") {
+    message = `资源存在，但找不到${expectedKind === "audio" ? "音频" : "图片"}文件`;
+  } else if (status === "ok") {
+    message = `${resourceId} · ${resource.value || ""}`;
+  }
+
+  return {
+    resourceId,
+    resource,
+    previewPath,
+    group,
+    key,
+    status,
+    message,
+  };
+}
+
+function createShopProductSection(record) {
+  const section = createCharacterSection("商品清单", "Products");
+  const toolbar = document.createElement("div");
+  toolbar.className = "shop-product-toolbar";
+  const note = document.createElement("div");
+  note.className = "static-tool-note";
+  note.textContent = "价格留空时使用物品基础价；purchaseLimit 留空表示不限购，0 表示售罄展示。";
+  const addButton = createActionButton("新增商品", () => addShopProduct(record));
+  toolbar.append(note, addButton);
+
+  const list = document.createElement("div");
+  list.className = "item-array-list shop-product-list";
+  const products = record.products.filter((product) => matchesShopProductFilter(product, state.formFilter));
+
+  products.forEach((product) => {
+    const productIndex = record.products.indexOf(product);
+    list.appendChild(createShopProductCard(record, product, productIndex));
+  });
+
+  if (products.length === 0) {
+    const empty = document.createElement("div");
+    empty.className = "record-empty";
+    empty.textContent = "当前筛选下没有商品";
+    list.appendChild(empty);
+  }
+
+  section.append(toolbar, list);
+  return section;
+}
+
+function createShopProductCard(record, product, productIndex) {
+  ensureShopProductShape(product);
+  const info = getShopProductInfo(product);
+  const card = document.createElement("article");
+  card.className = `item-array-card shop-product-card ${info.severity}`;
+
+  const header = document.createElement("div");
+  header.className = "item-array-card-header shop-product-card-header";
+  const title = document.createElement("div");
+  title.className = "item-array-card-title";
+  title.textContent = `${productIndex + 1}. ${getShopProductTitle(product, info)}`;
+  const actions = document.createElement("div");
+  actions.className = "record-actions";
+  actions.append(
+    createActionButton("上移", () => moveShopProduct(record, productIndex, -1)),
+    createActionButton("下移", () => moveShopProduct(record, productIndex, 1)),
+    createActionButton("复制", () => duplicateShopProduct(record, productIndex)),
+    createActionButton("删除", () => deleteShopProduct(record, productIndex))
+  );
+  header.append(title, actions);
+
+  const meta = document.createElement("div");
+  meta.className = "shop-product-meta";
+  meta.append(
+    createPill(info.typeLabel),
+    createPill(info.priceText, info.priceTone),
+    createPill(info.limitText),
+    createPill(info.statusText, info.statusTone)
+  );
+
+  const body = document.createElement("div");
+  body.className = "item-array-card-body";
+  const grid = document.createElement("div");
+  grid.className = "item-array-grid shop-product-grid";
+  grid.append(
+    createShopProductContentField(product),
+    createNullableShopNumberField(product, "限购", "purchaseLimit", { placeholder: "空 = 不限购", min: 0 }),
+    createNullableShopNumberField(product, "银两价", "price", { placeholder: "空 = 物品基础价", min: 0 }),
+    createNullableShopNumberField(product, "元宝价", "premiumPrice", { placeholder: "空 = 不支持元宝价", min: 0 })
+  );
+  body.append(grid);
+
+  if (info.message) {
+    const message = document.createElement("div");
+    message.className = `shop-product-message ${info.severity}`;
+    message.textContent = info.message;
+    body.appendChild(message);
+  }
+
+  card.append(header, meta, body);
+  return card;
+}
+
+function createShopProductContentField(product) {
+  const field = createCharacterFieldShell("商品ID", "contentId", true);
+  const input = document.createElement("input");
+  input.type = "text";
+  input.value = product.contentId == null ? "" : String(product.contentId);
+  input.placeholder = "选择 items.json 中的物品 id";
+  input.setAttribute("list", ensureShopProductContentDatalist());
+  input.addEventListener("input", () => {
+    product.contentId = input.value;
+    syncFormToEditor();
+  });
+  input.addEventListener("change", () => renderFormView());
+  field.appendChild(input);
+  return field;
+}
+
+function createNullableShopNumberField(product, labelCn, key, options = {}) {
+  const field = createCharacterFieldShell(labelCn, key);
+  const input = document.createElement("input");
+  input.type = "number";
+  input.value = Number.isFinite(product[key]) ? String(product[key]) : "";
+  input.placeholder = options.placeholder || "";
+  if (Number.isFinite(options.min)) {
+    input.min = String(options.min);
+  }
+  input.addEventListener("input", () => {
+    const text = input.value.trim();
+    product[key] = text ? parseNumberInputValue(text, 0) : null;
+    syncFormToEditor();
+  });
+  input.addEventListener("change", () => renderFormView());
+  field.appendChild(input);
+  return field;
+}
+
+function addShopProduct(record) {
+  record.products.push({
+    contentId: "",
+    purchaseLimit: null,
+    price: null,
+    premiumPrice: null,
+  });
+  syncFormToEditor();
+  renderFormView();
+}
+
+function duplicateShopProduct(record, productIndex) {
+  const source = record.products[productIndex];
+  if (!source) {
+    return;
+  }
+
+  record.products.splice(productIndex + 1, 0, structuredCloneCompat(source));
+  syncFormToEditor();
+  renderFormView();
+}
+
+function deleteShopProduct(record, productIndex) {
+  const source = record.products[productIndex];
+  if (!source) {
+    return;
+  }
+
+  const title = getShopProductTitle(source, getShopProductInfo(source));
+  if (!window.confirm(`确认删除商品「${title}」？`)) {
+    return;
+  }
+
+  record.products.splice(productIndex, 1);
+  syncFormToEditor();
+  renderFormView();
+}
+
+function moveShopProduct(record, productIndex, delta) {
+  const nextIndex = productIndex + delta;
+  if (nextIndex < 0 || nextIndex >= record.products.length) {
+    return;
+  }
+
+  const [product] = record.products.splice(productIndex, 1);
+  record.products.splice(nextIndex, 0, product);
+  syncFormToEditor();
+  renderFormView();
+}
+
+function createShopAdvancedJsonSection(record) {
+  const section = createCharacterSection("高级 JSON", "Advanced");
+  const details = document.createElement("details");
+  details.className = "character-advanced-json";
+  const summary = document.createElement("summary");
+  summary.textContent = "展开原始商店 JSON";
+  const textarea = document.createElement("textarea");
+  textarea.value = JSON.stringify(record, null, 2);
+  textarea.addEventListener("change", () => {
+    try {
+      const parsed = JSON.parse(textarea.value);
+      state.formRecords[state.selectedRecordIndex] = parsed;
+      syncFormToEditor();
+      renderFormView();
+    } catch (error) {
+      textarea.setCustomValidity(error instanceof Error ? error.message : String(error));
+      textarea.reportValidity();
+    }
+  });
+  details.append(summary, textarea);
+  section.appendChild(details);
+  return section;
+}
+
+function matchesShopSearch(record, query) {
+  if (!query) {
+    return true;
+  }
+
+  const productText = Array.isArray(record.products)
+    ? record.products.map((product) => {
+      const item = state.contentIndex.itemsById.get(String(product?.contentId || ""));
+      return `${product?.contentId || ""} ${item?.name || ""} ${item?.type || ""}`;
+    }).join(" ")
+    : "";
+  const haystack = [
+    record.id,
+    record.name,
+    record.music,
+    record.background,
+    productText,
+  ].filter(Boolean).join(" ").toLowerCase();
+  return haystack.includes(query);
+}
+
+function matchesShopFilter(record, filter) {
+  return filter === "all" || record.products.some((product) => matchesShopProductFilter(product, filter));
+}
+
+function matchesShopProductFilter(product, filter) {
+  const info = getShopProductInfo(product);
+  switch (filter) {
+    case "limited":
+      return Number.isFinite(product?.purchaseLimit);
+    case "premium":
+      return Number.isFinite(product?.premiumPrice);
+    case "fallbackPrice":
+      return !Number.isFinite(product?.price) && !Number.isFinite(product?.premiumPrice) && Boolean(info.item);
+    case "ignored":
+      return info.ignored;
+    case "missing":
+      return info.missing;
+    case "all":
+    default:
+      return true;
+  }
+}
+
+function getShopRecordStats(record) {
+  const products = Array.isArray(record.products) ? record.products : [];
+  let limitedProducts = 0;
+  let premiumProducts = 0;
+  let ignoredProducts = 0;
+  let missingProducts = 0;
+
+  for (const product of products) {
+    const info = getShopProductInfo(product);
+    if (Number.isFinite(product?.purchaseLimit)) {
+      limitedProducts += 1;
+    }
+    if (Number.isFinite(product?.premiumPrice)) {
+      premiumProducts += 1;
+    }
+    if (info.ignored) {
+      ignoredProducts += 1;
+    }
+    if (info.missing) {
+      missingProducts += 1;
+    }
+  }
+
+  return {
+    products: products.length,
+    effectiveProducts: Math.max(0, products.length - ignoredProducts - missingProducts),
+    limitedProducts,
+    premiumProducts,
+    ignoredProducts,
+    missingProducts,
+  };
+}
+
+function getShopProductInfo(product) {
+  const contentId = String(product?.contentId || "").trim();
+  const ignored = isIgnoredShopProductContentId(contentId);
+  const item = state.contentIndex.itemsById.get(contentId) || null;
+  const missing = Boolean(contentId) && !ignored && !item;
+  const typeLabel = item ? getItemTypeShortLabel(item.type) : ignored ? "兼容条目" : "未选择物品";
+
+  let priceText = "无价格";
+  let priceTone = "warn";
+  if (Number.isFinite(product?.price)) {
+    priceText = `银两 ${product.price}`;
+    priceTone = "";
+  } else if (Number.isFinite(product?.premiumPrice)) {
+    priceText = `元宝 ${product.premiumPrice}`;
+    priceTone = "";
+  } else if (item) {
+    priceText = `基础价 ${getDisplayNumber(item.price, 0)}`;
+    priceTone = "";
+  }
+
+  const limitText = Number.isFinite(product?.purchaseLimit)
+    ? `限购 ${product.purchaseLimit}`
+    : "不限购";
+
+  let statusText = "可交易";
+  let statusTone = "ok";
+  let severity = "ok";
+  let message = "";
+
+  if (!contentId) {
+    statusText = "未选择";
+    statusTone = "warn";
+    severity = "warn";
+    message = "请填写 contentId。";
+  } else if (ignored) {
+    statusText = "运行时忽略";
+    statusTone = "warn";
+    severity = "warn";
+    message = "当前游戏商店界面会保留但过滤此兼容条目，不会展示或交易。";
+  } else if (missing) {
+    statusText = "引用缺失";
+    statusTone = "warn";
+    severity = "warn";
+    message = "items.json 中找不到这个商品 id，内容校验会失败。";
+  } else if (Number.isFinite(product?.price) && Number.isFinite(product?.premiumPrice)) {
+    statusText = "双货币";
+    statusTone = "warn";
+    severity = "warn";
+    message = "当前 UI 默认优先显示银两价；如要元宝价商品，建议清空 price。";
+  }
+
+  return {
+    contentId,
+    item,
+    ignored,
+    missing,
+    typeLabel,
+    priceText,
+    priceTone,
+    limitText,
+    statusText,
+    statusTone,
+    severity,
+    message,
+  };
+}
+
+function getShopProductTitle(product, info) {
+  if (info.item) {
+    return `${info.item.name || info.item.id}（${info.item.id}）`;
+  }
+
+  return info.contentId || "未选择商品";
+}
+
+function isIgnoredShopProductContentId(contentId) {
+  return contentId === "元宝" || contentId.endsWith("残章");
+}
+
+function ensureShopShape(record) {
+  if (!Array.isArray(record.products)) {
+    record.products = [];
+  }
+
+  record.products = record.products.map((product) => (
+    product && typeof product === "object" && !Array.isArray(product)
+      ? product
+      : {
+        contentId: "",
+        purchaseLimit: null,
+        price: null,
+        premiumPrice: null,
+      }
+  ));
+
+  if (typeof record.id !== "string") {
+    record.id = "";
+  }
+
+  if (typeof record.name !== "string") {
+    record.name = record.id || "";
+  }
+}
+
+function ensureShopProductShape(product) {
+  if (typeof product.contentId !== "string") {
+    product.contentId = "";
+  }
+
+  for (const key of ["purchaseLimit", "price", "premiumPrice"]) {
+    if (!Number.isFinite(product[key])) {
+      product[key] = null;
+    }
+  }
+}
+
+function ensureShopProductContentDatalist() {
+  const id = "shopProductContentOptions";
+  const existing = document.getElementById(id);
+  if (existing) {
+    existing.remove();
+  }
+
+  const datalist = document.createElement("datalist");
+  datalist.id = id;
+  const options = new Map();
+
+  for (const item of Array.from(state.contentIndex.itemsById.values())) {
+    if (typeof item.id !== "string") {
+      continue;
+    }
+
+    options.set(item.id, `${item.name || item.id} · ${getItemTypeShortLabel(item.type)} · 基础价 ${getDisplayNumber(item.price, 0)}`);
+  }
+
+  for (const shop of state.formRecords) {
+    for (const product of Array.isArray(shop.products) ? shop.products : []) {
+      const contentId = typeof product?.contentId === "string" ? product.contentId.trim() : "";
+      if (contentId && !options.has(contentId)) {
+        options.set(contentId, isIgnoredShopProductContentId(contentId) ? "兼容保留，运行时忽略" : "当前 items.json 中不存在");
+      }
+    }
+  }
+
+  if (!options.has("元宝")) {
+    options.set("元宝", "兼容保留，运行时忽略");
+  }
+
+  for (const [value, label] of Array.from(options.entries()).sort((left, right) => left[0].localeCompare(right[0], "zh-Hans-CN"))) {
+    const option = document.createElement("option");
+    option.value = value;
+    option.label = label;
+    datalist.appendChild(option);
+  }
+
+  document.body.appendChild(datalist);
+  return id;
 }
 
 function isItemFile() {
@@ -5178,6 +5941,17 @@ function createRecordTemplate() {
     };
   }
 
+  if (state.currentPath === "shops.json") {
+    const id = createUniqueId("新商店");
+    return {
+      id,
+      name: id,
+      music: null,
+      background: null,
+      products: [],
+    };
+  }
+
   if (state.currentPath === "game-tips.json") {
     return { id: createUniqueId("小贴士.新"), text: "" };
   }
@@ -5315,6 +6089,10 @@ function findAssetPath(value, options = {}) {
     const base = normalized.startsWith(root) ? normalized : `${root}${normalized}`;
     if (hasExtension) {
       candidates.push(base);
+      const extensionlessBase = base.replace(/\.[a-z0-9]+$/i, "");
+      for (const extension of extensions) {
+        candidates.push(`${extensionlessBase}${extension}`);
+      }
     } else {
       for (const extension of extensions) {
         candidates.push(`${base}${extension}`);
@@ -6576,6 +7354,18 @@ function createItemResource(pictureId, assetValue) {
   });
 }
 
+function createGenericResource(id, group, value) {
+  return requestJson("/api/static/resource", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      id,
+      group,
+      value,
+    }),
+  });
+}
+
 function getBindableItemPictureId(record) {
   const current = typeof record?.picture === "string" ? record.picture.trim() : "";
   if (current) {
@@ -6670,6 +7460,51 @@ function getCurrentItemPictureAssetPath() {
   return getItemPictureInfo(record).previewPath || "";
 }
 
+function openShopResourcePicker(field, initialAssetPath = "") {
+  if (field !== "background" && field !== "music") {
+    return;
+  }
+
+  state.shopResourcePicker.open = true;
+  state.shopResourcePicker.field = field;
+  state.shopResourcePicker.search = "";
+  state.shopResourcePicker.selectedAssetPath = initialAssetPath || getCurrentShopResourceAssetPath(field);
+  renderShopResourcePicker();
+}
+
+function closeShopResourcePicker() {
+  state.shopResourcePicker.open = false;
+  state.shopResourcePicker.field = "";
+  state.shopResourcePicker.search = "";
+  state.shopResourcePicker.selectedAssetPath = "";
+  renderShopResourcePicker();
+}
+
+function getCurrentShopRecord() {
+  if (!isShopFile()) {
+    return null;
+  }
+
+  return state.formRecords[state.selectedRecordIndex] || null;
+}
+
+function getCurrentShopResourceAssetPath(field) {
+  const record = getCurrentShopRecord();
+  if (!record) {
+    return "";
+  }
+
+  return getShopResourceInfo(record, field, getShopResourceGroup(field)).previewPath || "";
+}
+
+function getShopResourceGroup(field) {
+  return field === "music" ? "音乐" : "场景";
+}
+
+function getShopResourceKind(field) {
+  return field === "music" ? "audio" : "image";
+}
+
 function getHeadPortraitLibraryEntries() {
   const resourcesByAssetPath = new Map();
   for (const resource of state.contentIndex.resourcesById.values()) {
@@ -6734,6 +7569,53 @@ function getItemPictureLibraryEntries() {
     .sort((left, right) => left.basename.localeCompare(right.basename, "zh-Hans-CN"));
 }
 
+function getShopResourceLibraryEntries(field) {
+  const group = getShopResourceGroup(field);
+  const kind = getShopResourceKind(field);
+  const resourcesByAssetPath = new Map();
+  for (const resource of state.contentIndex.resourcesById.values()) {
+    if (resource?.group !== group || typeof resource?.id !== "string") {
+      continue;
+    }
+
+    const assetPath = resolveResourceAssetPath(resource);
+    if (!assetPath) {
+      continue;
+    }
+
+    const linked = resourcesByAssetPath.get(assetPath) || [];
+    linked.push(resource.id);
+    resourcesByAssetPath.set(assetPath, linked);
+  }
+
+  return state.assetFiles
+    .filter((file) => {
+      const path = String(file.path || "");
+      const lower = path.toLowerCase();
+      if (lower.endsWith(".import")) {
+        return false;
+      }
+
+      return kind === "audio"
+        ? isAudio(lower)
+        : lower.startsWith("art/") && isImage(lower);
+    })
+    .map((file) => {
+      const basename = (file.name || file.path.split("/").pop() || "").replace(/\.[^.]+$/i, "");
+      const resourceIds = (resourcesByAssetPath.get(file.path) || []).sort((left, right) => left.localeCompare(right, "zh-Hans-CN"));
+      return {
+        assetPath: file.path,
+        assetValue: file.path,
+        basename,
+        resourceIds,
+      };
+    })
+    .sort((left, right) => {
+      const linkedDelta = Math.sign(right.resourceIds.length) - Math.sign(left.resourceIds.length);
+      return linkedDelta || left.basename.localeCompare(right.basename, "zh-Hans-CN");
+    });
+}
+
 function getSelectedPortraitLibraryEntry(entries) {
   if (entries.length === 0) {
     return null;
@@ -6749,7 +7631,37 @@ function getSelectedPortraitLibraryEntry(entries) {
   return entries[0];
 }
 
+function getSelectedShopResourceLibraryEntry(entries) {
+  if (entries.length === 0) {
+    return null;
+  }
+
+  if (state.shopResourcePicker.selectedAssetPath) {
+    const selected = entries.find((entry) => entry.assetPath === state.shopResourcePicker.selectedAssetPath);
+    if (selected) {
+      return selected;
+    }
+  }
+
+  return entries[0];
+}
+
 function matchesPortraitPickerSearch(entry, query) {
+  if (!query) {
+    return true;
+  }
+
+  const haystack = [
+    entry.basename,
+    entry.assetPath,
+    entry.assetValue,
+    ...entry.resourceIds,
+  ].join(" ").toLowerCase();
+
+  return haystack.includes(query);
+}
+
+function matchesShopResourcePickerSearch(entry, query) {
   if (!query) {
     return true;
   }
@@ -6817,9 +7729,45 @@ function getSuggestedItemPictureId(record, entry) {
   return `物品.${entry.basename || record?.id || "新物品"}`;
 }
 
+function getSuggestedShopResourceId(record, field, entry) {
+  const currentResourceId = typeof record?.[field] === "string" ? record[field].trim() : "";
+  if (currentResourceId && !state.contentIndex.resourcesById.has(currentResourceId)) {
+    return currentResourceId;
+  }
+
+  const group = getShopResourceGroup(field);
+  const label = [record?.name, record?.id, entry?.basename, "新商店"]
+    .find((value) => typeof value === "string" && value.trim());
+  const baseId = String(label || "新商店").startsWith(`${group}.`)
+    ? String(label).trim()
+    : `${group}.${String(label || "新商店").trim()}`;
+  return createUniqueResourceId(baseId);
+}
+
+function createUniqueResourceId(baseId) {
+  const normalized = String(baseId || "新资源").trim().replaceAll("/", "_").replaceAll("\\", "_") || "新资源";
+  if (!state.contentIndex.resourcesById.has(normalized)) {
+    return normalized;
+  }
+
+  for (let index = 2; index < 10000; index += 1) {
+    const candidate = `${normalized}_${index}`;
+    if (!state.contentIndex.resourcesById.has(candidate)) {
+      return candidate;
+    }
+  }
+
+  return `${normalized}_${Date.now()}`;
+}
+
 async function useItemPictureLibraryResource(record, pictureId) {
   closeItemPicturePicker();
   updateRecordField(record, "picture", pictureId, { rerender: true });
+}
+
+async function useShopResource(record, field, resourceId) {
+  closeShopResourcePicker();
+  updateRecordField(record, field, resourceId, { rerender: true });
 }
 
 async function createAndUsePortraitLibraryResource(record, portraitId, entry, button) {
@@ -6861,6 +7809,30 @@ async function createAndUseItemPictureLibraryResource(record, pictureId, entry, 
     await loadDataFiles();
     await rebuildContentIndex();
     closeItemPicturePicker();
+    showValidation(result.validation.ok, result.validation.message);
+    renderFormView();
+  } catch (error) {
+    showValidation(false, error instanceof Error ? error.message : String(error));
+  } finally {
+    button.disabled = false;
+  }
+}
+
+async function createAndUseShopResource(record, field, resourceId, entry, button) {
+  const value = resourceId.trim();
+  if (!value) {
+    showValidation(false, "请先填写资源 id。");
+    return;
+  }
+
+  button.disabled = true;
+  try {
+    const result = await createGenericResource(value, getShopResourceGroup(field), entry.assetValue);
+    record[field] = result.id || value;
+    syncFormToEditor();
+    await loadDataFiles();
+    await rebuildContentIndex();
+    closeShopResourcePicker();
     showValidation(result.validation.ok, result.validation.message);
     renderFormView();
   } catch (error) {
@@ -7244,6 +8216,213 @@ function renderItemPicturePicker() {
   restoreItemPicturePickerScrollState(scrollState);
 }
 
+function renderShopResourcePicker() {
+  const scrollState = captureShopResourcePickerScrollState();
+  const existing = document.getElementById("shopResourcePickerOverlay");
+  if (existing) {
+    existing.remove();
+  }
+
+  if (!state.shopResourcePicker.open) {
+    return;
+  }
+
+  const record = getCurrentShopRecord();
+  const field = state.shopResourcePicker.field;
+  if (!record || (field !== "background" && field !== "music")) {
+    state.shopResourcePicker.open = false;
+    return;
+  }
+
+  const isMusic = field === "music";
+  const group = getShopResourceGroup(field);
+  const titleText = isMusic ? "商店音乐选择器" : "商店背景选择器";
+  const overlay = document.createElement("div");
+  overlay.id = "shopResourcePickerOverlay";
+  overlay.className = "portrait-picker-overlay";
+  overlay.addEventListener("click", (event) => {
+    if (event.target === overlay) {
+      closeShopResourcePicker();
+    }
+  });
+
+  const dialog = document.createElement("div");
+  dialog.className = "portrait-picker-dialog shop-resource-picker-dialog";
+
+  const header = document.createElement("div");
+  header.className = "portrait-picker-header";
+  const titleGroup = document.createElement("div");
+  const title = document.createElement("div");
+  title.className = "portrait-picker-title";
+  title.textContent = titleText;
+  const subtitle = document.createElement("div");
+  subtitle.className = "portrait-picker-subtitle";
+  subtitle.textContent = `选择已有 ${group} 资源，或把资产一键注册到 resources.json 并写回当前商店。`;
+  titleGroup.append(title, subtitle);
+  const closeButton = document.createElement("button");
+  closeButton.type = "button";
+  closeButton.textContent = "关闭";
+  closeButton.addEventListener("click", closeShopResourcePicker);
+  header.append(titleGroup, closeButton);
+
+  const search = document.createElement("input");
+  search.type = "search";
+  search.className = "portrait-picker-search";
+  search.placeholder = "搜索资源 id、文件名、路径";
+  search.value = state.shopResourcePicker.search;
+  search.addEventListener("input", () => {
+    state.shopResourcePicker.search = search.value;
+    renderShopResourcePicker();
+  });
+
+  const allEntries = getShopResourceLibraryEntries(field);
+  const query = state.shopResourcePicker.search.trim().toLowerCase();
+  const entries = allEntries.filter((entry) => matchesShopResourcePickerSearch(entry, query));
+  const selectedEntry = getSelectedShopResourceLibraryEntry(entries);
+  if (selectedEntry) {
+    state.shopResourcePicker.selectedAssetPath = selectedEntry.assetPath;
+  }
+
+  const body = document.createElement("div");
+  body.className = "portrait-picker-body";
+
+  const gallery = document.createElement("div");
+  gallery.className = `portrait-picker-gallery shop-resource-picker-gallery ${isMusic ? "audio" : "image"}`;
+  if (entries.length === 0) {
+    const empty = document.createElement("div");
+    empty.className = "record-empty";
+    empty.textContent = isMusic ? "没有匹配的音频资产" : "没有匹配的背景图片";
+    gallery.appendChild(empty);
+  } else {
+    for (const entry of entries) {
+      const card = document.createElement("button");
+      card.type = "button";
+      card.className = "portrait-picker-card shop-resource-picker-card";
+      card.classList.toggle("active", entry.assetPath === state.shopResourcePicker.selectedAssetPath);
+      card.addEventListener("click", () => {
+        state.shopResourcePicker.selectedAssetPath = entry.assetPath;
+        renderShopResourcePicker();
+      });
+
+      let media;
+      if (isMusic) {
+        media = document.createElement("div");
+        media.className = "portrait-picker-card-image shop-resource-audio-card";
+        media.textContent = "音频";
+      } else {
+        media = document.createElement("img");
+        media.className = "portrait-picker-card-image shop-resource-picker-card-image";
+        media.src = `/api/assets/file?path=${encodeURIComponent(entry.assetPath)}`;
+        media.alt = entry.basename;
+      }
+
+      const content = document.createElement("div");
+      content.className = "portrait-picker-card-content";
+
+      const cardTitle = document.createElement("div");
+      cardTitle.className = "portrait-picker-card-title";
+      cardTitle.textContent = entry.resourceIds[0] || entry.basename;
+
+      const cardMeta = document.createElement("div");
+      cardMeta.className = "portrait-picker-card-meta";
+      cardMeta.textContent = entry.resourceIds.length > 0
+        ? `${entry.resourceIds.length} 个资源`
+        : "未绑定资源";
+
+      const cardPath = document.createElement("div");
+      cardPath.className = "portrait-picker-card-path";
+      cardPath.textContent = entry.assetPath;
+
+      content.append(cardTitle, cardMeta, cardPath);
+      card.append(media, content);
+      gallery.appendChild(card);
+    }
+  }
+
+  const detail = document.createElement("div");
+  detail.className = "portrait-picker-detail";
+  if (!selectedEntry) {
+    const empty = document.createElement("div");
+    empty.className = "record-empty";
+    empty.textContent = isMusic ? "没有可用音频" : "没有可用背景图片";
+    detail.appendChild(empty);
+  } else {
+    let preview;
+    if (isMusic) {
+      preview = document.createElement("audio");
+      preview.className = "shop-resource-detail-audio";
+      preview.controls = true;
+      preview.src = `/api/assets/file?path=${encodeURIComponent(selectedEntry.assetPath)}&v=${Date.now()}`;
+    } else {
+      preview = document.createElement("img");
+      preview.className = "portrait-picker-detail-image shop-resource-detail-image";
+      preview.src = `/api/assets/file?path=${encodeURIComponent(selectedEntry.assetPath)}&v=${Date.now()}`;
+      preview.alt = selectedEntry.basename;
+    }
+
+    const info = document.createElement("div");
+    info.className = "portrait-picker-detail-info";
+    info.append(
+      createCharacterMetaRow("文件", selectedEntry.assetPath),
+      createCharacterMetaRow("资源组", group),
+      createCharacterMetaRow("注册 value", selectedEntry.assetValue),
+      createCharacterMetaRow("已绑定资源", selectedEntry.resourceIds.length > 0 ? selectedEntry.resourceIds.join(" / ") : "暂无"),
+    );
+
+    const actionBlock = document.createElement("div");
+    actionBlock.className = "portrait-picker-detail-actions";
+
+    if (selectedEntry.resourceIds.length > 0) {
+      for (const resourceId of selectedEntry.resourceIds) {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "primary";
+        button.textContent = `使用 ${resourceId}`;
+        button.addEventListener("click", async () => {
+          await useShopResource(record, field, resourceId);
+        });
+        actionBlock.appendChild(button);
+      }
+    } else {
+      const helper = document.createElement("div");
+      helper.className = "static-tool-note";
+      helper.textContent = `这个资产还没有 ${group} 资源。创建后会自动写回当前商店的 ${field}。`;
+      const resourceIdInput = document.createElement("input");
+      resourceIdInput.type = "text";
+      resourceIdInput.className = "portrait-picker-resource-input";
+      resourceIdInput.value = getSuggestedShopResourceId(record, field, selectedEntry);
+      const createButton = document.createElement("button");
+      createButton.type = "button";
+      createButton.className = "primary";
+      createButton.textContent = "创建资源并使用";
+      createButton.addEventListener("click", async () => {
+        await createAndUseShopResource(record, field, resourceIdInput.value, selectedEntry, createButton);
+      });
+      actionBlock.append(helper, resourceIdInput, createButton);
+    }
+
+    const footerActions = document.createElement("div");
+    footerActions.className = "portrait-picker-footer-actions";
+    const previewButton = document.createElement("button");
+    previewButton.type = "button";
+    previewButton.textContent = "在资产面板中打开";
+    previewButton.addEventListener("click", () => {
+      closeShopResourcePicker();
+      setMode("assets");
+      openAssetFile(selectedEntry.assetPath);
+    });
+    footerActions.appendChild(previewButton);
+
+    detail.append(preview, info, actionBlock, footerActions);
+  }
+
+  body.append(gallery, detail);
+  dialog.append(header, search, body);
+  overlay.appendChild(dialog);
+  document.body.appendChild(overlay);
+  restoreShopResourcePickerScrollState(scrollState);
+}
+
 function capturePortraitPickerScrollState() {
   const overlay = document.getElementById("portraitPickerOverlay");
   return {
@@ -7254,6 +8433,14 @@ function capturePortraitPickerScrollState() {
 
 function captureItemPicturePickerScrollState() {
   const overlay = document.getElementById("itemPicturePickerOverlay");
+  return {
+    galleryScrollTop: overlay?.querySelector(".portrait-picker-gallery")?.scrollTop ?? 0,
+    detailScrollTop: overlay?.querySelector(".portrait-picker-detail")?.scrollTop ?? 0,
+  };
+}
+
+function captureShopResourcePickerScrollState() {
+  const overlay = document.getElementById("shopResourcePickerOverlay");
   return {
     galleryScrollTop: overlay?.querySelector(".portrait-picker-gallery")?.scrollTop ?? 0,
     detailScrollTop: overlay?.querySelector(".portrait-picker-detail")?.scrollTop ?? 0,
@@ -7290,6 +8477,29 @@ function restoreItemPicturePickerScrollState(scrollState) {
 
   requestAnimationFrame(() => {
     const overlay = document.getElementById("itemPicturePickerOverlay");
+    if (!overlay) {
+      return;
+    }
+
+    const gallery = overlay.querySelector(".portrait-picker-gallery");
+    const detail = overlay.querySelector(".portrait-picker-detail");
+    if (gallery) {
+      gallery.scrollTop = scrollState.galleryScrollTop;
+    }
+
+    if (detail) {
+      detail.scrollTop = scrollState.detailScrollTop;
+    }
+  });
+}
+
+function restoreShopResourcePickerScrollState(scrollState) {
+  if (!scrollState || !state.shopResourcePicker.open) {
+    return;
+  }
+
+  requestAnimationFrame(() => {
+    const overlay = document.getElementById("shopResourcePickerOverlay");
     if (!overlay) {
       return;
     }
@@ -7439,6 +8649,18 @@ function handleGlobalKeydown(event) {
     return;
   }
 
+  if (event.key === "Escape" && state.itemPicturePicker.open) {
+    event.preventDefault();
+    closeItemPicturePicker();
+    return;
+  }
+
+  if (event.key === "Escape" && state.shopResourcePicker.open) {
+    event.preventDefault();
+    closeShopResourcePicker();
+    return;
+  }
+
   const command = event.metaKey || event.ctrlKey;
   if (!command) {
     return;
@@ -7489,7 +8711,7 @@ function isImage(path) {
 }
 
 function isAudio(path) {
-  return [".ogg", ".wav", ".mp3"].some((extension) => path.endsWith(extension));
+  return [".ogg", ".wav", ".mp3", ".flac"].some((extension) => path.endsWith(extension));
 }
 
 function isStorySourceFile(path = state.currentPath) {
