@@ -20,6 +20,24 @@
     return parser.parse();
   }
 
+  function decompileStoryJson(storyJson) {
+    if (!storyJson || typeof storyJson !== "object" || !Array.isArray(storyJson.segments)) {
+      throw new Error("Story JSON 必须包含 segments 数组。");
+    }
+
+    const lines = [];
+    for (const segment of storyJson.segments) {
+      if (lines.length > 0) {
+        lines.push("");
+      }
+
+      lines.push(`# ${String(segment?.name ?? "")}`);
+      appendDslSteps(lines, Array.isArray(segment?.steps) ? segment.steps : [], 0);
+    }
+
+    return `${lines.join("\n")}\n`;
+  }
+
   class StoryParser {
     constructor(text) {
       this.text = text;
@@ -594,12 +612,54 @@
         break;
       }
 
+      if (text[index] === '"') {
+        const start = index;
+        index += 1;
+        let escaped = false;
+        while (index < text.length) {
+          const char = text[index];
+          index += 1;
+          if (escaped) {
+            escaped = false;
+            continue;
+          }
+          if (char === "\\") {
+            escaped = true;
+            continue;
+          }
+          if (char === '"') {
+            break;
+          }
+        }
+        parts.push(text.slice(start, index));
+        continue;
+      }
+
       if (text[index] === "[") {
         const start = index;
         let depth = 0;
+        let quote = "";
+        let escaped = false;
         while (index < text.length) {
-          if (text[index] === "[") depth += 1;
-          if (text[index] === "]") {
+          const char = text[index];
+          if (quote) {
+            if (escaped) {
+              escaped = false;
+            } else if (char === "\\") {
+              escaped = true;
+            } else if (char === quote) {
+              quote = "";
+            }
+            index += 1;
+            continue;
+          }
+          if (char === '"') {
+            quote = char;
+            index += 1;
+            continue;
+          }
+          if (char === "[") depth += 1;
+          if (char === "]") {
             depth -= 1;
             if (depth === 0) {
               index += 1;
@@ -622,6 +682,13 @@
   }
 
   function parseValueArg(raw, span) {
+    if (raw.startsWith('"') && raw.endsWith('"')) {
+      try {
+        return { type: "literal", value: JSON.parse(raw), valueType: "string", span };
+      } catch {
+        return { type: "literal", value: raw.slice(1, -1), valueType: "string", span };
+      }
+    }
     if (raw.startsWith("[") && raw.endsWith("]")) {
       return {
         type: "list",
@@ -643,8 +710,22 @@
     let index = 0;
     let start = 0;
     let depth = 0;
+    let quote = "";
+    let escaped = false;
     while (index <= text.length) {
       const char = text[index] ?? ",";
+      if (quote) {
+        if (escaped) {
+          escaped = false;
+        } else if (char === "\\") {
+          escaped = true;
+        } else if (char === quote) {
+          quote = "";
+        }
+        index += 1;
+        continue;
+      }
+      if (char === '"') quote = char;
       if (char === "[") depth += 1;
       if (char === "]") depth -= 1;
       if (char === "," && depth === 0) {
@@ -747,6 +828,9 @@
       if (this.match("number")) {
         return { type: "literal", value: Number(this.previous().lexeme), valueType: "number", span: this.span };
       }
+      if (this.match("string")) {
+        return parseValueArg(this.previous().lexeme, this.span);
+      }
       if (this.match("identifier")) {
         const identifierToken = this.previous();
         const args = [];
@@ -766,7 +850,7 @@
     }
 
     canConsumePredicateArgument() {
-      return ["identifier", "number", "variable"].includes(this.peek().type);
+      return ["identifier", "number", "string", "variable"].includes(this.peek().type);
     }
 
     match(type) {
@@ -835,6 +919,24 @@
         tokens.push({ type: "variable", lexeme: text.slice(start, index) });
         continue;
       }
+      if (char === '"') {
+        const start = index;
+        index += 1;
+        let escaped = false;
+        while (index < text.length) {
+          const current = text[index];
+          index += 1;
+          if (escaped) {
+            escaped = false;
+          } else if (current === "\\") {
+            escaped = true;
+          } else if (current === '"') {
+            break;
+          }
+        }
+        tokens.push({ type: "string", lexeme: text.slice(start, index) });
+        continue;
+      }
       if (/\d/u.test(char) || ((char === "-" || char === "+") && /\d/u.test(text[index + 1] ?? ""))) {
         const start = index;
         index += char === "-" || char === "+" ? 2 : 1;
@@ -861,6 +963,135 @@
     return tokens;
   }
 
+  function appendDslSteps(lines, steps, indentLevel) {
+    for (const step of steps) {
+      appendDslStep(lines, step, indentLevel);
+    }
+  }
+
+  function appendDslStep(lines, step, indentLevel) {
+    const indent = "  ".repeat(indentLevel);
+    switch (step?.kind) {
+      case "dialogue":
+        lines.push(`${indent}${formatDialogueLine(step.speaker, step.text)}`);
+        break;
+      case "command":
+        lines.push(`${indent}${formatCommandLine(step.name, step.args)}`);
+        break;
+      case "jump":
+        lines.push(`${indent}jump ${String(step.target ?? "")}`);
+        break;
+      case "choice":
+        lines.push(`${indent}${formatDialogueLine(step.prompt?.speaker, step.prompt?.text)}`);
+        for (const option of Array.isArray(step.options) ? step.options : []) {
+          lines.push(`${indent}- ${String(option?.text ?? "")}`);
+          appendDslSteps(lines, Array.isArray(option?.steps) ? option.steps : [], indentLevel + 1);
+        }
+        break;
+      case "battle":
+        lines.push(`${indent}battle ${String(step.battleId ?? "")}`);
+        for (const outcome of ["win", "lose", "timeout"]) {
+          if (!Object.prototype.hasOwnProperty.call(step.outcomes || {}, outcome)) {
+            continue;
+          }
+          lines.push(`${indent}- ${outcome}`);
+          appendDslSteps(lines, Array.isArray(step.outcomes[outcome]) ? step.outcomes[outcome] : [], indentLevel + 1);
+        }
+        break;
+      case "branch":
+        appendDslBranch(lines, step, indentLevel);
+        break;
+      default:
+        lines.push(`${indent}${formatCommandLine("raw_step", [JSON.stringify(step ?? null)])}`);
+        break;
+    }
+  }
+
+  function appendDslBranch(lines, step, indentLevel) {
+    const indent = "  ".repeat(indentLevel);
+    const cases = Array.isArray(step.cases) ? step.cases : [];
+    cases.forEach((branch, index) => {
+      lines.push(`${indent}${index === 0 ? "if" : "elif"} ${formatExpression(branch?.when)}`);
+      appendDslSteps(lines, Array.isArray(branch?.steps) ? branch.steps : [], indentLevel + 1);
+    });
+
+    if (Array.isArray(step.fallback)) {
+      lines.push(`${indent}else`);
+      appendDslSteps(lines, step.fallback, indentLevel + 1);
+    }
+  }
+
+  function formatDialogueLine(speaker, text) {
+    return `${String(speaker ?? "")}：${String(text ?? "")}`;
+  }
+
+  function formatCommandLine(name, args) {
+    const parts = [String(name ?? "")];
+    for (const arg of Array.isArray(args) ? args : []) {
+      parts.push(formatValueArg(arg));
+    }
+    return parts.join(" ");
+  }
+
+  function formatValueArg(value) {
+    if (Array.isArray(value) && value[0] === "list") {
+      return `[${value.slice(1).map(formatValueArg).join(", ")}]`;
+    }
+    if (Array.isArray(value) && value[0] === "var" && typeof value[1] === "string") {
+      return `$${value[1]}`;
+    }
+    if (typeof value === "number" || typeof value === "boolean") {
+      return String(value);
+    }
+    if (typeof value !== "string") {
+      return JSON.stringify(JSON.stringify(value));
+    }
+    if (canUseBareValue(value)) {
+      return value;
+    }
+    return JSON.stringify(value);
+  }
+
+  function canUseBareValue(value) {
+    return value.length > 0
+      && !numberPattern.test(value)
+      && !value.startsWith("$")
+      && !value.startsWith("[")
+      && !value.startsWith('"')
+      && !/[\s,[\]"]/u.test(value)
+      && !value.includes("//");
+  }
+
+  function formatExpression(expr) {
+    if (Array.isArray(expr)) {
+      const [operator, ...rest] = expr;
+      if (operator === "and" || operator === "or") {
+        return rest.map(formatNestedExpression).join(` ${operator} `);
+      }
+      if (operator === "not") {
+        return `not ${formatNestedExpression(rest[0])}`;
+      }
+      if (operator === "pred") {
+        const [name, ...args] = rest;
+        return [String(name ?? ""), ...args.map(formatValueArg)].join(" ");
+      }
+      if (operator === "var") {
+        return `$${String(rest[0] ?? "")}`;
+      }
+      if (["==", "!=", ">", ">=", "<", "<="].includes(operator)) {
+        return `${formatNestedExpression(rest[0])} ${operator} ${formatNestedExpression(rest[1])}`;
+      }
+    }
+
+    return formatValueArg(expr);
+  }
+
+  function formatNestedExpression(expr) {
+    return Array.isArray(expr) && ["and", "or", "not", "==", "!=", ">", ">=", "<", "<="].includes(expr[0])
+      ? `(${formatExpression(expr)})`
+      : formatExpression(expr);
+  }
+
   function lineSpan(line, startColumn = 1, endColumn) {
     const end = endColumn ?? line.rawText.length + 1;
     return {
@@ -884,5 +1115,6 @@
     analyzeStory,
     parseStory,
     compileScript,
+    decompileStoryJson,
   };
 })();

@@ -122,6 +122,53 @@ app.MapPut("/api/story/source", IResult (SaveStorySourceRequest request, string?
     }
 });
 
+app.MapPost("/api/story/source/from-json", IResult (SaveStoryJsonAsSourceRequest request, string? modId) =>
+{
+    try
+    {
+        var modWorkspace = workspace.ForMod(modId);
+        if (!Directory.Exists(modWorkspace.DataPath))
+        {
+            return Results.BadRequest(new ErrorResponse($"Data directory was not found: {modWorkspace.DataPath}"));
+        }
+
+        var compiledRelativePath = NormalizeCompiledStoryJsonPath(request.JsonPath);
+        var sourceRelativePath = GetStorySourcePathFromCompiledJson(compiledRelativePath);
+        var sourcePath = modWorkspace.ResolveStorySourceFile(sourceRelativePath);
+        var compiledPath = modWorkspace.ResolveDataFile(compiledRelativePath);
+        if (File.Exists(sourcePath))
+        {
+            return Results.BadRequest(new ErrorResponse($"Story source already exists: {sourceRelativePath}"));
+        }
+
+        var formattedJson = FormatJson(request.CompiledJson);
+        var jsonBackupPath = BackupFile(modWorkspace, compiledPath);
+
+        Directory.CreateDirectory(Path.GetDirectoryName(sourcePath)!);
+        Directory.CreateDirectory(Path.GetDirectoryName(compiledPath)!);
+        File.WriteAllText(sourcePath, NormalizeTextFile(request.Content), Encoding.UTF8);
+        File.WriteAllText(compiledPath, formattedJson, Encoding.UTF8);
+
+        var validation = ValidateContent(modWorkspace);
+        return Results.Ok(new SaveStorySourceResponse(
+            sourceRelativePath,
+            NormalizeTextFile(request.Content),
+            compiledRelativePath,
+            formattedJson,
+            null,
+            jsonBackupPath,
+            validation));
+    }
+    catch (JsonException ex)
+    {
+        return Results.BadRequest(new ErrorResponse($"Compiled story JSON parse failed: {ex.Message}"));
+    }
+    catch (Exception ex)
+    {
+        return Results.BadRequest(new ErrorResponse(ex.Message));
+    }
+});
+
 app.MapPost("/api/story/source/new", IResult (CreateStorySourceRequest request, string? modId) =>
 {
     try
@@ -695,6 +742,44 @@ static string GetCompiledStoryJsonPath(string storySourceRelativePath)
     }
 
     return storySourceRelativePath + ".json";
+}
+
+static string NormalizeCompiledStoryJsonPath(string? fileName)
+{
+    if (string.IsNullOrWhiteSpace(fileName))
+    {
+        throw new InvalidOperationException("Story JSON path is required.");
+    }
+
+    var normalized = fileName.Trim().Replace('\\', '/');
+    if (Path.IsPathRooted(normalized) || normalized.Contains("..", StringComparison.Ordinal))
+    {
+        throw new InvalidOperationException("Story JSON path must stay under data/story.");
+    }
+
+    if (normalized.StartsWith("data/", StringComparison.OrdinalIgnoreCase))
+    {
+        normalized = normalized["data/".Length..];
+    }
+
+    normalized = normalized.Trim('/');
+    if (!normalized.StartsWith("story/", StringComparison.OrdinalIgnoreCase) ||
+        !normalized.EndsWith(".story.json", StringComparison.OrdinalIgnoreCase))
+    {
+        throw new InvalidOperationException("Story JSON path must be a .story.json file under data/story.");
+    }
+
+    return normalized;
+}
+
+static string GetStorySourcePathFromCompiledJson(string compiledStoryJsonRelativePath)
+{
+    if (!compiledStoryJsonRelativePath.EndsWith(".story.json", StringComparison.OrdinalIgnoreCase))
+    {
+        throw new InvalidOperationException("Compiled story JSON path must end with .story.json.");
+    }
+
+    return compiledStoryJsonRelativePath[..^".json".Length];
 }
 
 static string? BackupFile(WorkspacePaths workspace, string filePath)
@@ -2636,6 +2721,11 @@ sealed record SaveFileResponse(
 
 sealed record SaveStorySourceRequest(
     string Path,
+    string Content,
+    string CompiledJson);
+
+sealed record SaveStoryJsonAsSourceRequest(
+    string JsonPath,
     string Content,
     string CompiledJson);
 
