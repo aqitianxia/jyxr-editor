@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>JYXR JSON 编辑器</title>
   <link rel="stylesheet" data-name="vs/editor/editor.main" href="/vendor/monaco/vs/editor/editor.main.css?v=20260708-monaco-1">
-  <link rel="stylesheet" href="/styles.css?v=20260708-layout-1">
+  <link rel="stylesheet" href="/styles.css?v=20260709-map-workbench-2">
 </head>
 <body>
   <div class="app-shell">
@@ -54,6 +54,7 @@
         <div class="editor-tools">
           <button id="formModeButton" type="button">表单</button>
           <button id="jsonModeButton" type="button">JSON</button>
+          <button id="mapFocusButton" type="button" class="map-focus-button hidden">地图工作台</button>
           <input id="contentSearch" class="content-search" type="search" placeholder="搜索当前文件">
           <select id="outlineSelect" class="outline-select" title="按剧情段标题跳转"></select>
           <button id="findPreviousButton" type="button">上一个</button>
@@ -104,6 +105,6 @@
 
   <script src="/vendor/monaco/vs/loader.js?v=20260708-monaco-1"></script>
   <script src="/story-dsl.js?v=20260708-dsl-1"></script>
-  <script src="/app.js?v=20260708-layout-1"></script>
+  <script src="/app.js?v=20260709-map-workbench-1"></script>
 </body>
 </html>

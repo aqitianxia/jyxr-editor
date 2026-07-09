@@ -14,6 +14,10 @@ const state = {
   selectedRecordIndex: 0,
   formSearch: "",
   formFilter: "all",
+  mapEditor: {
+    selectedLocationIndex: 0,
+    focusMode: false,
+  },
   storySource: {
     path: "",
     text: "",
@@ -104,6 +108,7 @@ const elements = {
   fileList: document.getElementById("fileList"),
   formModeButton: document.getElementById("formModeButton"),
   jsonModeButton: document.getElementById("jsonModeButton"),
+  mapFocusButton: document.getElementById("mapFocusButton"),
   currentPath: document.getElementById("currentPath"),
   currentFileSummary: document.getElementById("currentFileSummary"),
   currentFileBox: document.getElementById("currentFileBox"),
@@ -145,6 +150,7 @@ elements.assetsTab.addEventListener("click", () => setMode("assets"));
 elements.fileSearch.addEventListener("input", renderFileList);
 elements.formModeButton.addEventListener("click", () => setViewMode(isStorySourceFile() ? "dsl" : "form"));
 elements.jsonModeButton.addEventListener("click", () => setViewMode("json"));
+elements.mapFocusButton.addEventListener("click", () => setMapFocusMode(!state.mapEditor.focusMode));
 elements.formatButton.addEventListener("click", formatCurrentJson);
 elements.validateButton.addEventListener("click", validateContent);
 elements.saveButton.addEventListener("click", saveCurrentFile);
@@ -679,8 +685,32 @@ function setMode(mode) {
     renderEditorOutline();
   }
 
+  updateMapFocusControl();
   renderFileList();
   renderCurrentFileInfo();
+}
+
+function setMapFocusMode(enabled) {
+  state.mapEditor.focusMode = enabled && canUseMapFocusMode();
+  updateMapFocusControl();
+}
+
+function canUseMapFocusMode() {
+  return state.mode === "data" && state.viewMode === "form" && isMapFile();
+}
+
+function updateMapFocusControl() {
+  if (!canUseMapFocusMode()) {
+    state.mapEditor.focusMode = false;
+  }
+
+  document.body.classList.toggle("map-focus-mode", state.mapEditor.focusMode);
+  elements.mapFocusButton.classList.toggle("hidden", !canUseMapFocusMode());
+  elements.mapFocusButton.classList.toggle("active", state.mapEditor.focusMode);
+  elements.mapFocusButton.textContent = state.mapEditor.focusMode ? "退出工作台" : "地图工作台";
+  elements.mapFocusButton.title = state.mapEditor.focusMode
+    ? "退出地图工作台（Esc）"
+    : "隐藏两侧栏，放大地图编辑区";
 }
 
 function renderFileList() {
@@ -1876,6 +1906,7 @@ function setViewMode(mode) {
     updateSearchMatches();
     renderEditorOutline();
     renderCursorState();
+    updateMapFocusControl();
     return;
   }
 
@@ -1893,6 +1924,7 @@ function setViewMode(mode) {
   setTextEditorVisible(mode === "json");
   renderFormView();
   renderEditorOutline();
+  updateMapFocusControl();
 }
 
 function refreshFormFromEditor({ preferForm }) {
@@ -1908,6 +1940,7 @@ function refreshFormFromEditor({ preferForm }) {
       setViewModeButtons();
       elements.formView.classList.add("hidden");
       setTextEditorVisible(true);
+      updateMapFocusControl();
       return false;
     }
 
@@ -1922,6 +1955,7 @@ function refreshFormFromEditor({ preferForm }) {
     elements.formView.classList.toggle("hidden", state.viewMode !== "form");
     setTextEditorVisible(state.viewMode === "json");
     renderFormView();
+    updateMapFocusControl();
     return true;
   } catch {
     state.formRecords = [];
@@ -1933,6 +1967,7 @@ function refreshFormFromEditor({ preferForm }) {
     setViewModeButtons();
     elements.formView.classList.add("hidden");
     setTextEditorVisible(true);
+    updateMapFocusControl();
     return false;
   }
 }
@@ -1967,6 +2002,8 @@ function renderFormView() {
 
   if (isCharacterFile()) {
     renderCharacterFormView();
+  } else if (isMapFile()) {
+    renderMapFormView();
   } else if (isItemFile()) {
     renderItemFormView();
   } else if (isShopFile()) {
@@ -2012,6 +2049,8 @@ function renderSelectedRecordDetail() {
   detail.replaceChildren();
   if (isCharacterFile()) {
     renderCharacterDetail(detail);
+  } else if (isMapFile()) {
+    renderMapDetail(detail);
   } else if (isItemFile()) {
     renderItemDetail(detail);
   } else if (isShopFile()) {
@@ -2519,6 +2558,1521 @@ const SHOP_PRODUCT_FILTERS = [
 
 function isCharacterFile() {
   return state.currentPath === "characters.json";
+}
+
+function isMapFile() {
+  return state.currentPath === "maps.json";
+}
+
+const MAP_FILTERS = [
+  { value: "all", label: "全部" },
+  { value: "large", label: "大地图" },
+  { value: "small", label: "小地图" },
+  { value: "story", label: "有剧情" },
+  { value: "issues", label: "待处理" },
+];
+
+const MAP_KIND_CHOICES = [
+  { value: "small", label: "小地图" },
+  { value: "large", label: "大地图" },
+];
+
+const MAP_EVENT_TYPE_CHOICES = [
+  { value: "map", label: "进入地图" },
+  { value: "story", label: "播放剧情" },
+  { value: "shop", label: "打开商店" },
+  { value: "xiangzi", label: "打开储物箱" },
+  { value: "battle", label: "进入战斗" },
+];
+
+const MAP_CONDITION_CHOICES = [
+  { value: "always", label: "总是" },
+  { value: "should_finish", label: "已完成剧情" },
+  { value: "should_not_finish", label: "未完成剧情" },
+  { value: "follow_story", label: "上一个剧情是" },
+  { value: "in_team", label: "队伍有角色名" },
+  { value: "not_in_team", label: "队伍没有角色名" },
+  { value: "key_in_team", label: "队伍有角色ID" },
+  { value: "key_not_in_team", label: "队伍没有角色ID" },
+  { value: "have_item", label: "拥有物品" },
+  { value: "not_have_item", label: "没有物品" },
+  { value: "in_time", label: "当前时辰是" },
+  { value: "not_in_time", label: "当前时辰不是" },
+  { value: "has_time_key", label: "有限时 key" },
+  { value: "not_has_time_key", label: "没有限时 key" },
+  { value: "in_menpai", label: "门派是" },
+  { value: "not_in_menpai", label: "门派不是" },
+  { value: "in_round", label: "周目是" },
+  { value: "not_in_round", label: "周目不是" },
+  { value: "game_mode", label: "难度是" },
+  { value: "exceed_day", label: "超过天数" },
+  { value: "not_exceed_day", label: "未超过天数" },
+  { value: "zhoumu_greater_than", label: "周目至少" },
+  { value: "level_greater_than", label: "角色等级至少" },
+  { value: "level_less_than", label: "角色等级低于" },
+  { value: "shenfa_greater_than", label: "身法至少" },
+  { value: "skill_more_than", label: "技能等级至少" },
+  { value: "skill_less_than", label: "技能等级低于" },
+  { value: "in_newbie_task", label: "新手任务中" },
+];
+
+function renderMapFormView() {
+  if (!MAP_FILTERS.some((filter) => filter.value === state.formFilter)) {
+    state.formFilter = "all";
+  }
+
+  clampMapSelection();
+
+  const recordPanel = document.createElement("aside");
+  recordPanel.className = "record-panel character-record-panel map-record-panel";
+
+  const recordHeader = document.createElement("div");
+  recordHeader.className = "record-panel-header";
+  const headerTitle = document.createElement("div");
+  headerTitle.className = "record-panel-title";
+  headerTitle.textContent = "地图";
+  const headerSubtitle = document.createElement("div");
+  headerSubtitle.className = "record-panel-subtitle";
+  recordHeader.append(headerTitle, headerSubtitle);
+
+  const recordSearch = document.createElement("input");
+  recordSearch.className = "record-search";
+  recordSearch.type = "search";
+  recordSearch.placeholder = "搜索地图、点位、剧情、目标";
+  recordSearch.value = state.formSearch;
+  recordSearch.addEventListener("input", () => {
+    state.formSearch = recordSearch.value;
+    renderMapRecordCards(recordList, headerSubtitle);
+  });
+
+  const filterRow = document.createElement("div");
+  filterRow.className = "character-filter-row";
+  for (const filter of MAP_FILTERS) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "character-filter-button";
+    button.classList.toggle("active", state.formFilter === filter.value);
+    button.textContent = filter.label;
+    button.addEventListener("click", () => {
+      state.formFilter = filter.value;
+      renderFormView();
+    });
+    filterRow.appendChild(button);
+  }
+
+  const recordList = document.createElement("div");
+  recordList.className = "record-list";
+  renderMapRecordCards(recordList, headerSubtitle);
+
+  recordPanel.append(recordHeader, recordSearch, filterRow, recordList);
+
+  const detail = document.createElement("section");
+  detail.className = "form-detail character-form-detail map-form-detail";
+  renderMapDetail(detail);
+
+  elements.formView.append(recordPanel, detail);
+}
+
+function renderMapRecordCards(parent, subtitleNode) {
+  parent.replaceChildren();
+  const query = state.formSearch.trim().toLowerCase();
+  let visibleCount = 0;
+
+  state.formRecords.forEach((record, index) => {
+    ensureMapShape(record);
+    if (!matchesMapSearch(record, query) || !matchesMapFilter(record, state.formFilter)) {
+      return;
+    }
+
+    visibleCount += 1;
+    const stats = getMapStats(record);
+    const card = document.createElement("button");
+    card.type = "button";
+    card.className = "record-card character-record-card map-record-card";
+    card.dataset.recordIndex = String(index);
+    card.classList.toggle("active", index === state.selectedRecordIndex);
+    card.addEventListener("click", () => {
+      state.mapEditor.selectedLocationIndex = 0;
+      selectFormRecord(index);
+    });
+
+    const text = document.createElement("div");
+    text.className = "character-record-text";
+    const titleRow = document.createElement("div");
+    titleRow.className = "character-record-title-row";
+    const title = document.createElement("div");
+    title.className = "record-title";
+    title.textContent = record.name || record.id || `#${index + 1}`;
+    const badge = document.createElement("span");
+    badge.className = `character-role-badge map-kind-badge ${isLargeMap(record) ? "large" : "small"}`;
+    badge.textContent = isLargeMap(record) ? "大地图" : "小地图";
+    titleRow.append(title, badge);
+
+    const subtitle = document.createElement("div");
+    subtitle.className = "record-subtitle";
+    subtitle.textContent = record.id || `#${index + 1}`;
+
+    const meta = document.createElement("div");
+    meta.className = "character-record-meta";
+    meta.textContent = [
+      `${stats.locations} 点位`,
+      `${stats.storyEvents} 剧情`,
+      `${stats.mapEvents} 跳转`,
+      stats.issues.length > 0 ? `${stats.issues.length} 项待处理` : "可运行",
+    ].join(" · ");
+
+    text.append(titleRow, subtitle, meta);
+    card.append(createRecordThumb(record), text);
+    parent.appendChild(card);
+  });
+
+  subtitleNode.textContent = `${visibleCount} / ${state.formRecords.length} 条`;
+  if (visibleCount === 0) {
+    const empty = document.createElement("div");
+    empty.className = "record-empty";
+    empty.textContent = "没有匹配的地图";
+    parent.appendChild(empty);
+  }
+}
+
+function renderMapDetail(parent) {
+  const record = state.formRecords[state.selectedRecordIndex];
+  if (!record) {
+    parent.innerHTML = `<div class="form-error">未选择地图。</div>`;
+    return;
+  }
+
+  ensureMapShape(record);
+  clampMapSelection();
+  const stats = getMapStats(record);
+
+  const shell = document.createElement("div");
+  shell.className = "character-detail-shell map-detail-shell";
+  shell.appendChild(createMapSummary(record, stats));
+  shell.appendChild(createMapIntro(stats));
+  shell.appendChild(createMapBasicSection(record));
+  shell.appendChild(createMapWorkspaceSection(record));
+  shell.appendChild(createMapAdvancedJsonSection(record));
+  parent.appendChild(shell);
+}
+
+function createMapSummary(record, stats) {
+  const summaryCard = document.createElement("section");
+  summaryCard.className = "character-summary-card map-summary-card";
+
+  const preview = document.createElement("div");
+  preview.className = "character-summary-portrait map-summary-background";
+  const assetPath = resolveAssetPath(record.picture);
+  if (assetPath && isImage(assetPath.toLowerCase())) {
+    const image = document.createElement("img");
+    image.src = `/api/assets/file?path=${encodeURIComponent(assetPath)}`;
+    image.alt = record.name || record.id || "地图背景";
+    preview.appendChild(image);
+  } else {
+    const placeholder = document.createElement("div");
+    placeholder.className = "character-summary-portrait-placeholder";
+    placeholder.textContent = "地图";
+    preview.appendChild(placeholder);
+  }
+
+  const content = document.createElement("div");
+  content.className = "character-summary-content";
+  const titleRow = document.createElement("div");
+  titleRow.className = "character-summary-title-row";
+  const titleGroup = document.createElement("div");
+  const title = document.createElement("div");
+  title.className = "form-detail-title";
+  title.textContent = record.name || record.id || "未命名地图";
+  const subtitle = document.createElement("div");
+  subtitle.className = "form-detail-subtitle";
+  subtitle.textContent = record.id || `#${state.selectedRecordIndex + 1}`;
+  titleGroup.append(title, subtitle);
+  const actions = document.createElement("div");
+  actions.className = "record-actions";
+  actions.append(
+    createActionButton("新增", addRecord),
+    createActionButton("复制", duplicateRecord),
+    createActionButton("删除", deleteRecord)
+  );
+  titleRow.append(titleGroup, actions);
+
+  const badgeRow = document.createElement("div");
+  badgeRow.className = "character-summary-badges";
+  badgeRow.append(
+    createPill(isLargeMap(record) ? "大地图" : "小地图", "ok"),
+    createPill(`点位 ${stats.locations}`),
+    createPill(`事件 ${stats.events}`),
+    createPill(`剧情 ${stats.storyEvents}`),
+    createPill(stats.issues.length > 0 ? `待处理 ${stats.issues.length}` : "可运行", stats.issues.length > 0 ? "warn" : "ok")
+  );
+
+  content.append(titleRow, badgeRow);
+  summaryCard.append(preview, content);
+  return summaryCard;
+}
+
+function createMapIntro(stats) {
+  const box = document.createElement("div");
+  box.className = "form-summary character-form-summary map-issue-summary";
+  if (stats.issues.length === 0) {
+    box.textContent = "这个地图当前没有发现阻断问题。编辑器只生成现有运行时支持的 maps.json 数据，适合剧情入口、场景跳转、商店、储物箱和战斗接线。";
+    return box;
+  }
+
+  const title = document.createElement("div");
+  title.className = "map-issue-title";
+  title.textContent = "保存前建议处理：";
+  const list = document.createElement("ul");
+  for (const issue of stats.issues.slice(0, 8)) {
+    const item = document.createElement("li");
+    item.textContent = issue;
+    list.appendChild(item);
+  }
+  box.append(title, list);
+  return box;
+}
+
+function createMapBasicSection(record) {
+  const section = createCharacterSection("基础信息", "Basic");
+  const grid = document.createElement("div");
+  grid.className = "character-form-grid";
+  grid.append(
+    createCharacterTextField(record, "地图ID", "id", {
+      placeholder: "例如：新地图",
+      rerenderOnChange: true,
+    }),
+    createCharacterTextField(record, "显示名", "name", {
+      placeholder: "例如：新地图",
+      rerenderOnChange: true,
+    }),
+    createMapKindField(record),
+    createMapResourceField(record, "背景资源", "picture", "地图"),
+    createMapTextareaField(record, "地图描述", "description"),
+    createMapMusicField(record)
+  );
+  section.appendChild(grid);
+  return section;
+}
+
+function createMapKindField(record) {
+  const field = createCharacterFieldShell("地图类型", "kind");
+  const select = document.createElement("select");
+  for (const choice of MAP_KIND_CHOICES) {
+    const option = document.createElement("option");
+    option.value = choice.value;
+    option.textContent = choice.label;
+    option.selected = getMapKind(record) === choice.value;
+    select.appendChild(option);
+  }
+
+  select.addEventListener("change", () => {
+    record.kind = select.value === "large" ? "large" : "small";
+    if (record.kind === "small") {
+      delete record.kind;
+    }
+    syncFormToEditor();
+    renderFormView();
+  });
+  field.appendChild(select);
+  return field;
+}
+
+function createMapTextareaField(record, labelCn, key) {
+  const field = createCharacterFieldShell(labelCn, key, true);
+  const textarea = document.createElement("textarea");
+  textarea.rows = 4;
+  textarea.value = record[key] == null ? "" : String(record[key]);
+  textarea.addEventListener("input", () => {
+    record[key] = textarea.value;
+    syncFormToEditor();
+  });
+  field.appendChild(textarea);
+  return field;
+}
+
+function createMapResourceField(record, labelCn, key, group) {
+  const field = createCharacterFieldShell(labelCn, key, true);
+  field.classList.add("shop-resource-field");
+  const input = document.createElement("input");
+  input.type = "text";
+  input.value = record[key] == null ? "" : String(record[key]);
+  input.placeholder = group === "音乐" ? "例如：音乐.逍遥" : "例如：地图.新地图";
+  input.setAttribute("list", ensureResourceIdDatalist(group));
+  input.addEventListener("input", () => {
+    const value = input.value.trim();
+    record[key] = value || null;
+    syncFormToEditor();
+  });
+  input.addEventListener("change", () => renderFormView());
+  field.appendChild(input);
+  field.appendChild(createShopResourcePreview(getMapResourceInfo(record[key], group)));
+  return field;
+}
+
+function createMapMusicField(record) {
+  const field = createCharacterFieldShell("背景音乐", "musics", true);
+  const list = document.createElement("div");
+  list.className = "map-music-list";
+  record.musics.forEach((musicId, index) => {
+    const row = document.createElement("div");
+    row.className = "map-music-row";
+    const input = document.createElement("input");
+    input.type = "text";
+    input.value = musicId || "";
+    input.placeholder = "例如：音乐.逍遥";
+    input.setAttribute("list", ensureResourceIdDatalist("音乐"));
+    input.addEventListener("input", () => {
+      record.musics[index] = input.value.trim();
+      syncFormToEditor();
+    });
+    input.addEventListener("change", () => renderFormView());
+    const remove = createActionButton("删除", () => {
+      record.musics.splice(index, 1);
+      syncFormToEditor();
+      renderFormView();
+    });
+    row.append(input, remove);
+    list.appendChild(row);
+  });
+
+  if (record.musics.length === 0) {
+    const empty = document.createElement("div");
+    empty.className = "record-empty compact";
+    empty.textContent = "未设置音乐，进入地图时不会切换 BGM。";
+    list.appendChild(empty);
+  }
+
+  const add = createActionButton("添加音乐", () => {
+    record.musics.push("");
+    syncFormToEditor();
+    renderFormView();
+  });
+  field.append(list, add);
+  return field;
+}
+
+function createMapWorkspaceSection(record) {
+  const section = createCharacterSection(isLargeMap(record) ? "大地图画布与点位" : "小地图点位与事件", "Locations");
+  const workspace = document.createElement("div");
+  workspace.className = `map-editor-workspace ${isLargeMap(record) ? "large" : "small"}`;
+  workspace.appendChild(isLargeMap(record) ? createLargeMapCanvas(record) : createSmallMapPreview(record));
+  workspace.appendChild(createMapLocationPanel(record));
+  section.appendChild(workspace);
+  return section;
+}
+
+function createLargeMapCanvas(record) {
+  const canvas = document.createElement("div");
+  canvas.className = "map-canvas";
+  const assetPath = resolveAssetPath(record.picture);
+  if (assetPath && isImage(assetPath.toLowerCase())) {
+    const image = document.createElement("img");
+    image.src = `/api/assets/file?path=${encodeURIComponent(assetPath)}`;
+    image.alt = record.name || record.id || "大地图背景";
+    canvas.appendChild(image);
+  } else {
+    const placeholder = document.createElement("div");
+    placeholder.className = "map-canvas-placeholder";
+    placeholder.textContent = "选择地图背景后可在画布上拖动点位";
+    canvas.appendChild(placeholder);
+  }
+
+  record.locations.forEach((location, index) => {
+    const pin = document.createElement("button");
+    pin.type = "button";
+    pin.className = "map-location-pin";
+    pin.classList.toggle("active", index === state.mapEditor.selectedLocationIndex);
+    pin.textContent = String(index + 1);
+    const position = normalizeMapPosition(location.position);
+    pin.style.left = `${Math.max(0, Math.min(100, position.x / 800 * 100))}%`;
+    pin.style.top = `${Math.max(0, Math.min(100, position.y / 600 * 100))}%`;
+    pin.title = location.name || location.id || `点位 ${index + 1}`;
+    pin.addEventListener("click", (event) => {
+      event.stopPropagation();
+      state.mapEditor.selectedLocationIndex = index;
+      renderFormView();
+    });
+    pin.addEventListener("pointerdown", (event) => {
+      event.preventDefault();
+      state.mapEditor.selectedLocationIndex = index;
+      moveMapLocationFromPointer(record, location, canvas, event);
+      const move = (moveEvent) => moveMapLocationFromPointer(record, location, canvas, moveEvent);
+      const up = () => {
+        window.removeEventListener("pointermove", move);
+        window.removeEventListener("pointerup", up);
+        syncFormToEditor();
+        renderFormView();
+      };
+      window.addEventListener("pointermove", move);
+      window.addEventListener("pointerup", up);
+    });
+    canvas.appendChild(pin);
+  });
+
+  canvas.addEventListener("click", (event) => {
+    const rect = canvas.getBoundingClientRect();
+    const x = Math.round((event.clientX - rect.left) / rect.width * 800);
+    const y = Math.round((event.clientY - rect.top) / rect.height * 600);
+    const location = createMapLocationTemplate(record, `新地点${record.locations.length + 1}`);
+    location.position = { x, y };
+    record.locations.push(location);
+    state.mapEditor.selectedLocationIndex = record.locations.length - 1;
+    syncFormToEditor();
+    renderFormView();
+  });
+
+  const hint = document.createElement("div");
+  hint.className = "map-canvas-hint";
+  hint.textContent = "点击空白新增点位；拖动编号调整大地图坐标。坐标按 800x600 源图保存。";
+  const wrap = document.createElement("div");
+  wrap.className = "map-canvas-wrap";
+  wrap.append(canvas, hint);
+  return wrap;
+}
+
+function moveMapLocationFromPointer(record, location, canvas, event) {
+  const rect = canvas.getBoundingClientRect();
+  const x = Math.round((event.clientX - rect.left) / rect.width * 800);
+  const y = Math.round((event.clientY - rect.top) / rect.height * 600);
+  location.position = {
+    x: Math.max(0, Math.min(800, x)),
+    y: Math.max(0, Math.min(600, y)),
+  };
+  syncFormToEditor();
+}
+
+function createSmallMapPreview(record) {
+  const panel = document.createElement("div");
+  panel.className = "map-small-preview";
+  const assetPath = resolveAssetPath(record.picture);
+  if (assetPath && isImage(assetPath.toLowerCase())) {
+    const image = document.createElement("img");
+    image.src = `/api/assets/file?path=${encodeURIComponent(assetPath)}`;
+    image.alt = record.name || record.id || "小地图背景";
+    panel.appendChild(image);
+  } else {
+    const placeholder = document.createElement("div");
+    placeholder.className = "map-canvas-placeholder";
+    placeholder.textContent = "小地图运行时显示背景图，下方显示可触发点位按钮。";
+    panel.appendChild(placeholder);
+  }
+  const note = document.createElement("div");
+  note.className = "static-tool-note";
+  note.textContent = "小地图当前运行时不是背景点选；点位会显示为按钮列表。需要场景内点选时再升级底层。";
+  panel.appendChild(note);
+  return panel;
+}
+
+function createMapLocationPanel(record) {
+  const panel = document.createElement("div");
+  panel.className = "map-location-panel";
+  const toolbar = document.createElement("div");
+  toolbar.className = "shop-product-toolbar";
+  const title = document.createElement("div");
+  title.className = "static-tool-note";
+  title.textContent = "点位上的事件按从上到下判断，第一个满足条件和概率的事件就是玩家当前能点到的内容。";
+  const actions = document.createElement("div");
+  actions.className = "record-actions";
+  actions.append(
+    createActionButton("新增点位", () => addMapLocation(record)),
+    createActionButton("添加返回", () => addMapReturnLocation(record))
+  );
+  toolbar.append(title, actions);
+
+  const body = document.createElement("div");
+  body.className = "map-location-body";
+  const list = document.createElement("div");
+  list.className = "map-location-list";
+  record.locations.forEach((location, index) => {
+    const card = document.createElement("button");
+    card.type = "button";
+    card.className = "map-location-card";
+    card.classList.toggle("active", index === state.mapEditor.selectedLocationIndex);
+    card.addEventListener("click", () => {
+      state.mapEditor.selectedLocationIndex = index;
+      renderFormView();
+    });
+    const name = document.createElement("div");
+    name.className = "map-location-card-name";
+    name.textContent = location.name || location.id || `点位 ${index + 1}`;
+    const meta = document.createElement("div");
+    meta.className = "record-subtitle";
+    meta.textContent = `${location.events.length} 事件${isLargeMap(record) ? ` · (${normalizeMapPosition(location.position).x}, ${normalizeMapPosition(location.position).y})` : ""}`;
+    card.append(name, meta);
+    list.appendChild(card);
+  });
+
+  if (record.locations.length === 0) {
+    const empty = document.createElement("div");
+    empty.className = "record-empty";
+    empty.textContent = "还没有点位。先添加一个剧情 NPC、入口或返回点。";
+    list.appendChild(empty);
+  }
+
+  const editor = createSelectedMapLocationEditor(record);
+  body.append(list, editor);
+  panel.append(toolbar, body);
+  return panel;
+}
+
+function createSelectedMapLocationEditor(record) {
+  const location = record.locations[state.mapEditor.selectedLocationIndex];
+  const editor = document.createElement("div");
+  editor.className = "map-location-editor";
+  if (!location) {
+    const empty = document.createElement("div");
+    empty.className = "record-empty";
+    empty.textContent = "选择或新建一个点位开始编辑。";
+    editor.appendChild(empty);
+    return editor;
+  }
+
+  ensureMapLocationShape(location);
+  const header = document.createElement("div");
+  header.className = "item-array-card-header";
+  const title = document.createElement("div");
+  title.className = "item-array-card-title";
+  title.textContent = location.name || location.id || "未命名点位";
+  const actions = document.createElement("div");
+  actions.className = "record-actions";
+  actions.append(
+    createActionButton("上移", () => moveMapLocation(record, state.mapEditor.selectedLocationIndex, -1)),
+    createActionButton("下移", () => moveMapLocation(record, state.mapEditor.selectedLocationIndex, 1)),
+    createActionButton("复制", () => duplicateMapLocation(record, state.mapEditor.selectedLocationIndex)),
+    createActionButton("删除", () => deleteMapLocation(record, state.mapEditor.selectedLocationIndex))
+  );
+  header.append(title, actions);
+
+  const grid = document.createElement("div");
+  grid.className = "character-form-grid map-location-grid";
+  grid.append(
+    createMapObjectTextField(location, "点位ID", "id", { placeholder: "例如：神秘人", rerenderOnChange: true }),
+    createMapObjectTextField(location, "显示名", "name", { placeholder: "为空时显示 id", nullable: true, rerenderOnChange: true }),
+    createMapObjectResourceField(location, "点位图片", "picture", null),
+    createMapObjectTextareaField(location, "点位描述", "description")
+  );
+
+  if (isLargeMap(record)) {
+    grid.append(createMapPositionField(location, "x"), createMapPositionField(location, "y"));
+  }
+
+  editor.append(header, grid, createMapEventSection(record, location));
+  return editor;
+}
+
+function createMapObjectTextField(owner, labelCn, key, options = {}) {
+  const field = createCharacterFieldShell(labelCn, key, options.full === true);
+  const input = document.createElement("input");
+  input.type = "text";
+  input.value = owner[key] == null ? "" : String(owner[key]);
+  input.placeholder = options.placeholder || "";
+  if (options.list) {
+    input.setAttribute("list", options.list);
+  }
+  input.addEventListener("input", () => {
+    const value = input.value.trim();
+    owner[key] = options.nullable && !value ? null : input.value;
+    syncFormToEditor();
+  });
+  if (options.rerenderOnChange) {
+    input.addEventListener("change", () => renderFormView());
+  }
+  field.appendChild(input);
+  return field;
+}
+
+function createMapObjectTextareaField(owner, labelCn, key) {
+  const field = createCharacterFieldShell(labelCn, key, true);
+  const textarea = document.createElement("textarea");
+  textarea.rows = 3;
+  textarea.value = owner[key] == null ? "" : String(owner[key]);
+  textarea.addEventListener("input", () => {
+    owner[key] = textarea.value.trim() ? textarea.value : null;
+    syncFormToEditor();
+  });
+  field.appendChild(textarea);
+  return field;
+}
+
+function createMapObjectResourceField(owner, labelCn, key, group) {
+  const field = createCharacterFieldShell(labelCn, key, true);
+  const input = document.createElement("input");
+  input.type = "text";
+  input.value = owner[key] == null ? "" : String(owner[key]);
+  input.placeholder = "可填 town.*、头像.*、地图.* 等资源 id";
+  input.setAttribute("list", ensureResourceIdDatalist(group));
+  input.addEventListener("input", () => {
+    owner[key] = input.value.trim() || null;
+    syncFormToEditor();
+  });
+  input.addEventListener("change", () => renderFormView());
+  field.appendChild(input);
+  field.appendChild(createShopResourcePreview(getMapResourceInfo(owner[key], group)));
+  return field;
+}
+
+function createMapPositionField(location, axis) {
+  const field = createCharacterFieldShell(`坐标 ${axis.toUpperCase()}`, `position.${axis}`);
+  const input = document.createElement("input");
+  input.type = "number";
+  input.min = axis === "x" ? "0" : "0";
+  input.max = axis === "x" ? "800" : "600";
+  const position = normalizeMapPosition(location.position);
+  input.value = String(position[axis]);
+  input.addEventListener("input", () => {
+    const next = normalizeMapPosition(location.position);
+    next[axis] = parseNumberInputValue(input.value, 0);
+    location.position = next;
+    syncFormToEditor();
+  });
+  input.addEventListener("change", () => renderFormView());
+  field.appendChild(input);
+  return field;
+}
+
+function createMapEventSection(record, location) {
+  const section = document.createElement("div");
+  section.className = "map-event-section";
+  const toolbar = document.createElement("div");
+  toolbar.className = "shop-product-toolbar";
+  const note = document.createElement("div");
+  note.className = "static-tool-note";
+  note.textContent = "优先级从上到下；常见写法是先放一次性剧情，再放进入地图的兜底事件。";
+  const add = createActionButton("新增事件", () => addMapEvent(location));
+  toolbar.append(note, add);
+
+  const list = document.createElement("div");
+  list.className = "item-array-list map-event-list";
+  location.events.forEach((event, eventIndex) => {
+    list.appendChild(createMapEventCard(record, location, event, eventIndex));
+  });
+  if (location.events.length === 0) {
+    const empty = document.createElement("div");
+    empty.className = "record-empty";
+    empty.textContent = "这个点位没有事件。小地图中没有事件的点位不会显示。";
+    list.appendChild(empty);
+  }
+
+  section.append(toolbar, list);
+  return section;
+}
+
+function createMapEventCard(record, location, mapEvent, eventIndex) {
+  ensureMapEventShape(mapEvent);
+  const info = getMapEventInfo(mapEvent);
+  const card = document.createElement("article");
+  card.className = `item-array-card map-event-card ${info.severity}`;
+  const header = document.createElement("div");
+  header.className = "item-array-card-header";
+  const title = document.createElement("div");
+  title.className = "item-array-card-title";
+  title.textContent = `${eventIndex + 1}. ${info.title}`;
+  const actions = document.createElement("div");
+  actions.className = "record-actions";
+  actions.append(
+    createActionButton("上移", () => moveMapEvent(location, eventIndex, -1)),
+    createActionButton("下移", () => moveMapEvent(location, eventIndex, 1)),
+    createActionButton("复制", () => duplicateMapEvent(location, eventIndex)),
+    createActionButton("删除", () => deleteMapEvent(location, eventIndex))
+  );
+  header.append(title, actions);
+
+  const grid = document.createElement("div");
+  grid.className = "item-array-grid map-event-grid";
+  grid.append(
+    createMapEventTypeField(mapEvent),
+    createMapEventTargetField(mapEvent),
+    createMapEventRepeatField(mapEvent),
+    createMapEventProbabilityField(mapEvent),
+    createMapObjectResourceField(mapEvent, "事件图标", "image", null),
+    createMapObjectTextareaField(mapEvent, "提示文本", "description")
+  );
+
+  const meta = document.createElement("div");
+  meta.className = "shop-product-meta";
+  meta.append(
+    createPill(info.typeLabel),
+    createPill(info.targetStatusText, info.targetStatusTone),
+    createPill(mapEvent.repeatMode === "once" ? "一次性" : "可重复"),
+    createPill(`概率 ${mapEvent.probability}%`)
+  );
+
+  card.append(header, meta, grid, createMapConditionEditor(mapEvent));
+  if (info.message) {
+    const message = document.createElement("div");
+    message.className = `shop-product-message ${info.severity}`;
+    message.textContent = info.message;
+    card.appendChild(message);
+  }
+  return card;
+}
+
+function createMapEventTypeField(mapEvent) {
+  const field = createCharacterFieldShell("事件类型", "type");
+  const select = document.createElement("select");
+  for (const choice of MAP_EVENT_TYPE_CHOICES) {
+    const option = document.createElement("option");
+    option.value = choice.value;
+    option.textContent = choice.label;
+    option.selected = mapEvent.type === choice.value;
+    select.appendChild(option);
+  }
+  if (!MAP_EVENT_TYPE_CHOICES.some((choice) => choice.value === mapEvent.type)) {
+    const option = document.createElement("option");
+    option.value = mapEvent.type;
+    option.textContent = `${mapEvent.type} 未支持`;
+    option.selected = true;
+    select.appendChild(option);
+  }
+  select.addEventListener("change", () => {
+    mapEvent.type = select.value;
+    syncFormToEditor();
+    renderFormView();
+  });
+  field.appendChild(select);
+  return field;
+}
+
+function createMapEventTargetField(mapEvent) {
+  const field = createCharacterFieldShell("目标", "targetId", true);
+  const input = document.createElement("input");
+  input.type = "text";
+  input.value = mapEvent.targetId || "";
+  input.placeholder = getMapEventTargetPlaceholder(mapEvent.type);
+  const datalist = ensureMapEventTargetDatalist(mapEvent.type);
+  if (datalist) {
+    input.setAttribute("list", datalist);
+  }
+  input.disabled = mapEvent.type === "xiangzi";
+  input.addEventListener("input", () => {
+    mapEvent.targetId = input.value.trim();
+    syncFormToEditor();
+  });
+  input.addEventListener("change", () => renderFormView());
+  field.appendChild(input);
+  return field;
+}
+
+function createMapEventRepeatField(mapEvent) {
+  const field = createCharacterFieldShell("触发次数", "repeatMode");
+  const select = document.createElement("select");
+  for (const choice of [
+    { value: "infinite", label: "可重复" },
+    { value: "once", label: "只触发一次" },
+  ]) {
+    const option = document.createElement("option");
+    option.value = choice.value;
+    option.textContent = choice.label;
+    option.selected = (mapEvent.repeatMode || "infinite") === choice.value;
+    select.appendChild(option);
+  }
+  select.addEventListener("change", () => {
+    if (select.value === "once") {
+      mapEvent.repeatMode = "once";
+    } else {
+      delete mapEvent.repeatMode;
+    }
+    syncFormToEditor();
+    renderFormView();
+  });
+  field.appendChild(select);
+  return field;
+}
+
+function createMapEventProbabilityField(mapEvent) {
+  const field = createCharacterFieldShell("概率", "probability");
+  const input = document.createElement("input");
+  input.type = "number";
+  input.min = "0";
+  input.max = "100";
+  input.value = String(Number.isFinite(mapEvent.probability) ? mapEvent.probability : 100);
+  input.addEventListener("input", () => {
+    mapEvent.probability = Math.max(0, Math.min(100, parseNumberInputValue(input.value, 100)));
+    syncFormToEditor();
+  });
+  input.addEventListener("change", () => renderFormView());
+  field.appendChild(input);
+  return field;
+}
+
+function createMapConditionEditor(mapEvent) {
+  const box = document.createElement("div");
+  box.className = "map-condition-editor";
+  const header = document.createElement("div");
+  header.className = "shop-product-toolbar";
+  const note = document.createElement("div");
+  note.className = "static-tool-note";
+  note.textContent = "条件全部满足后才会尝试触发这个事件。多个值用 # 分隔，例如 角色#10。";
+  const add = createActionButton("添加条件", () => {
+    mapEvent.conditions.push({ type: "should_not_finish", value: "" });
+    syncFormToEditor();
+    renderFormView();
+  });
+  header.append(note, add);
+  const list = document.createElement("div");
+  list.className = "map-condition-list";
+  mapEvent.conditions.forEach((condition, index) => {
+    list.appendChild(createMapConditionRow(mapEvent, condition, index));
+  });
+  if (mapEvent.conditions.length === 0) {
+    const empty = document.createElement("div");
+    empty.className = "record-empty compact";
+    empty.textContent = "无条件，始终可参与触发判断。";
+    list.appendChild(empty);
+  }
+  box.append(header, list);
+  return box;
+}
+
+function createMapConditionRow(mapEvent, condition, index) {
+  const row = document.createElement("div");
+  row.className = "map-condition-row";
+  const type = document.createElement("select");
+  for (const choice of MAP_CONDITION_CHOICES) {
+    const option = document.createElement("option");
+    option.value = choice.value;
+    option.textContent = choice.label;
+    option.selected = condition.type === choice.value;
+    type.appendChild(option);
+  }
+  if (!MAP_CONDITION_CHOICES.some((choice) => choice.value === condition.type)) {
+    const option = document.createElement("option");
+    option.value = condition.type || "";
+    option.textContent = `${condition.type || "未知"} 未支持`;
+    option.selected = true;
+    type.appendChild(option);
+  }
+  type.addEventListener("change", () => {
+    condition.type = type.value;
+    syncFormToEditor();
+    renderFormView();
+  });
+
+  const value = document.createElement("input");
+  value.type = "text";
+  value.value = condition.value == null ? "" : String(condition.value);
+  value.placeholder = getMapConditionValuePlaceholder(condition.type);
+  const datalist = ensureMapConditionValueDatalist(condition.type);
+  if (datalist) {
+    value.setAttribute("list", datalist);
+  }
+  value.disabled = condition.type === "always" || condition.type === "in_newbie_task";
+  value.addEventListener("input", () => {
+    condition.value = value.value.trim();
+    syncFormToEditor();
+  });
+
+  const remove = createActionButton("删除", () => {
+    mapEvent.conditions.splice(index, 1);
+    syncFormToEditor();
+    renderFormView();
+  });
+  row.append(type, value, remove);
+  return row;
+}
+
+function createMapAdvancedJsonSection(record) {
+  const section = createCharacterSection("高级 JSON", "Advanced");
+  const details = document.createElement("details");
+  details.className = "character-advanced-json";
+  const summary = document.createElement("summary");
+  summary.textContent = "展开原始地图 JSON";
+  const textarea = document.createElement("textarea");
+  textarea.value = JSON.stringify(record, null, 2);
+  textarea.addEventListener("change", () => {
+    try {
+      const parsed = JSON.parse(textarea.value);
+      state.formRecords[state.selectedRecordIndex] = parsed;
+      syncFormToEditor();
+      renderFormView();
+    } catch (error) {
+      textarea.setCustomValidity(error instanceof Error ? error.message : String(error));
+      textarea.reportValidity();
+    }
+  });
+  details.append(summary, textarea);
+  section.appendChild(details);
+  return section;
+}
+
+function addMapLocation(record) {
+  const location = createMapLocationTemplate(record, `新点位${record.locations.length + 1}`);
+  record.locations.push(location);
+  state.mapEditor.selectedLocationIndex = record.locations.length - 1;
+  syncFormToEditor();
+  renderFormView();
+}
+
+function addMapReturnLocation(record) {
+  const targetId = record.id === "大地图" ? "" : "大地图";
+  const location = createMapLocationTemplate(record, "返回");
+  location.description = targetId ? "返回大地图" : "返回上一处";
+  location.events = [
+    {
+      type: "map",
+      targetId,
+      probability: 100,
+      description: location.description,
+      conditions: [],
+    },
+  ];
+  record.locations.push(location);
+  state.mapEditor.selectedLocationIndex = record.locations.length - 1;
+  syncFormToEditor();
+  renderFormView();
+}
+
+function createMapLocationTemplate(record, baseId) {
+  const id = createUniqueLocationId(record, baseId);
+  const location = {
+    id,
+    name: id,
+    description: "",
+    picture: null,
+    events: [],
+  };
+  if (isLargeMap(record)) {
+    location.position = { x: 400, y: 300 };
+  }
+  return location;
+}
+
+function createUniqueLocationId(record, baseId) {
+  const existing = new Set(record.locations.map((location) => String(location?.id || "")));
+  if (!existing.has(baseId)) {
+    return baseId;
+  }
+  for (let index = 2; index < 10000; index += 1) {
+    const candidate = `${baseId}_${index}`;
+    if (!existing.has(candidate)) {
+      return candidate;
+    }
+  }
+  return `${baseId}_${Date.now()}`;
+}
+
+function moveMapLocation(record, index, delta) {
+  const nextIndex = index + delta;
+  if (nextIndex < 0 || nextIndex >= record.locations.length) {
+    return;
+  }
+  const [location] = record.locations.splice(index, 1);
+  record.locations.splice(nextIndex, 0, location);
+  state.mapEditor.selectedLocationIndex = nextIndex;
+  syncFormToEditor();
+  renderFormView();
+}
+
+function duplicateMapLocation(record, index) {
+  const location = record.locations[index];
+  if (!location) {
+    return;
+  }
+  const copy = structuredCloneCompat(location);
+  copy.id = createUniqueLocationId(record, `${copy.id || "点位"}_复制`);
+  copy.name = copy.name ? `${copy.name} 复制` : copy.id;
+  record.locations.splice(index + 1, 0, copy);
+  state.mapEditor.selectedLocationIndex = index + 1;
+  syncFormToEditor();
+  renderFormView();
+}
+
+function deleteMapLocation(record, index) {
+  const location = record.locations[index];
+  if (!location) {
+    return;
+  }
+  const title = location.name || location.id || `点位 ${index + 1}`;
+  if (!window.confirm(`确认删除点位「${title}」？`)) {
+    return;
+  }
+  record.locations.splice(index, 1);
+  state.mapEditor.selectedLocationIndex = Math.max(0, Math.min(index, record.locations.length - 1));
+  syncFormToEditor();
+  renderFormView();
+}
+
+function addMapEvent(location) {
+  location.events.push({
+    type: "story",
+    targetId: "",
+    probability: 100,
+    description: "",
+    conditions: [],
+  });
+  syncFormToEditor();
+  renderFormView();
+}
+
+function moveMapEvent(location, index, delta) {
+  const nextIndex = index + delta;
+  if (nextIndex < 0 || nextIndex >= location.events.length) {
+    return;
+  }
+  const [event] = location.events.splice(index, 1);
+  location.events.splice(nextIndex, 0, event);
+  syncFormToEditor();
+  renderFormView();
+}
+
+function duplicateMapEvent(location, index) {
+  const source = location.events[index];
+  if (!source) {
+    return;
+  }
+  location.events.splice(index + 1, 0, structuredCloneCompat(source));
+  syncFormToEditor();
+  renderFormView();
+}
+
+function deleteMapEvent(location, index) {
+  const source = location.events[index];
+  if (!source) {
+    return;
+  }
+  const info = getMapEventInfo(source);
+  if (!window.confirm(`确认删除事件「${info.title}」？`)) {
+    return;
+  }
+  location.events.splice(index, 1);
+  syncFormToEditor();
+  renderFormView();
+}
+
+function ensureMapShape(record) {
+  if (typeof record.id !== "string") {
+    record.id = "";
+  }
+  if (typeof record.name !== "string") {
+    record.name = record.id || "";
+  }
+  if (!Array.isArray(record.musics)) {
+    record.musics = [];
+  }
+  if (!Array.isArray(record.locations)) {
+    record.locations = [];
+  }
+  record.locations = record.locations.map((location) => (
+    location && typeof location === "object" && !Array.isArray(location)
+      ? location
+      : createMapLocationTemplate(record, "点位")
+  ));
+  for (const location of record.locations) {
+    ensureMapLocationShape(location);
+  }
+}
+
+function ensureMapLocationShape(location) {
+  if (typeof location.id !== "string") {
+    location.id = "";
+  }
+  if (location.name != null && typeof location.name !== "string") {
+    location.name = String(location.name);
+  }
+  if (!Array.isArray(location.events)) {
+    location.events = [];
+  }
+  location.events = location.events.map((event) => (
+    event && typeof event === "object" && !Array.isArray(event)
+      ? event
+      : { type: "story", targetId: "", probability: 100, conditions: [] }
+  ));
+  for (const event of location.events) {
+    ensureMapEventShape(event);
+  }
+}
+
+function ensureMapEventShape(mapEvent) {
+  if (typeof mapEvent.type !== "string" || !mapEvent.type.trim()) {
+    mapEvent.type = "story";
+  }
+  if (typeof mapEvent.targetId !== "string") {
+    mapEvent.targetId = "";
+  }
+  if (!Number.isFinite(mapEvent.probability)) {
+    mapEvent.probability = 100;
+  }
+  if (!Array.isArray(mapEvent.conditions)) {
+    mapEvent.conditions = [];
+  }
+  mapEvent.conditions = mapEvent.conditions.map((condition) => (
+    condition && typeof condition === "object" && !Array.isArray(condition)
+      ? {
+        type: typeof condition.type === "string" ? condition.type : "always",
+        value: condition.value == null ? "" : String(condition.value),
+      }
+      : { type: "always", value: "" }
+  ));
+}
+
+function clampMapSelection() {
+  const record = state.formRecords[state.selectedRecordIndex];
+  const count = Array.isArray(record?.locations) ? record.locations.length : 0;
+  if (count <= 0) {
+    state.mapEditor.selectedLocationIndex = 0;
+    return;
+  }
+  state.mapEditor.selectedLocationIndex = Math.max(0, Math.min(state.mapEditor.selectedLocationIndex, count - 1));
+}
+
+function getMapKind(record) {
+  return record.kind === "large" ? "large" : "small";
+}
+
+function isLargeMap(record) {
+  return getMapKind(record) === "large";
+}
+
+function normalizeMapPosition(position) {
+  if (!position || typeof position !== "object") {
+    return { x: 400, y: 300 };
+  }
+  return {
+    x: Number.isFinite(position.x) ? position.x : 400,
+    y: Number.isFinite(position.y) ? position.y : 300,
+  };
+}
+
+function getMapResourceInfo(resourceId, group) {
+  const normalizedId = typeof resourceId === "string" ? resourceId.trim() : "";
+  const resource = normalizedId ? state.contentIndex.resourcesById.get(normalizedId) : null;
+  const previewPath = resource ? resolveResourceAssetPath(resource) : "";
+  const status = !normalizedId
+    ? "empty"
+    : !resource
+      ? "missing"
+      : !previewPath
+        ? "broken"
+        : "ok";
+  let message = "未设置资源";
+  if (status === "missing") {
+    message = `resources.json 中不存在：${normalizedId}`;
+  } else if (status === "broken") {
+    message = "资源存在，但找不到对应文件";
+  } else if (status === "ok") {
+    message = `${normalizedId} · ${resource.value || ""}`;
+  }
+  return {
+    resourceId: normalizedId,
+    resource,
+    previewPath,
+    group,
+    status,
+    message,
+  };
+}
+
+function getMapStats(record) {
+  const issues = [];
+  const locations = Array.isArray(record.locations) ? record.locations : [];
+  let events = 0;
+  let storyEvents = 0;
+  let mapEvents = 0;
+
+  if (!record.id) {
+    issues.push("地图缺少 id。");
+  }
+  if (!record.name) {
+    issues.push(`地图「${record.id || "未命名"}」缺少显示名。`);
+  }
+  if (record.picture && getMapResourceInfo(record.picture, "地图").status !== "ok") {
+    issues.push(`地图「${record.id || "未命名"}」背景资源不可用：${record.picture}`);
+  }
+  for (const music of record.musics || []) {
+    if (music && getMapResourceInfo(music, "音乐").status !== "ok") {
+      issues.push(`地图「${record.id || "未命名"}」音乐资源不可用：${music}`);
+    }
+  }
+
+  let hasReturn = false;
+  locations.forEach((location, locationIndex) => {
+    const locationName = location.name || location.id || `点位 ${locationIndex + 1}`;
+    if (!location.id) {
+      issues.push(`点位 ${locationIndex + 1} 缺少 id。`);
+    }
+    if (isLargeMap(record) && (!location.position || !Number.isFinite(location.position.x) || !Number.isFinite(location.position.y))) {
+      issues.push(`大地图点位「${locationName}」缺少坐标。`);
+    }
+    if (location.picture && getMapResourceInfo(location.picture, null).status === "missing") {
+      issues.push(`点位「${locationName}」图片资源不存在：${location.picture}`);
+    }
+    if (!Array.isArray(location.events) || location.events.length === 0) {
+      if (!isLargeMap(record)) {
+        issues.push(`小地图点位「${locationName}」没有事件，运行时不会显示。`);
+      }
+      return;
+    }
+    for (const mapEvent of location.events) {
+      events += 1;
+      if (mapEvent.type === "story") {
+        storyEvents += 1;
+      }
+      if (mapEvent.type === "map") {
+        mapEvents += 1;
+        if (mapEvent.targetId === "大地图" || mapEvent.targetId === record.id) {
+          hasReturn = true;
+        }
+      }
+      const eventInfo = getMapEventInfo(mapEvent);
+      if (eventInfo.severity === "warn" && eventInfo.message) {
+        issues.push(`点位「${locationName}」：${eventInfo.message}`);
+      }
+      if (mapEvent.image && getMapResourceInfo(mapEvent.image, null).status === "missing") {
+        issues.push(`点位「${locationName}」事件图标不存在：${mapEvent.image}`);
+      }
+      for (const condition of mapEvent.conditions || []) {
+        if (!MAP_CONDITION_CHOICES.some((choice) => choice.value === condition.type)) {
+          issues.push(`点位「${locationName}」使用了未支持条件：${condition.type}`);
+        }
+      }
+    }
+  });
+
+  if (!isLargeMap(record) && record.id !== "大地图" && !hasReturn) {
+    issues.push(`小地图「${record.id || "未命名"}」没有返回/跳转事件。`);
+  }
+
+  return {
+    locations: locations.length,
+    events,
+    storyEvents,
+    mapEvents,
+    issues,
+  };
+}
+
+function getMapEventInfo(mapEvent) {
+  const typeChoice = MAP_EVENT_TYPE_CHOICES.find((choice) => choice.value === mapEvent.type);
+  const typeLabel = typeChoice?.label || `${mapEvent.type} 未支持`;
+  const targetId = String(mapEvent.targetId || "").trim();
+  const targetExists = mapEvent.type === "xiangzi" || hasMapEventTarget(mapEvent.type, targetId);
+  let targetStatusText = targetExists ? "目标存在" : "目标缺失";
+  let targetStatusTone = targetExists ? "ok" : "warn";
+  let severity = targetExists ? "ok" : "warn";
+  let message = "";
+
+  if (!typeChoice) {
+    targetStatusText = "类型未支持";
+    targetStatusTone = "warn";
+    severity = "warn";
+    message = `当前运行时不会处理事件类型「${mapEvent.type}」，只会写日志占位。`;
+  } else if (mapEvent.type !== "xiangzi" && !targetId) {
+    targetStatusText = "未填写目标";
+    targetStatusTone = "warn";
+    severity = "warn";
+    message = `${typeLabel} 需要填写目标。`;
+  } else if (!targetExists) {
+    message = `${typeLabel} 目标不存在：${targetId}`;
+  }
+
+  if (!Number.isFinite(mapEvent.probability) || mapEvent.probability < 0 || mapEvent.probability > 100) {
+    severity = "warn";
+    message = "概率必须在 0 到 100 之间。";
+  }
+
+  return {
+    title: targetId ? `${typeLabel}：${targetId}` : typeLabel,
+    typeLabel,
+    targetStatusText,
+    targetStatusTone,
+    severity,
+    message,
+  };
+}
+
+function hasMapEventTarget(type, targetId) {
+  if (!targetId) {
+    return false;
+  }
+  switch (type) {
+    case "map":
+      return state.formRecords.some((record) => record?.id === targetId) ||
+        hasDefinition("maps", targetId);
+    case "story":
+      return hasDefinition("story", targetId);
+    case "shop":
+      return hasDefinition("shops", targetId);
+    case "battle":
+      return hasDefinition("battles", targetId);
+    default:
+      return false;
+  }
+}
+
+function hasDefinition(type, id) {
+  const definitions = state.contentIndex.definitionsById.get(id) || [];
+  return definitions.some((definition) => definition.type === type);
+}
+
+function getDefinitionsByType(type) {
+  const result = [];
+  for (const definitions of state.contentIndex.definitionsById.values()) {
+    for (const definition of definitions) {
+      if (definition.type === type) {
+        result.push(definition);
+      }
+    }
+  }
+  return result.sort((left, right) => left.id.localeCompare(right.id, "zh-Hans-CN"));
+}
+
+function ensureMapEventTargetDatalist(type) {
+  const typeMap = {
+    map: "maps",
+    story: "story",
+    shop: "shops",
+    battle: "battles",
+  };
+  const definitionType = typeMap[type];
+  if (!definitionType) {
+    return "";
+  }
+  const id = `mapEventTargetOptions-${type}`;
+  const existing = document.getElementById(id);
+  if (existing) {
+    existing.remove();
+  }
+  const datalist = document.createElement("datalist");
+  datalist.id = id;
+  for (const definition of getDefinitionsByType(definitionType)) {
+    const option = document.createElement("option");
+    option.value = definition.id;
+    option.label = definition.displayName || definition.id;
+    datalist.appendChild(option);
+  }
+  document.body.appendChild(datalist);
+  return id;
+}
+
+function getMapEventTargetPlaceholder(type) {
+  return {
+    map: "选择 maps.json 中的地图 id",
+    story: "选择 story 段落 id",
+    shop: "选择 shops.json 中的商店 id",
+    battle: "选择 battles.json 中的战斗 id",
+    xiangzi: "储物箱无需目标",
+  }[type] || "未支持事件类型";
+}
+
+function ensureMapConditionValueDatalist(type) {
+  const datalistTypes = {
+    should_finish: "story",
+    should_not_finish: "story",
+    follow_story: "story",
+    in_team: "characters",
+    not_in_team: "characters",
+    key_in_team: "characters",
+    key_not_in_team: "characters",
+    have_item: "items",
+    not_have_item: "items",
+    level_greater_than: "characters",
+    level_less_than: "characters",
+    shenfa_greater_than: "characters",
+    skill_more_than: "characters",
+    skill_less_than: "characters",
+  };
+  const targetType = datalistTypes[type];
+  if (!targetType) {
+    return "";
+  }
+  const id = `mapConditionValueOptions-${type}`;
+  const existing = document.getElementById(id);
+  if (existing) {
+    existing.remove();
+  }
+  const datalist = document.createElement("datalist");
+  datalist.id = id;
+  const definitions = targetType === "characters"
+    ? getDefinitionsByType("characters")
+    : targetType === "items"
+      ? getDefinitionsByType("items")
+      : getDefinitionsByType("story");
+  for (const definition of definitions) {
+    const option = document.createElement("option");
+    option.value = type === "in_team" || type === "not_in_team"
+      ? definition.displayName || definition.id
+      : definition.id;
+    option.label = definition.displayName || definition.id;
+    datalist.appendChild(option);
+  }
+  document.body.appendChild(datalist);
+  return id;
+}
+
+function getMapConditionValuePlaceholder(type) {
+  return {
+    always: "无需填写",
+    should_finish: "剧情 id",
+    should_not_finish: "剧情 id",
+    follow_story: "剧情 id",
+    in_team: "角色显示名",
+    not_in_team: "角色显示名",
+    key_in_team: "角色 id",
+    key_not_in_team: "角色 id",
+    have_item: "物品id 或 物品id#数量",
+    not_have_item: "物品id 或 物品id#数量",
+    in_time: "子#丑#寅 或 Zi#Chou",
+    not_in_time: "子#丑#寅 或 Zi#Chou",
+    has_time_key: "限时 key",
+    not_has_time_key: "限时 key",
+    in_menpai: "门派 id",
+    not_in_menpai: "门派 id",
+    in_round: "周目数字",
+    not_in_round: "周目数字",
+    game_mode: "normal / hard / crazy",
+    exceed_day: "天数",
+    not_exceed_day: "天数",
+    level_greater_than: "角色#等级",
+    level_less_than: "角色#等级",
+    shenfa_greater_than: "角色#身法",
+    skill_more_than: "角色#技能#等级",
+    skill_less_than: "角色#技能#等级",
+    zhoumu_greater_than: "周目数字",
+    in_newbie_task: "无需填写",
+  }[type] || "条件参数";
+}
+
+function matchesMapSearch(record, query) {
+  if (!query) {
+    return true;
+  }
+  const locationText = (record.locations || []).map((location) => [
+    location.id,
+    location.name,
+    location.description,
+    ...(location.events || []).flatMap((event) => [
+      event.type,
+      event.targetId,
+      event.description,
+      ...(event.conditions || []).map((condition) => `${condition.type}:${condition.value}`),
+    ]),
+  ].filter(Boolean).join(" ")).join(" ");
+  const haystack = [
+    record.id,
+    record.name,
+    record.description,
+    record.picture,
+    ...(record.musics || []),
+    locationText,
+  ].filter(Boolean).join(" ").toLowerCase();
+  return haystack.includes(query);
+}
+
+function matchesMapFilter(record, filter) {
+  const stats = getMapStats(record);
+  switch (filter) {
+    case "large":
+      return isLargeMap(record);
+    case "small":
+      return !isLargeMap(record);
+    case "story":
+      return stats.storyEvents > 0;
+    case "issues":
+      return stats.issues.length > 0;
+    case "all":
+    default:
+      return true;
+  }
 }
 
 function isShopFile() {
@@ -5923,6 +7477,38 @@ function createRecordTemplate() {
     };
   }
 
+  if (state.currentPath === "maps.json") {
+    const id = createUniqueId("新地图");
+    return {
+      id,
+      name: id,
+      description: "",
+      picture: `地图.${id}`,
+      musics: [],
+      locations: [
+        {
+          id: "返回",
+          name: "返回",
+          position: {
+            x: -1,
+            y: -1,
+          },
+          description: "返回大地图",
+          picture: null,
+          events: [
+            {
+              type: "map",
+              targetId: "大地图",
+              probability: 100,
+              description: "返回大地图",
+              conditions: [],
+            },
+          ],
+        },
+      ],
+    };
+  }
+
   if (state.currentPath === "items.json") {
     const id = createUniqueId("新物品");
     return {
@@ -8658,6 +10244,12 @@ function handleGlobalKeydown(event) {
   if (event.key === "Escape" && state.shopResourcePicker.open) {
     event.preventDefault();
     closeShopResourcePicker();
+    return;
+  }
+
+  if (event.key === "Escape" && state.mapEditor.focusMode) {
+    event.preventDefault();
+    setMapFocusMode(false);
     return;
   }
 
