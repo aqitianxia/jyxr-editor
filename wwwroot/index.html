@@ -3,109 +3,207 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>JYXR JSON 编辑器</title>
+  <title>JYXR MOD 编辑器 · v0.3.0</title>
   <link rel="stylesheet" data-name="vs/editor/editor.main" href="/vendor/monaco/vs/editor/editor.main.css?v=20260708-monaco-1">
   <link rel="stylesheet" href="/styles.css?v=20260710-map-icons-1">
+  <link rel="stylesheet" href="/styles/tokens.css?v=20260711-shell-1">
+  <link rel="stylesheet" href="/styles/components.css?v=20260711-shell-1">
+  <link rel="stylesheet" href="/styles/shell.css?v=20260711-stage3-1">
+  <link rel="stylesheet" href="/styles/stage3.css?v=20260711-stage3-1">
 </head>
-<body>
+<body data-editor-version="0.3.0">
   <div class="app-shell">
     <header class="topbar">
-      <div>
-        <div class="brand">JYXR JSON 编辑器</div>
-        <div id="workspacePath" class="path-line"></div>
+      <div class="topbar-leading">
+        <button id="navigationToggleButton" class="icon-button navigation-toggle" type="button" aria-label="收起导航" title="收起导航">
+          <span aria-hidden="true">☰</span>
+        </button>
+        <div class="brand-block">
+          <div class="brand">JYXR MOD 编辑器</div>
+          <div class="brand-meta" aria-label="编辑器版本与核心状态">
+            <span id="editorVersion" class="editor-version">v0.3.0 · 阶段 3</span>
+            <span id="coreLoadState" class="core-load-state pending" aria-live="polite">核心未加载</span>
+          </div>
+        </div>
       </div>
+
+      <label class="mod-selector">
+        <span>当前 MOD</span>
+        <select id="modSelect" aria-label="当前 MOD"></select>
+      </label>
+
       <div class="top-actions">
-        <label class="mod-selector">
-          <span>当前 MOD</span>
-          <select id="modSelect"></select>
-        </label>
-        <button id="formatButton" type="button">格式化</button>
-        <button id="validateButton" type="button">校验</button>
-        <a class="button-link" href="/help.html" target="_blank" rel="noreferrer">帮助</a>
-        <button id="saveButton" type="button" class="primary">保存</button>
+        <button id="validateButton" type="button" class="button secondary">检查</button>
+        <button id="problemCenterButton" type="button" class="button secondary">
+          <span>问题中心</span>
+          <span id="problemCountBadge" class="status-badge neutral">0</span>
+        </button>
+        <button id="inspectorToggleButton" type="button" class="button ghost" aria-controls="contextInspector" aria-expanded="false">
+          <span>当前上下文</span>
+          <span id="inspectorStatus" class="status-badge neutral">未检查</span>
+        </button>
+        <div id="dirtyState" class="dirty-state" aria-live="polite"></div>
+        <button id="saveButton" type="button" class="button primary">保存</button>
+        <details class="topbar-more">
+          <summary class="icon-button" aria-label="更多操作" title="更多操作">•••</summary>
+          <div class="topbar-menu">
+            <a class="menu-item" href="/help.html" target="_blank" rel="noreferrer">帮助与使用说明</a>
+          </div>
+        </details>
       </div>
     </header>
 
+    <div id="coreLoadError" class="core-load-error" role="alert" hidden>
+      <strong>编辑器核心加载失败</strong>
+      <code id="coreLoadErrorMessage">未知模块错误</code>
+      <span>请把这条错误信息发给 Codex。</span>
+    </div>
+
     <main class="workspace-grid">
-      <aside class="sidebar">
-        <div class="tab-row" role="tablist" aria-label="文件类型">
-          <button id="dataTab" type="button" class="tab active">数据</button>
-          <button id="storyTab" type="button" class="tab">剧情</button>
-          <button id="assetsTab" type="button" class="tab">资产</button>
-        </div>
-        <input id="fileSearch" class="search" type="search" placeholder="搜索文件">
-        <div id="fileList" class="file-list" aria-label="文件列表"></div>
+      <aside id="primarySidebar" class="sidebar" aria-label="编辑器导航">
+        <nav class="primary-navigation" aria-label="主要工作区">
+          <div class="navigation-section-label">项目</div>
+          <button id="homeTab" type="button" class="navigation-item active">
+            <span class="navigation-icon" aria-hidden="true">⌂</span>
+            <span class="navigation-copy">
+              <strong>项目首页</strong>
+              <small>MOD 状态与快速开始</small>
+            </span>
+          </button>
+          <button id="problemsTab" type="button" class="navigation-item">
+            <span class="navigation-icon" aria-hidden="true">!</span>
+            <span class="navigation-copy">
+              <strong>问题中心</strong>
+              <small>检查、筛选与定位</small>
+            </span>
+          </button>
+          <div class="navigation-section-label navigation-section-spaced">编辑工具</div>
+          <button id="dataTab" type="button" class="navigation-item">
+            <span class="navigation-icon" aria-hidden="true">▦</span>
+            <span class="navigation-copy">
+              <strong>高级数据</strong>
+              <small>表单与 JSON 文件</small>
+            </span>
+          </button>
+          <button id="storyTab" type="button" class="navigation-item">
+            <span class="navigation-icon" aria-hidden="true">⌘</span>
+            <span class="navigation-copy">
+              <strong>剧情图谱</strong>
+              <small>关系与静态诊断</small>
+            </span>
+          </button>
+          <button id="assetsTab" type="button" class="navigation-item">
+            <span class="navigation-icon" aria-hidden="true">◇</span>
+            <span class="navigation-copy">
+              <strong>资源浏览</strong>
+              <small>图片、音频与文件</small>
+            </span>
+          </button>
+        </nav>
+
+        <section id="sidebarBrowser" class="sidebar-browser" aria-labelledby="browserTitle">
+          <div class="sidebar-section-header">
+            <div>
+              <div id="browserTitle" class="sidebar-section-title">数据文件</div>
+              <div class="sidebar-section-caption">当前 MOD 内容</div>
+            </div>
+          </div>
+          <input id="fileSearch" class="search" type="search" placeholder="搜索文件" aria-label="搜索当前列表">
+          <div id="fileList" class="file-list" aria-label="文件列表"></div>
+        </section>
+
+        <div id="workspacePath" class="workspace-summary" title="当前工作区路径"></div>
       </aside>
 
-      <section class="editor-pane">
-        <div class="pane-header">
+      <section id="editorPane" class="editor-pane overview-workspace">
+        <div id="homeView" class="project-home-view"></div>
+        <div id="problemCenterView" class="problem-center-view hidden"></div>
+
+        <div id="workspacePaneHeader" class="pane-header hidden">
           <div class="file-context">
+            <div id="workspaceEyebrow" class="workspace-eyebrow">高级数据</div>
             <div id="currentPath" class="current-path">未选择文件</div>
             <div id="currentFileSummary" class="current-file-summary">等待选择文件</div>
           </div>
-          <div class="quick-actions" aria-label="创作工具">
-            <button id="newStoryButton" type="button" class="primary">新建 Story</button>
-            <button id="newSpeakerButton" type="button">新建说话人</button>
-            <button id="portraitCheckButton" type="button">头像检查</button>
-            <button id="characterCheckButton" type="button">角色/物品检查</button>
-            <div id="dirtyState" class="dirty-state"></div>
+          <div class="quick-actions" aria-label="当前工作区操作">
+            <button id="newStoryButton" type="button" class="button primary">新建 Story</button>
+            <button id="newSpeakerButton" type="button" class="button secondary">新建说话人</button>
+            <button id="portraitCheckButton" type="button" class="button secondary">头像检查</button>
+            <button id="characterCheckButton" type="button" class="button ghost">角色/物品检查</button>
           </div>
         </div>
-        <div class="editor-tools">
-          <button id="formModeButton" type="button">表单</button>
-          <button id="jsonModeButton" type="button">JSON</button>
+
+        <div id="editorTools" class="editor-tools hidden" aria-label="当前内容工具">
+          <div class="segmented-control" aria-label="编辑视图">
+            <button id="formModeButton" type="button">表单</button>
+            <button id="jsonModeButton" type="button">JSON</button>
+          </div>
           <button id="mapFocusButton" type="button" class="map-focus-button hidden">地图工作台</button>
-          <input id="contentSearch" class="content-search" type="search" placeholder="搜索当前文件">
-          <select id="outlineSelect" class="outline-select" title="按剧情段标题跳转"></select>
-          <button id="findPreviousButton" type="button">上一个</button>
-          <button id="findNextButton" type="button">下一个</button>
+          <button id="formatButton" type="button" class="button ghost">格式化</button>
+          <div class="toolbar-divider" aria-hidden="true"></div>
+          <input id="contentSearch" class="content-search" type="search" placeholder="搜索当前文件" aria-label="搜索当前内容">
+          <select id="outlineSelect" class="outline-select" title="按剧情段标题跳转" aria-label="跳转到剧情段"></select>
+          <button id="findPreviousButton" type="button" class="icon-button compact" title="上一个匹配" aria-label="上一个匹配">↑</button>
+          <button id="findNextButton" type="button" class="icon-button compact" title="下一个匹配" aria-label="下一个匹配">↓</button>
           <button id="saveStorySourceButton" type="button" class="story-source-button hidden">另存为 Story</button>
-          <div id="searchState" class="tool-state"></div>
+          <div id="searchState" class="tool-state" aria-live="polite"></div>
         </div>
+
         <div id="formView" class="form-view hidden"></div>
         <div id="storyView" class="story-view hidden"></div>
-        <textarea id="editor" class="legacy-editor" spellcheck="false" autocomplete="off" autocapitalize="off"></textarea>
+        <textarea id="editor" class="legacy-editor" spellcheck="false" autocomplete="off" autocapitalize="off" aria-label="内容编辑器"></textarea>
         <div id="monacoHost" class="monaco-host hidden"></div>
-        <div class="statusbar">
+
+        <div id="editorStatusbar" class="statusbar hidden">
           <div id="cursorState">行 1，列 1</div>
-          <div id="saveState"></div>
+          <div id="saveState" aria-live="polite"></div>
         </div>
       </section>
 
-      <aside class="inspector">
-        <section>
-          <div class="section-title">校验</div>
-          <div id="validationBox" class="message muted">等待校验</div>
-        </section>
-        <section>
-          <div class="section-title">当前文件</div>
-          <div id="currentFileBox" class="index-box muted">未选择文件</div>
-        </section>
-        <section>
-          <div class="section-title">索引</div>
-          <div id="indexBox" class="index-box muted">正在建立索引</div>
-        </section>
-        <section>
-          <div class="section-title">选中</div>
-          <div id="selectionBox" class="index-box muted">选中 JSON 字符串后显示定义</div>
-        </section>
-        <section>
-          <div class="section-title">检查结果</div>
-          <div id="checkResultsBox" class="check-results">
-            <div id="portraitCheckBox" class="static-tool compact"></div>
-            <div id="characterCheckBox" class="static-tool compact"></div>
+      <button id="contextDrawerBackdrop" class="context-drawer-backdrop" type="button" aria-label="关闭上下文面板"></button>
+      <aside id="contextInspector" class="inspector" aria-label="问题与上下文" aria-hidden="true">
+        <div class="inspector-header">
+          <div>
+            <div class="inspector-eyebrow">上下文面板</div>
+            <div class="inspector-title">问题与详情</div>
           </div>
-        </section>
-        <section>
-          <div class="section-title">资产</div>
-          <div id="assetPreview" class="asset-preview muted">未选择资产</div>
-        </section>
+          <button id="inspectorCloseButton" class="icon-button" type="button" aria-label="关闭上下文面板" title="关闭">×</button>
+        </div>
+        <div class="inspector-scroll">
+          <section>
+            <div class="section-title">检查</div>
+            <div id="validationBox" class="message muted">等待检查</div>
+          </section>
+          <section>
+            <div class="section-title">当前文件</div>
+            <div id="currentFileBox" class="index-box muted">未选择文件</div>
+          </section>
+          <section>
+            <div class="section-title">索引</div>
+            <div id="indexBox" class="index-box muted">正在建立索引</div>
+          </section>
+          <section>
+            <div class="section-title">选中内容</div>
+            <div id="selectionBox" class="index-box muted">选中 JSON 字符串后显示定义</div>
+          </section>
+          <section>
+            <div class="section-title">专项检查</div>
+            <div id="checkResultsBox" class="check-results">
+              <div id="portraitCheckBox" class="static-tool compact"></div>
+              <div id="characterCheckBox" class="static-tool compact"></div>
+            </div>
+          </section>
+          <section>
+            <div class="section-title">资源预览</div>
+            <div id="assetPreview" class="asset-preview muted">未选择资源</div>
+          </section>
+        </div>
       </aside>
     </main>
   </div>
 
   <script src="/vendor/monaco/vs/loader.js?v=20260708-monaco-1"></script>
   <script src="/story-dsl.js?v=20260709-dsl-json-1"></script>
-  <script src="/app.js?v=20260710-map-icons-1"></script>
+  <script src="/bootstrap.js?v=20260711-bootstrap-5"></script>
 </body>
 </html>

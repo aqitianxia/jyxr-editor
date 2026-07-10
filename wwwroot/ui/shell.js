@@ -1,0 +1,76 @@
+import { setDrawerOpen } from "./drawers.js?v=20260711-core-8";
+
+const shellContexts = Object.freeze({
+  home: { eyebrow: "项目首页", browserTitle: "项目导航" },
+  problems: { eyebrow: "质量检查 / 问题中心", browserTitle: "问题筛选" },
+  data: { eyebrow: "高级数据", browserTitle: "数据文件" },
+  story: { eyebrow: "剧情与任务 / 图谱", browserTitle: "剧情分组" },
+  assets: { eyebrow: "资源管理 / 浏览", browserTitle: "资源文件" },
+});
+
+export function createShellController({
+  state,
+  elements,
+  preferences,
+  navigationPreferenceKey,
+  scheduleLayout,
+  matchMedia = window.matchMedia.bind(window),
+}) {
+  function initialize() {
+    const savedNavigationState = preferences.get(navigationPreferenceKey);
+    const collapseForNarrowScreen = matchMedia("(max-width: 680px)").matches;
+    state.shell.navigationCollapsed = savedNavigationState === null
+      ? collapseForNarrowScreen
+      : savedNavigationState === "true";
+    setNavigationCollapsed(state.shell.navigationCollapsed, { persist: false });
+    setContextDrawerOpen(false, { focusClose: false });
+    renderContext();
+  }
+
+  function setNavigationCollapsed(collapsed, options = {}) {
+    state.shell.navigationCollapsed = Boolean(collapsed);
+    document.body.classList.toggle("navigation-collapsed", state.shell.navigationCollapsed);
+    elements.navigationToggleButton.setAttribute("aria-expanded", String(!state.shell.navigationCollapsed));
+    const actionLabel = state.shell.navigationCollapsed ? "展开导航" : "收起导航";
+    elements.navigationToggleButton.setAttribute("aria-label", actionLabel);
+    elements.navigationToggleButton.title = actionLabel;
+    if (options.persist !== false) {
+      preferences.set(navigationPreferenceKey, state.shell.navigationCollapsed);
+    }
+    scheduleLayout();
+  }
+
+  function setContextDrawerOpen(open, options = {}) {
+    state.shell.contextDrawerOpen = setDrawerOpen({
+      open,
+      bodyClass: "context-drawer-open",
+      toggleButton: elements.inspectorToggleButton,
+      drawer: elements.contextInspector,
+      closeButton: elements.inspectorCloseButton,
+      focusClose: options.focusClose !== false,
+    });
+  }
+
+  function renderContext() {
+    const context = shellContexts[state.mode] || shellContexts.home;
+    elements.workspaceEyebrow.textContent = context.eyebrow;
+    elements.browserTitle.textContent = context.browserTitle;
+    elements.newStoryButton.classList.toggle("hidden", state.mode !== "story");
+    elements.newSpeakerButton.classList.toggle("hidden", state.mode !== "story");
+    elements.portraitCheckButton.classList.toggle("hidden", state.mode === "story");
+    elements.characterCheckButton.classList.toggle("hidden", state.mode !== "data");
+  }
+
+  function renderInspectorStatus(ok, label) {
+    elements.inspectorStatus.className = `status-badge ${ok ? "ok" : "bad"}`;
+    elements.inspectorStatus.textContent = label || (ok ? "正常" : "有问题");
+  }
+
+  return {
+    initialize,
+    setNavigationCollapsed,
+    setContextDrawerOpen,
+    renderContext,
+    renderInspectorStatus,
+  };
+}

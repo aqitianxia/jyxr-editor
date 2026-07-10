@@ -1,88 +1,21 @@
-const state = {
-  mode: "data",
-  workspace: null,
-  mods: [],
-  activeModId: "",
-  dataFiles: [],
-  assetFiles: [],
-  currentPath: "",
-  dirty: false,
-  searchMatches: [],
-  searchIndex: -1,
-  viewMode: "json",
-  formRecords: [],
-  selectedRecordIndex: 0,
-  formSearch: "",
-  formFilter: "all",
-  mapEditor: {
-    selectedLocationIndex: 0,
-    focusMode: false,
-    canvasMode: "select",
-    locationSearch: "",
-    resourcePicker: {
-      open: false,
-      locationIndex: -1,
-      eventIndex: -1,
-      field: "",
-      filter: "recommended",
-      search: "",
-      selectedResourceId: "",
-    },
-  },
-  storySource: {
-    path: "",
-    text: "",
-    jsonText: "",
-    diagnostics: [],
-    kind: "",
-  },
-  characterTab: "talents",
-  itemTab: "requirements",
-  portraitPicker: {
-    open: false,
-    search: "",
-    selectedAssetPath: "",
-  },
-  itemPicturePicker: {
-    open: false,
-    search: "",
-    selectedAssetPath: "",
-  },
-  shopResourcePicker: {
-    open: false,
-    field: "",
-    search: "",
-    selectedAssetPath: "",
-  },
-  assetImageInfo: new Map(),
-  assetFilePathSet: new Set(),
-  resourceValues: new Map(),
-  portraitCheck: null,
-  storyGraph: null,
-  selectedStoryGroupId: "",
-  selectedStoryNodeId: "",
-  fileGroups: {
-    basicData: { collapsed: false },
-    storyData: { collapsed: false },
-  },
-  contentIndex: {
-    ready: false,
-    definitionsById: new Map(),
-    fileSummaries: new Map(),
-    duplicateDefinitions: [],
-    parseErrors: [],
-    resourcesById: new Map(),
-    resourcesByGroup: new Map(),
-    charactersByIdOrName: new Map(),
-    itemsById: new Map(),
-    storySpeakers: new Map(),
-  },
-};
-
-const storageKeys = {
-  lastDataPath: "jyxr-json-editor:last-data-path",
-  activeModId: "jyxr-json-editor:active-mod-id",
-};
+import { state } from "./core/state.js?v=20260711-core-8";
+import { editorVersion } from "./core/version.js?v=20260711-core-8";
+import { createEditorApi } from "./core/api.js?v=20260711-core-8";
+import { createCommandRegistry } from "./core/commands.js?v=20260711-core-8";
+import { createDirtyStateController } from "./core/dirty-state.js?v=20260711-core-8";
+import { createEventBus } from "./core/events.js?v=20260711-core-8";
+import { createPreferences, storageKeys } from "./core/preferences.js?v=20260711-core-8";
+import { normalizeWorkspaceMode } from "./core/router.js?v=20260711-core-8";
+import { createProblem, summarizeProblems } from "./core/problems.js?v=20260711-core-8";
+import { createRecentItemsStore } from "./core/recent-items.js?v=20260711-core-8";
+import { createButton } from "./ui/buttons.js?v=20260711-core-8";
+import { confirmAction, createDialogController } from "./ui/dialogs.js?v=20260711-core-8";
+import { createField, createTextInput } from "./ui/fields.js?v=20260711-core-8";
+import { createTextList } from "./ui/lists.js?v=20260711-core-8";
+import { createProblemSummary, renderStatusMessage } from "./ui/problem-list.js?v=20260711-core-8";
+import { createShellController } from "./ui/shell.js?v=20260711-core-8";
+import { renderProjectHome } from "./ui/home.js?v=20260711-core-8";
+import { renderProblemCenter } from "./ui/problem-center.js?v=20260711-core-8";
 
 const dataFileDisplayNames = new Map([
   ["battles.json", "战斗"],
@@ -108,7 +41,28 @@ const dataFileDisplayNames = new Map([
 ]);
 
 const elements = {
+  editorVersion: document.getElementById("editorVersion"),
+  coreLoadState: document.getElementById("coreLoadState"),
   workspacePath: document.getElementById("workspacePath"),
+  navigationToggleButton: document.getElementById("navigationToggleButton"),
+  inspectorToggleButton: document.getElementById("inspectorToggleButton"),
+  inspectorCloseButton: document.getElementById("inspectorCloseButton"),
+  contextDrawerBackdrop: document.getElementById("contextDrawerBackdrop"),
+  contextInspector: document.getElementById("contextInspector"),
+  inspectorStatus: document.getElementById("inspectorStatus"),
+  problemCenterButton: document.getElementById("problemCenterButton"),
+  problemCountBadge: document.getElementById("problemCountBadge"),
+  homeTab: document.getElementById("homeTab"),
+  problemsTab: document.getElementById("problemsTab"),
+  sidebarBrowser: document.getElementById("sidebarBrowser"),
+  editorPane: document.getElementById("editorPane"),
+  homeView: document.getElementById("homeView"),
+  problemCenterView: document.getElementById("problemCenterView"),
+  workspacePaneHeader: document.getElementById("workspacePaneHeader"),
+  editorTools: document.getElementById("editorTools"),
+  editorStatusbar: document.getElementById("editorStatusbar"),
+  workspaceEyebrow: document.getElementById("workspaceEyebrow"),
+  browserTitle: document.getElementById("browserTitle"),
   modSelect: document.getElementById("modSelect"),
   formatButton: document.getElementById("formatButton"),
   validateButton: document.getElementById("validateButton"),
@@ -144,11 +98,16 @@ const elements = {
   validationBox: document.getElementById("validationBox"),
   indexBox: document.getElementById("indexBox"),
   selectionBox: document.getElementById("selectionBox"),
-  speakerToolBox: document.getElementById("speakerToolBox"),
   portraitCheckBox: document.getElementById("portraitCheckBox"),
   characterCheckBox: document.getElementById("characterCheckBox"),
   assetPreview: document.getElementById("assetPreview"),
 };
+
+elements.editorVersion.textContent = `${editorVersion.label} · ${editorVersion.phase}`;
+elements.editorVersion.title = `编辑器版本 ${editorVersion.label}，${editorVersion.date}`;
+elements.coreLoadState.className = "core-load-state loaded";
+elements.coreLoadState.textContent = "核心已加载";
+document.documentElement.dataset.editorCoreVersion = editorVersion.number;
 
 const monacoState = {
   ready: false,
@@ -157,16 +116,53 @@ const monacoState = {
   suppressChange: false,
 };
 
-elements.dataTab.addEventListener("click", () => setMode("data"));
-elements.storyTab.addEventListener("click", () => setMode("story"));
-elements.assetsTab.addEventListener("click", () => setMode("assets"));
+const preferences = createPreferences();
+const recentItemsStore = createRecentItemsStore({
+  preferences,
+  storageKey: storageKeys.recentEntries,
+});
+const events = createEventBus();
+const api = createEditorApi({ getActiveModId: () => state.activeModId });
+const commandRegistry = createCommandRegistry();
+const dialogController = createDialogController();
+const dirtyStateController = createDirtyStateController({
+  state,
+  events,
+  render: renderDirtyState,
+  confirmDiscard: confirmAction,
+});
+const shellController = createShellController({
+  state,
+  elements,
+  preferences,
+  navigationPreferenceKey: storageKeys.navigationCollapsed,
+  scheduleLayout: scheduleEditorLayout,
+});
+const { requestJson } = api;
+commandRegistry.register("file.save", saveCurrentFile, { shortcut: "mod+s" });
+commandRegistry.register("file.format", formatCurrentJson, { shortcut: "mod+shift+f" });
+
+elements.navigationToggleButton.addEventListener("click", () => {
+  setNavigationCollapsed(!state.shell.navigationCollapsed);
+});
+elements.inspectorToggleButton.addEventListener("click", () => {
+  setContextDrawerOpen(!state.shell.contextDrawerOpen);
+});
+elements.inspectorCloseButton.addEventListener("click", () => setContextDrawerOpen(false));
+elements.contextDrawerBackdrop.addEventListener("click", () => setContextDrawerOpen(false));
+elements.problemCenterButton.addEventListener("click", () => setMode("problems"));
+elements.homeTab.addEventListener("click", () => setMode("home"));
+elements.problemsTab.addEventListener("click", () => setMode("problems"));
+elements.dataTab.addEventListener("click", () => openWorkspaceMode("data"));
+elements.storyTab.addEventListener("click", () => openWorkspaceMode("story"));
+elements.assetsTab.addEventListener("click", () => openWorkspaceMode("assets"));
 elements.fileSearch.addEventListener("input", renderFileList);
 elements.formModeButton.addEventListener("click", () => setViewMode(isStoryDslEditingFile() ? "dsl" : "form"));
 elements.jsonModeButton.addEventListener("click", () => setViewMode("json"));
 elements.saveStorySourceButton.addEventListener("click", saveCurrentStoryJsonAsSource);
 elements.mapFocusButton.addEventListener("click", () => setMapFocusMode(!state.mapEditor.focusMode));
 elements.formatButton.addEventListener("click", formatCurrentJson);
-elements.validateButton.addEventListener("click", validateContent);
+elements.validateButton.addEventListener("click", runProjectChecks);
 elements.saveButton.addEventListener("click", saveCurrentFile);
 elements.newStoryButton.addEventListener("click", openNewStoryDialog);
 elements.newSpeakerButton.addEventListener("click", openSpeakerToolDialog);
@@ -197,9 +193,11 @@ elements.editor.addEventListener("select", () => {
   renderSelectionLookup();
 });
 
+initializeShell();
+
 window.addEventListener("keydown", handleGlobalKeydown);
 window.addEventListener("beforeunload", (event) => {
-  if (!state.dirty) {
+  if (!dirtyStateController.isDirty()) {
     return;
   }
 
@@ -208,6 +206,26 @@ window.addEventListener("beforeunload", (event) => {
 });
 
 boot();
+
+function initializeShell() {
+  shellController.initialize();
+}
+
+function setNavigationCollapsed(collapsed, options = {}) {
+  shellController.setNavigationCollapsed(collapsed, options);
+}
+
+function setContextDrawerOpen(open, options = {}) {
+  shellController.setContextDrawerOpen(open, options);
+}
+
+function renderShellContext() {
+  shellController.renderContext();
+}
+
+function renderInspectorStatus(ok, label) {
+  shellController.renderInspectorStatus(ok, label);
+}
 
 function initializeMonacoEditor() {
   if (!elements.monacoHost || !window.require) {
@@ -299,7 +317,7 @@ function registerStoryDslMonacoLanguage() {
 }
 
 function handleTextEditorInput() {
-  state.dirty = true;
+  dirtyStateController.markDirty({ render: false });
   if (isStorySourceFile() && state.viewMode === "dsl") {
     updateStoryDslAnalysis({ showSuccess: false });
   }
@@ -533,17 +551,17 @@ async function boot() {
   await initializeMonacoEditor();
   await loadWorkspace();
   await Promise.all([loadDataFiles(), loadAssetFiles()]);
+  state.recentEntries = recentItemsStore.read(state.activeModId);
   await rebuildContentIndex();
   await loadStoryGraph();
-  renderFileList();
-  await openLastDataFile();
   await validateContent();
+  setMode("home");
 }
 
 async function loadWorkspace() {
   state.workspace = await requestJson("/api/workspace");
   state.mods = Array.isArray(state.workspace.mods) ? state.workspace.mods : [];
-  const savedModId = localStorage.getItem(storageKeys.activeModId);
+  const savedModId = preferences.get(storageKeys.activeModId);
   const defaultModId = state.workspace.defaultModId || "jyxr-expansion";
   state.activeModId = state.mods.some((mod) => mod.id === savedModId)
     ? savedModId
@@ -584,7 +602,9 @@ function renderWorkspacePath() {
   const modText = activeMod
     ? `${activeMod.name || activeMod.id} · ${activeMod.path}/data`
     : state.activeModId;
-  elements.workspacePath.textContent = `正在编辑：${modText}  |  共享资产：${state.workspace.assetsPath}`;
+  const summary = `正在编辑：${modText}  |  共享资产：${state.workspace.assetsPath}`;
+  elements.workspacePath.textContent = summary;
+  elements.workspacePath.title = summary;
 }
 
 async function switchMod(modId) {
@@ -598,9 +618,9 @@ async function switchMod(modId) {
   }
 
   state.activeModId = modId;
-  localStorage.setItem(storageKeys.activeModId, modId);
+  preferences.set(storageKeys.activeModId, modId);
   state.currentPath = "";
-  state.dirty = false;
+  dirtyStateController.markClean({ render: false });
   state.formRecords = [];
   state.selectedRecordIndex = 0;
   state.storySource = {
@@ -618,18 +638,14 @@ async function switchMod(modId) {
   elements.currentPath.textContent = "未选择文件";
   elements.saveState.textContent = "";
   renderWorkspacePath();
-  await loadDataFiles();
+  await Promise.all([loadDataFiles(), loadAssetFiles()]);
   await rebuildContentIndex();
   await loadStoryGraph();
-  renderFileList();
+  state.recentEntries = recentItemsStore.read(state.activeModId);
   renderDirtyState();
   renderCursorState();
-  if (state.mode === "story") {
-    renderStoryView();
-  } else {
-    await openLastDataFile();
-  }
   await validateContent();
+  setMode("home");
 }
 
 function getActiveMod() {
@@ -654,25 +670,51 @@ async function loadStoryGraph() {
   } catch (error) {
     state.storyGraph = null;
     showValidation(false, error.message);
+  } finally {
+    renderProblemIndicators();
   }
 }
 
 function setMode(mode) {
+  mode = normalizeWorkspaceMode(mode);
   state.mode = mode;
-  document.body.classList.toggle("story-mode", mode === "story");
+  const isOverview = mode === "home" || mode === "problems";
+  const isStory = mode === "story";
+
+  document.body.classList.toggle("story-mode", isStory);
+  document.body.classList.toggle("overview-mode", isOverview);
+  elements.editorPane.classList.toggle("overview-workspace", isOverview);
+  elements.homeTab.classList.toggle("active", mode === "home");
+  elements.problemsTab.classList.toggle("active", mode === "problems");
   elements.dataTab.classList.toggle("active", mode === "data");
-  elements.storyTab.classList.toggle("active", mode === "story");
+  elements.storyTab.classList.toggle("active", isStory);
   elements.assetsTab.classList.toggle("active", mode === "assets");
+  elements.homeView.classList.toggle("hidden", mode !== "home");
+  elements.problemCenterView.classList.toggle("hidden", mode !== "problems");
+  elements.workspacePaneHeader.classList.toggle("hidden", isOverview);
+  elements.editorTools.classList.toggle("hidden", isOverview || isStory);
+  elements.editorStatusbar.classList.toggle("hidden", isOverview || isStory);
+
   elements.fileSearch.value = "";
-  elements.fileSearch.placeholder = mode === "story"
+  elements.fileSearch.placeholder = isStory
     ? "搜索剧情线"
     : mode === "assets"
       ? "搜索资产"
       : "搜索文件";
   elements.saveButton.disabled = mode !== "data";
   elements.formatButton.disabled = mode !== "data";
-  if (mode === "story") {
-    state.dirty = false;
+
+  if (mode === "home") {
+    elements.formView.classList.add("hidden");
+    elements.storyView.classList.add("hidden");
+    setTextEditorVisible(false);
+    renderProjectHomeWorkspace();
+  } else if (mode === "problems") {
+    elements.formView.classList.add("hidden");
+    elements.storyView.classList.add("hidden");
+    setTextEditorVisible(false);
+    renderProblemCenterWorkspace();
+  } else if (isStory) {
     elements.currentPath.textContent = "剧情图谱";
     elements.saveState.textContent = "";
     elements.assetPreview.textContent = "剧情视图不预览资产";
@@ -703,8 +745,347 @@ function setMode(mode) {
 
   updateMapFocusControl();
   updateStorySourceButton();
-  renderFileList();
-  renderCurrentFileInfo();
+  renderShellContext();
+  if (!isOverview) {
+    renderFileList();
+    renderCurrentFileInfo();
+  }
+  renderProblemIndicators();
+  scheduleEditorLayout();
+}
+
+async function openWorkspaceMode(mode) {
+  setMode(mode);
+  if (mode === "data" && !state.dataFiles.some((file) => file.path === state.currentPath)) {
+    await openLastDataFile();
+    if (!state.dataFiles.some((file) => file.path === state.currentPath) && state.dataFiles.length > 0) {
+      await openDataFile(state.dataFiles[0].path);
+    }
+  }
+}
+
+function renderProjectHomeWorkspace() {
+  const definitionCount = Array.from(state.contentIndex.definitionsById.values())
+    .reduce((total, definitions) => total + definitions.length, 0);
+  renderProjectHome(elements.homeView, {
+    mod: getActiveMod(),
+    dataFileCount: state.dataFiles.length,
+    assetFileCount: state.assetFiles.length,
+    definitionCount,
+    storyNodeCount: state.storyGraph?.summary?.nodeCount || 0,
+    problems: collectProjectProblems(),
+    recentEntries: state.recentEntries,
+    quickStarts: [
+      { label: "角色与伙伴", detail: "编辑角色、头像、成长与武学", icon: "人", mode: "data", path: "characters.json", available: false },
+      { label: "地图与事件", detail: "编辑地图、点位和交互事件", icon: "图", mode: "data", path: "maps.json", available: false },
+      { label: "剧情与任务", detail: "查看剧情图谱与静态诊断", icon: "文", mode: "story", available: true },
+      { label: "物品与装备", detail: "编辑物品、装备和效果", icon: "物", mode: "data", path: "items.json", available: false },
+      { label: "商店与经济", detail: "编辑商店商品、价格和限购", icon: "商", mode: "data", path: "shops.json", available: false },
+      { label: "浏览共享资源", detail: "预览项目图片、音频与文件", icon: "◇", mode: "assets", available: true },
+      { label: "高级数据", detail: "打开完整文件树、表单、JSON 与 DSL", icon: "▦", mode: "data", available: true },
+      { label: "问题中心", detail: "执行检查并定位内容问题", icon: "!", mode: "problems", available: true },
+    ],
+  }, {
+    openProblems: () => setMode("problems"),
+    openWorkspace: openQuickStart,
+    openRecent: openRecentEntry,
+  });
+}
+
+function renderProblemCenterWorkspace() {
+  renderProblemCenter(elements.problemCenterView, {
+    problems: collectProjectProblems(),
+    filters: state.problemCenter.filters,
+    checking: state.problemCenter.checking,
+    lastCheckedAt: state.problemCenter.lastCheckedAt,
+  }, {
+    runChecks: runProjectChecks,
+    setSeverity: (severity) => {
+      state.problemCenter.filters.severity = severity;
+      renderProblemCenterWorkspace();
+    },
+    setFilter: (key, value) => {
+      state.problemCenter.filters[key] = value;
+      renderProblemCenterWorkspace();
+    },
+    locateProblem,
+  });
+}
+
+function renderProblemIndicators() {
+  const summary = summarizeProblems(collectProjectProblems());
+  elements.problemCountBadge.textContent = String(summary.total);
+  elements.problemCountBadge.className = `status-badge ${summary.error > 0 ? "bad" : summary.total === 0 ? "ok" : "neutral"}`;
+  elements.problemCenterButton.title = summary.total === 0
+    ? "当前没有已收集的问题"
+    : `${summary.error} 个错误，${summary.warning} 个警告，${summary.suggestion} 个建议`;
+  if (state.mode === "home") {
+    renderProjectHomeWorkspace();
+  } else if (state.mode === "problems") {
+    renderProblemCenterWorkspace();
+  }
+}
+
+function collectProjectProblems() {
+  const problems = [];
+  const validation = state.problemCenter.validation;
+  if (validation && !validation.ok) {
+    problems.push(createProblem({
+      id: "backend:content-validation",
+      severity: "error",
+      source: "backend-validation",
+      sourceLabel: "正式内容校验",
+      contentType: "project",
+      contentTypeLabel: "项目",
+      message: "正式内容加载校验失败",
+      detail: validation.message,
+    }));
+  }
+
+  for (const parseError of state.contentIndex.parseErrors || []) {
+    problems.push(createProblem({
+      id: `index:parse:${parseError.path}`,
+      severity: "error",
+      source: "content-index",
+      sourceLabel: "编辑器内容索引",
+      ...getProblemContentType(parseError.path),
+      message: `文件无法解析：${parseError.path}`,
+      detail: parseError.message,
+      location: { workspace: "data", path: parseError.path, line: 1 },
+    }));
+  }
+
+  for (const duplicate of state.contentIndex.duplicateDefinitions || []) {
+    const first = duplicate.definitions?.[0];
+    problems.push(createProblem({
+      id: `index:duplicate:${duplicate.type}:${duplicate.id}`,
+      severity: "error",
+      source: "content-index",
+      sourceLabel: "编辑器内容索引",
+      ...getProblemContentType(first?.path || ""),
+      message: `重复定义：${duplicate.id}`,
+      detail: `类型 ${duplicate.type} 共出现 ${duplicate.count} 次。`,
+      location: first ? {
+        workspace: "data",
+        path: first.path,
+        line: first.line,
+        definitionId: duplicate.id,
+        definitionTypes: [duplicate.type],
+      } : null,
+    }));
+  }
+
+  for (const diagnostic of state.storyGraph?.diagnostics || []) {
+    problems.push(createProblem({
+      id: `story-graph:${diagnostic.path}:${diagnostic.line || 1}:${diagnostic.message}`,
+      severity: diagnostic.severity,
+      source: "story-graph",
+      sourceLabel: "剧情图谱检查",
+      contentType: "story",
+      contentTypeLabel: "剧情",
+      message: diagnostic.message,
+      location: {
+        workspace: "data",
+        path: diagnostic.path,
+        line: diagnostic.line || 1,
+        definitionId: diagnostic.segmentId || "",
+        definitionTypes: ["story"],
+      },
+    }));
+  }
+
+  for (const issue of state.portraitCheck?.issues || []) {
+    problems.push(createProblem({
+      id: `portrait:${issue.area}:${issue.definitionId || ""}:${issue.dataPath || ""}:${issue.message}`,
+      severity: issue.severity,
+      source: "portrait-check",
+      sourceLabel: "头像静态检查",
+      contentType: issue.area === "story" ? "story" : issue.area === "characters" ? "character" : "resource",
+      contentTypeLabel: issue.area === "story" ? "剧情" : issue.area === "characters" ? "角色" : "资源",
+      message: issue.message,
+      detail: issue.assetPath ? `资源路径：${issue.assetPath}${issue.assetExists ? "" : "（不存在）"}` : "",
+      location: issue.dataPath ? {
+        workspace: "data",
+        path: issue.dataPath,
+        line: issue.line || 1,
+        definitionId: issue.definitionId || "",
+      } : issue.assetPath && issue.assetExists ? {
+        workspace: "assets",
+        path: issue.assetPath,
+      } : null,
+    }));
+  }
+
+  if (state.storySource.path && Array.isArray(state.storySource.diagnostics)) {
+    for (const diagnostic of state.storySource.diagnostics) {
+      problems.push(createProblem({
+        id: `story-dsl:${state.storySource.path}:${diagnostic.span?.start?.line || 1}:${diagnostic.message}`,
+        severity: diagnostic.severity,
+        source: "story-dsl",
+        sourceLabel: "Story DSL 即时检查",
+        contentType: "story",
+        contentTypeLabel: "剧情",
+        message: diagnostic.message,
+        detail: diagnostic.code || "",
+        location: {
+          workspace: "data",
+          path: state.storySource.path,
+          line: diagnostic.span?.start?.line || 1,
+          column: diagnostic.span?.start?.column || 1,
+        },
+      }));
+    }
+  }
+
+  if (isCharacterFile() && state.formRecords.length > 0) {
+    appendCurrentRecordProblems(problems, "character", "角色", getCharacterValidationIssues);
+  } else if (isItemFile() && state.formRecords.length > 0) {
+    appendCurrentRecordProblems(problems, "item", "物品", getItemValidationIssues);
+  }
+
+  return Array.from(new Map(problems.map((problem) => [problem.id, problem])).values());
+}
+
+function appendCurrentRecordProblems(problems, contentType, contentTypeLabel, getIssues) {
+  for (let index = 0; index < state.formRecords.length; index += 1) {
+    const record = state.formRecords[index];
+    const recordId = String(record?.id || record?.name || `#${index + 1}`);
+    for (const issue of getIssues(record)) {
+      problems.push(createProblem({
+        id: `form:${state.currentPath}:${recordId}:${issue.message}`,
+        severity: issue.severity,
+        source: "form-check",
+        sourceLabel: "编辑器表单检查",
+        contentType,
+        contentTypeLabel,
+        message: issue.message,
+        location: {
+          workspace: "data",
+          path: state.currentPath,
+          definitionId: issue.definitionId || recordId,
+          definitionTypes: issue.types || [],
+        },
+      }));
+    }
+  }
+}
+
+function getProblemContentType(path) {
+  const normalized = String(path || "").toLowerCase();
+  if (normalized.includes("story")) return { contentType: "story", contentTypeLabel: "剧情" };
+  if (normalized.endsWith("characters.json")) return { contentType: "character", contentTypeLabel: "角色" };
+  if (normalized.endsWith("maps.json")) return { contentType: "map", contentTypeLabel: "地图" };
+  if (normalized.endsWith("items.json")) return { contentType: "item", contentTypeLabel: "物品" };
+  if (normalized.endsWith("shops.json")) return { contentType: "shop", contentTypeLabel: "商店" };
+  if (normalized.endsWith("resources.json")) return { contentType: "resource", contentTypeLabel: "资源" };
+  return { contentType: "data", contentTypeLabel: "高级数据" };
+}
+
+async function runProjectChecks() {
+  if (state.problemCenter.checking) {
+    return;
+  }
+
+  state.problemCenter.checking = true;
+  renderProblemIndicators();
+  try {
+    await rebuildContentIndex();
+    await loadStoryGraph();
+    await validateContent();
+    try {
+      state.portraitCheck = await requestJson("/api/static/portraits/check");
+    } catch (error) {
+      state.portraitCheck = {
+        ok: false,
+        summary: { characterCount: 0, portraitResourceCount: 0, storySpeakerCount: 0, checkedPortraitCount: 0, errors: 1, warnings: 0, infos: 0 },
+        issues: [{ severity: "error", area: "resources", message: error.message, dataPath: null, line: null, definitionId: null, assetPath: null, assetExists: false }],
+      };
+    }
+    renderPortraitCheckTool();
+    state.problemCenter.lastCheckedAt = new Date().toISOString();
+  } finally {
+    state.problemCenter.checking = false;
+    renderProblemIndicators();
+  }
+}
+
+async function openQuickStart(item) {
+  if (item.mode === "problems") {
+    setMode("problems");
+    return;
+  }
+  if (item.mode === "story" || item.mode === "assets") {
+    await openWorkspaceMode(item.mode);
+    return;
+  }
+  setMode("data");
+  if (item.path && state.dataFiles.some((file) => file.path === item.path)) {
+    await openDataFile(item.path);
+  } else {
+    await openWorkspaceMode("data");
+  }
+}
+
+async function openRecentEntry(entry) {
+  if (entry.workspace === "assets") {
+    if (state.assetFilePathSet.has(entry.path)) {
+      setMode("assets");
+      openAssetFile(entry.path);
+    }
+    return;
+  }
+  if (state.dataFiles.some((file) => file.path === entry.path)) {
+    setMode("data");
+    await openDataFile(entry.path);
+  }
+}
+
+async function locateProblem(problem) {
+  const location = problem.location;
+  if (!location) {
+    return;
+  }
+  if (location.definitionId && location.definitionTypes.length > 0) {
+    const definitions = state.contentIndex.definitionsById.get(location.definitionId) || [];
+    const definition = definitions.find((candidate) => location.definitionTypes.includes(candidate.type));
+    if (definition) {
+      await revealDefinition(definition);
+      return;
+    }
+  }
+  if (location.workspace === "assets") {
+    if (location.path && state.assetFilePathSet.has(location.path)) {
+      setMode("assets");
+      openAssetFile(location.path);
+    }
+    return;
+  }
+  if (!location.path || !state.dataFiles.some((file) => file.path === location.path)) {
+    return;
+  }
+  setMode("data");
+  await openDataFile(location.path);
+  if (location.line) {
+    setEditorCursorToLine(location.line, location.column || 1);
+  }
+}
+
+function recordRecentEntry(workspace, path) {
+  if (!path) {
+    return;
+  }
+  const label = workspace === "assets"
+    ? path.split("/").pop() || path
+    : dataFileDisplayNames.get(path) || path.replace(/^story\//, "");
+  state.recentEntries = recentItemsStore.add(state.activeModId, {
+    workspace,
+    path,
+    label,
+    detail: workspace === "assets" ? "资源" : "高级数据",
+  });
+  if (state.mode === "home") {
+    renderProjectHomeWorkspace();
+  }
 }
 
 function setMapFocusMode(enabled) {
@@ -1244,7 +1625,8 @@ async function openDataFile(path) {
 
   const file = await requestJson(`/api/data/file?path=${encodeURIComponent(path)}`);
   state.currentPath = file.path;
-  state.dirty = false;
+  recordRecentEntry("data", file.path);
+  dirtyStateController.markClean({ render: false });
   setEditorValue(file.content);
   setEditorReadOnly(false);
   setEditorLanguage(isStorySourceFile(file.path) ? "storydsl" : "json");
@@ -1252,7 +1634,7 @@ async function openDataFile(path) {
   elements.currentPath.textContent = file.path;
   elements.assetPreview.textContent = "未选择资产";
   elements.saveState.textContent = "";
-  localStorage.setItem(getLastDataPathStorageKey(), file.path);
+  preferences.set(getLastDataPathStorageKey(), file.path);
   if (isStorySourceFile(file.path)) {
     state.storySource.path = file.path;
     state.storySource.text = file.content;
@@ -1291,11 +1673,13 @@ async function openDataFile(path) {
   renderDirtyState();
   renderCursorState();
   renderFileList();
+  renderProblemIndicators();
 }
 
 function openAssetFile(path) {
   state.currentPath = path;
-  state.dirty = false;
+  recordRecentEntry("assets", path);
+  dirtyStateController.markClean({ render: false });
   state.storySource = {
     path: "",
     text: "",
@@ -1319,6 +1703,7 @@ function openAssetFile(path) {
   renderCursorState();
   renderFileList();
   previewAsset(path);
+  renderProblemIndicators();
 }
 
 function previewAsset(path) {
@@ -1386,7 +1771,7 @@ async function saveCurrentFile() {
     });
 
     setEditorValue(result.content);
-    state.dirty = false;
+    dirtyStateController.markClean({ render: false });
     refreshFormFromEditor({ preferForm: state.viewMode === "form" });
     renderDirtyState();
     renderCursorState();
@@ -1433,7 +1818,7 @@ async function saveCurrentStorySource() {
     state.storySource.text = result.content;
     state.storySource.jsonText = result.compiledJsonContent;
     setEditorValue(result.content);
-    state.dirty = false;
+    dirtyStateController.markClean({ render: false });
     renderDirtyState();
     renderCursorState();
     const backups = [result.sourceBackupPath, result.jsonBackupPath].filter(Boolean);
@@ -1467,7 +1852,7 @@ function formatCurrentJson() {
 
   try {
     setEditorValue(`${JSON.stringify(parseJsonText(getEditorValue()), null, 2)}\n`);
-    state.dirty = true;
+    dirtyStateController.markDirty({ render: false });
     elements.saveState.textContent = "已格式化，尚未保存";
     showValidation(true, "JSON format is valid.");
     refreshFormFromEditor({ preferForm: state.viewMode === "form" });
@@ -1507,7 +1892,7 @@ async function saveCurrentStoryJsonDsl() {
     state.storySource.text = sourceText;
     state.storySource.jsonText = result.content;
     setEditorValue(sourceText);
-    state.dirty = false;
+    dirtyStateController.markClean({ render: false });
     renderDirtyState();
     renderCursorState();
     elements.saveState.textContent = result.backupPath
@@ -1571,11 +1956,11 @@ async function saveCurrentStoryJsonAsSource() {
       kind: "source",
     };
     state.viewMode = "dsl";
-    state.dirty = false;
+    dirtyStateController.markClean({ render: false });
     setEditorValue(result.content);
     setEditorReadOnly(false);
     setEditorLanguage("storydsl");
-    localStorage.setItem(getLastDataPathStorageKey(), result.path);
+    preferences.set(getLastDataPathStorageKey(), result.path);
     elements.currentPath.textContent = result.path;
     elements.saveState.textContent = result.jsonBackupPath
       ? `已另存为 ${result.path}，生成：${result.compiledJsonPath}，备份：${result.jsonBackupPath}`
@@ -1715,9 +2100,13 @@ function appendConfirmDetail(list, label, value) {
 async function validateContent() {
   try {
     const result = await requestJson("/api/validate");
+    state.problemCenter.validation = result;
     showValidation(result.ok, result.message);
   } catch (error) {
+    state.problemCenter.validation = { ok: false, message: error.message };
     showValidation(false, error.message);
+  } finally {
+    renderProblemIndicators();
   }
 }
 
@@ -1893,12 +2282,13 @@ function jumpToSelectedOutline() {
 }
 
 function showValidation(ok, message) {
-  elements.validationBox.className = `message ${ok ? "ok" : "bad"}`;
-  elements.validationBox.textContent = message;
+  renderStatusMessage(elements.validationBox, { ok, message });
+  renderInspectorStatus(ok, ok ? "正常" : "有问题");
 }
 
 function showStoryDslValidation(errors, warnings, segmentCount) {
   elements.validationBox.replaceChildren();
+  renderInspectorStatus(errors.length === 0, errors.length === 0 ? "正常" : "有问题");
 
   if (errors.length === 0) {
     elements.validationBox.className = "message ok";
@@ -1909,34 +2299,23 @@ function showStoryDslValidation(errors, warnings, segmentCount) {
   const first = errors[0];
   elements.validationBox.className = "message bad";
 
-  const summary = document.createElement("div");
-  summary.className = "validation-title";
-  summary.textContent = `Story DSL 存在 ${errors.length} 个错误`;
-
-  const detail = document.createElement("div");
-  detail.className = "validation-detail";
-  detail.textContent = `第 ${first.span.start.line} 行，第 ${first.span.start.column} 列：${first.message}`;
-
-  const actions = document.createElement("div");
-  actions.className = "validation-actions";
-  const locateButton = document.createElement("button");
-  locateButton.type = "button";
-  locateButton.textContent = "定位第一个错误";
-  locateButton.addEventListener("click", () => {
-    if (state.viewMode !== "dsl") {
-      setViewMode("dsl");
-    }
-    setEditorCursorToLine(first.span.start.line, first.span.start.column);
+  const locateButton = createButton({
+    label: "定位第一个错误",
+    onClick: () => {
+      if (state.viewMode !== "dsl") {
+        setViewMode("dsl");
+      }
+      setEditorCursorToLine(first.span.start.line, first.span.start.column);
+    },
   });
-  actions.appendChild(locateButton);
-
-  elements.validationBox.append(summary, detail, actions);
-  if (errors.length > 1) {
-    const more = document.createElement("div");
-    more.className = "validation-detail";
-    more.textContent = `还有 ${errors.length - 1} 个错误，右侧 Story DSL 诊断区可逐条定位。`;
-    elements.validationBox.appendChild(more);
-  }
+  elements.validationBox.appendChild(createProblemSummary({
+    title: `Story DSL 存在 ${errors.length} 个错误`,
+    detail: `第 ${first.span.start.line} 行，第 ${first.span.start.column} 列：${first.message}`,
+    action: locateButton,
+    more: errors.length > 1
+      ? `还有 ${errors.length - 1} 个错误，右侧 Story DSL 诊断区可逐条定位。`
+      : "",
+  }));
 }
 
 function updateStoryDslAnalysis({ showSuccess }) {
@@ -1957,6 +2336,7 @@ function updateStoryDslAnalysis({ showSuccess }) {
   state.storySource.jsonText = analysis.jsonText || "";
   setMonacoDiagnostics(state.viewMode === "dsl" ? diagnostics : []);
   renderStoryDslStatus();
+  renderProblemIndicators();
 
   const errors = diagnostics.filter((item) => item.severity === "error");
   const warnings = diagnostics.filter((item) => item.severity === "warning");
@@ -2098,11 +2478,16 @@ function addMissingReferenceDiagnostic(diagnostics, exists, message, span) {
 }
 
 function hasDefinitionOfType(id, type) {
-  if (typeof id !== "string" || id.length === 0) {
+  if (typeof id !== "string") {
     return false;
   }
 
-  const definitions = state.contentIndex.definitionsById.get(id) || [];
+  const normalizedId = id.trim();
+  if (!normalizedId) {
+    return false;
+  }
+
+  const definitions = state.contentIndex.definitionsById.get(normalizedId) || [];
   return definitions.some((definition) => definition.type === type);
 }
 
@@ -3109,12 +3494,7 @@ function createMapIntro(stats) {
   const title = document.createElement("div");
   title.className = "map-issue-title";
   title.textContent = "保存前建议处理：";
-  const list = document.createElement("ul");
-  for (const issue of stats.issues.slice(0, 8)) {
-    const item = document.createElement("li");
-    item.textContent = issue;
-    list.appendChild(item);
-  }
+  const list = createTextList(stats.issues, { limit: 8 });
   box.append(title, list);
   return box;
 }
@@ -4126,7 +4506,7 @@ function deleteMapLocation(record, index) {
     return;
   }
   const title = location.name || location.id || `点位 ${index + 1}`;
-  if (!window.confirm(`确认删除点位「${title}」？`)) {
+  if (!confirmAction(`确认删除点位「${title}」？`)) {
     return;
   }
   record.locations.splice(index, 1);
@@ -4174,7 +4554,7 @@ function deleteMapEvent(location, index) {
     return;
   }
   const info = getMapEventInfo(source);
-  if (!window.confirm(`确认删除事件「${info.title}」？`)) {
+  if (!confirmAction(`确认删除事件「${info.title}」？`)) {
     return;
   }
   location.events.splice(index, 1);
@@ -5118,7 +5498,7 @@ function deleteShopProduct(record, productIndex) {
   }
 
   const title = getShopProductTitle(source, getShopProductInfo(source));
-  if (!window.confirm(`确认删除商品「${title}」？`)) {
+  if (!confirmAction(`确认删除商品「${title}」？`)) {
     return;
   }
 
@@ -7278,11 +7658,6 @@ function appendSkillEntryIssues(issues, entries, prefix, types) {
   }
 }
 
-function hasDefinitionOfType(id, type) {
-  const definitions = state.contentIndex.definitionsById.get(String(id).trim()) || [];
-  return definitions.some((definition) => definition.type === type);
-}
-
 function hasDefinitionInTypes(id, types) {
   return types.some((type) => hasDefinitionOfType(id, type));
 }
@@ -7877,11 +8252,7 @@ function getDefinitionOptions(kind) {
 }
 
 function createActionButton(label, action) {
-  const button = document.createElement("button");
-  button.type = "button";
-  button.textContent = label;
-  button.addEventListener("click", action);
-  return button;
+  return createButton({ label, onClick: action });
 }
 
 function createFieldEditor(record, key, value) {
@@ -8014,7 +8385,7 @@ function deleteRecord() {
 
   const current = state.formRecords[state.selectedRecordIndex];
   const title = current ? getRecordTitle(current, state.selectedRecordIndex) : "当前条目";
-  if (!window.confirm(`确认删除「${title}」？`)) {
+  if (!confirmAction(`确认删除「${title}」？`)) {
     return;
   }
 
@@ -8159,7 +8530,7 @@ function structuredCloneCompat(value) {
 
 function syncFormToEditor() {
   setEditorValue(`${JSON.stringify(state.formRecords, null, 2)}\n`);
-  state.dirty = true;
+  dirtyStateController.markDirty({ render: false });
   elements.saveState.textContent = "表单已修改，尚未保存";
   updateSearchMatches();
   renderEditorOutline();
@@ -8167,6 +8538,7 @@ function syncFormToEditor() {
   renderCursorState();
   renderIndexPanel();
   renderCharacterCheckTool();
+  renderProblemIndicators();
 }
 
 function getRecordTitle(record, index) {
@@ -8509,6 +8881,7 @@ async function rebuildContentIndex() {
   renderPortraitCheckTool();
   renderCharacterCheckTool();
   renderCurrentFileInfo();
+  renderProblemIndicators();
 }
 
 function extractDefinitions(path, content, json) {
@@ -8920,7 +9293,7 @@ function openNewStoryDialog() {
       await loadStoryGraph();
       renderFileList();
       closeToolDialog();
-      state.dirty = false;
+      dirtyStateController.markClean({ render: false });
       renderDirtyState();
       setMode("data");
       await openDataFile(result.path);
@@ -8939,43 +9312,11 @@ function openNewStoryDialog() {
 }
 
 function openToolDialog(title, subtitle, content) {
-  closeToolDialog();
-
-  const overlay = document.createElement("div");
-  overlay.id = "toolDialogOverlay";
-  overlay.className = "tool-dialog-overlay";
-  overlay.addEventListener("click", (event) => {
-    if (event.target === overlay) {
-      closeToolDialog();
-    }
-  });
-
-  const dialog = document.createElement("div");
-  dialog.className = "tool-dialog";
-
-  const header = document.createElement("div");
-  header.className = "tool-dialog-header";
-  const titleGroup = document.createElement("div");
-  const titleNode = document.createElement("div");
-  titleNode.className = "tool-dialog-title";
-  titleNode.textContent = title;
-  const subtitleNode = document.createElement("div");
-  subtitleNode.className = "tool-dialog-subtitle";
-  subtitleNode.textContent = subtitle;
-  titleGroup.append(titleNode, subtitleNode);
-  const closeButton = document.createElement("button");
-  closeButton.type = "button";
-  closeButton.textContent = "关闭";
-  closeButton.addEventListener("click", closeToolDialog);
-  header.append(titleGroup, closeButton);
-
-  dialog.append(header, content);
-  overlay.appendChild(dialog);
-  document.body.appendChild(overlay);
+  return dialogController.open({ title, subtitle, content });
 }
 
 function closeToolDialog() {
-  document.getElementById("toolDialogOverlay")?.remove();
+  dialogController.close();
 }
 
 function runPortraitCheckFromToolbar() {
@@ -8985,7 +9326,10 @@ function runPortraitCheckFromToolbar() {
 }
 
 function focusCheckResults() {
-  elements.characterCheckBox.scrollIntoView({ block: "nearest" });
+  setContextDrawerOpen(true);
+  requestAnimationFrame(() => {
+    elements.characterCheckBox.scrollIntoView({ block: "nearest" });
+  });
 }
 
 function getSpeakerDefaults(rawId, explicitPortraitId) {
@@ -9261,8 +9605,11 @@ function renderPortraitCheckTool() {
       status.className = `static-tool-status ${state.portraitCheck.ok ? "ok" : "bad"}`;
       status.textContent = state.portraitCheck.ok ? "检查完成，没有阻断问题。" : "检查完成，发现需要处理的问题。";
       renderPortraitCheckResult(resultBox, state.portraitCheck);
+      state.problemCenter.lastCheckedAt = new Date().toISOString();
+      renderProblemIndicators();
     } catch (error) {
       state.portraitCheck = null;
+      renderProblemIndicators();
       status.className = "static-tool-status bad";
       status.textContent = error.message;
     } finally {
@@ -10980,21 +11327,11 @@ function restoreShopResourcePickerScrollState(scrollState) {
 }
 
 function createToolInput(id, label, placeholder) {
-  const input = document.createElement("input");
-  input.id = id;
-  input.className = "tool-input";
-  input.placeholder = placeholder;
-  input.setAttribute("aria-label", label);
-  return input;
+  return createTextInput({ id, label, placeholder });
 }
 
 function createToolField(label, control) {
-  const wrapper = document.createElement("label");
-  wrapper.className = "tool-field";
-  const text = document.createElement("span");
-  text.textContent = label;
-  wrapper.append(text, control);
-  return wrapper;
+  return createField({ label, control });
 }
 
 function getSelectedLookupText() {
@@ -11002,14 +11339,7 @@ function getSelectedLookupText() {
 }
 
 async function revealDefinition(definition) {
-  state.mode = "data";
-  document.body.classList.remove("story-mode");
-  elements.dataTab.classList.add("active");
-  elements.storyTab.classList.remove("active");
-  elements.assetsTab.classList.remove("active");
-  elements.saveButton.disabled = false;
-  elements.formatButton.disabled = false;
-  elements.storyView.classList.add("hidden");
+  setMode("data");
   await openDataFile(definition.path);
   setViewMode("json");
   selectLine(definition.line);
@@ -11043,7 +11373,7 @@ function setEditorCursorToLine(lineNumber, columnNumber = 1) {
 }
 
 async function openLastDataFile() {
-  const lastPath = localStorage.getItem(getLastDataPathStorageKey());
+  const lastPath = preferences.get(getLastDataPathStorageKey());
   if (!lastPath || !state.dataFiles.some((file) => file.path === lastPath)) {
     return;
   }
@@ -11052,15 +11382,11 @@ async function openLastDataFile() {
 }
 
 function getLastDataPathStorageKey() {
-  return `${storageKeys.lastDataPath}:${state.activeModId || "default"}`;
+  return preferences.scopedKey(storageKeys.lastDataPath, state.activeModId);
 }
 
 async function confirmDiscardChanges() {
-  if (!state.dirty) {
-    return true;
-  }
-
-  return window.confirm("当前文件尚未保存，是否放弃修改？");
+  return dirtyStateController.confirmDiscardChanges();
 }
 
 function updateSearchMatches() {
@@ -11130,24 +11456,26 @@ function handleGlobalKeydown(event) {
     return;
   }
 
+  if (event.key === "Escape" && dialogController.isOpen()) {
+    event.preventDefault();
+    closeToolDialog();
+    return;
+  }
+
+  if (event.key === "Escape" && state.shell.contextDrawerOpen) {
+    event.preventDefault();
+    setContextDrawerOpen(false);
+    elements.inspectorToggleButton.focus({ preventScroll: true });
+    return;
+  }
+
   if (event.key === "Escape" && state.mapEditor.focusMode) {
     event.preventDefault();
     setMapFocusMode(false);
     return;
   }
 
-  const command = event.metaKey || event.ctrlKey;
-  if (!command) {
-    return;
-  }
-
-  if (event.key.toLowerCase() === "s") {
-    event.preventDefault();
-    saveCurrentFile();
-  } else if (event.shiftKey && event.key.toLowerCase() === "f") {
-    event.preventDefault();
-    formatCurrentJson();
-  }
+  commandRegistry.handleKeydown(event);
 }
 
 function formatJsonError(error) {
@@ -11160,25 +11488,6 @@ function formatJsonError(error) {
   const position = Number(positionMatch[1]);
   const lines = getEditorValue().slice(0, position).split("\n");
   return `JSON parse failed near 行 ${lines.length}，列 ${lines[lines.length - 1].length + 1}: ${message}`;
-}
-
-async function requestJson(url, options) {
-  const response = await fetch(withActiveMod(url), options);
-  const body = await response.json().catch(() => null);
-  if (!response.ok) {
-    throw new Error(body?.message || response.statusText);
-  }
-
-  return body;
-}
-
-function withActiveMod(url) {
-  if (!url.startsWith("/api/") || url.startsWith("/api/workspace") || !state.activeModId) {
-    return url;
-  }
-
-  const separator = url.includes("?") ? "&" : "?";
-  return `${url}${separator}modId=${encodeURIComponent(state.activeModId)}`;
 }
 
 function parseJsonText(text) {

@@ -2568,6 +2568,8 @@ sealed class WorkspacePaths
                     id,
                     TryGetManifestStringProperty(manifest, "name") ?? id,
                     TryGetManifestStringProperty(manifest, "version") ?? "",
+                    TryGetManifestStringProperty(manifest, "author") ?? "",
+                    TryGetManifestStringProperty(manifest, "date") ?? "",
                     TryGetManifestStringProperty(manifest, "description") ?? "",
                     ToRelativeWorkspacePath(RootPath, modPath),
                     Directory.Exists(Path.Combine(modPath, "data"))));
@@ -2575,7 +2577,7 @@ sealed class WorkspacePaths
             catch
             {
                 var id = Path.GetFileName(modPath);
-                mods.Add(new ModSummary(id, id, "", "mod.json 解析失败", ToRelativeWorkspacePath(RootPath, modPath), false));
+                mods.Add(new ModSummary(id, id, "", "", "", "mod.json 解析失败", ToRelativeWorkspacePath(RootPath, modPath), false));
             }
         }
 
@@ -2698,6 +2700,8 @@ sealed record ModSummary(
     string Id,
     string Name,
     string Version,
+    string Author,
+    string Date,
     string Description,
     string Path,
     bool DataExists);
