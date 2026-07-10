@@ -17,6 +17,17 @@ const state = {
   mapEditor: {
     selectedLocationIndex: 0,
     focusMode: false,
+    canvasMode: "select",
+    locationSearch: "",
+    resourcePicker: {
+      open: false,
+      locationIndex: -1,
+      eventIndex: -1,
+      field: "",
+      filter: "recommended",
+      search: "",
+      selectedResourceId: "",
+    },
   },
   storySource: {
     path: "",
@@ -2255,6 +2266,7 @@ function renderFormView() {
     renderPortraitPicker();
     renderItemPicturePicker();
     renderShopResourcePicker();
+    renderMapResourcePicker();
     return;
   }
 
@@ -2267,6 +2279,7 @@ function renderFormView() {
     renderPortraitPicker();
     renderItemPicturePicker();
     renderShopResourcePicker();
+    renderMapResourcePicker();
     return;
   }
 
@@ -2286,6 +2299,7 @@ function renderFormView() {
   renderPortraitPicker();
   renderItemPicturePicker();
   renderShopResourcePicker();
+  renderMapResourcePicker();
   restoreFormViewScrollState(scrollState);
 }
 
@@ -2301,6 +2315,7 @@ function selectFormRecord(index) {
   renderPortraitPicker();
   renderItemPicturePicker();
   renderShopResourcePicker();
+  renderMapResourcePicker();
 }
 
 function updateRecordCardSelection() {
@@ -2963,6 +2978,8 @@ function renderMapRecordCards(parent, subtitleNode) {
     card.classList.toggle("active", index === state.selectedRecordIndex);
     card.addEventListener("click", () => {
       state.mapEditor.selectedLocationIndex = 0;
+      state.mapEditor.canvasMode = "select";
+      state.mapEditor.locationSearch = "";
       selectFormRecord(index);
     });
 
@@ -3232,8 +3249,35 @@ function createMapWorkspaceSection(record) {
 }
 
 function createLargeMapCanvas(record) {
+  const wrap = document.createElement("div");
+  wrap.className = "map-canvas-wrap";
+
+  const toolbar = document.createElement("div");
+  toolbar.className = "map-canvas-toolbar";
+  const modeActions = document.createElement("div");
+  modeActions.className = "map-canvas-mode-actions";
+  for (const choice of [
+    { value: "select", label: "选择 / 拖动" },
+    { value: "add", label: "添加点位" },
+  ]) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "map-canvas-mode-button";
+    button.classList.toggle("active", state.mapEditor.canvasMode === choice.value);
+    button.textContent = choice.label;
+    button.addEventListener("click", () => {
+      state.mapEditor.canvasMode = choice.value;
+      renderFormView();
+    });
+    modeActions.appendChild(button);
+  }
+  const legend = document.createElement("div");
+  legend.className = "map-canvas-legend";
+  legend.textContent = "图标预览按第一个事件计算；实际游戏会按当前命中的事件显示。";
+  toolbar.append(modeActions, legend);
+
   const canvas = document.createElement("div");
-  canvas.className = "map-canvas";
+  canvas.className = `map-canvas ${state.mapEditor.canvasMode === "add" ? "adding" : "selecting"}`;
   const assetPath = resolveAssetPath(record.picture);
   if (assetPath && isImage(assetPath.toLowerCase())) {
     const image = document.createElement("img");
@@ -3252,17 +3296,22 @@ function createLargeMapCanvas(record) {
     pin.type = "button";
     pin.className = "map-location-pin";
     pin.classList.toggle("active", index === state.mapEditor.selectedLocationIndex);
-    pin.textContent = String(index + 1);
+    const iconInfo = getMapLocationIconInfo(location, location.events[0] || null);
+    pin.appendChild(createMapIconVisual(iconInfo, String(index + 1), "map-location-pin-icon"));
     const position = normalizeMapPosition(location.position);
     pin.style.left = `${Math.max(0, Math.min(100, position.x / 800 * 100))}%`;
     pin.style.top = `${Math.max(0, Math.min(100, position.y / 600 * 100))}%`;
-    pin.title = location.name || location.id || `点位 ${index + 1}`;
+    pin.title = `${location.name || location.id || `点位 ${index + 1}`} · ${iconInfo.sourceLabel}`;
     pin.addEventListener("click", (event) => {
       event.stopPropagation();
       state.mapEditor.selectedLocationIndex = index;
+      state.mapEditor.canvasMode = "select";
       renderFormView();
     });
     pin.addEventListener("pointerdown", (event) => {
+      if (state.mapEditor.canvasMode !== "select") {
+        return;
+      }
       event.preventDefault();
       state.mapEditor.selectedLocationIndex = index;
       moveMapLocationFromPointer(record, location, canvas, event);
@@ -3280,24 +3329,52 @@ function createLargeMapCanvas(record) {
   });
 
   canvas.addEventListener("click", (event) => {
+    if (state.mapEditor.canvasMode !== "add") {
+      return;
+    }
     const rect = canvas.getBoundingClientRect();
-    const x = Math.round((event.clientX - rect.left) / rect.width * 800);
-    const y = Math.round((event.clientY - rect.top) / rect.height * 600);
+    const x = Math.max(0, Math.min(800, Math.round((event.clientX - rect.left) / rect.width * 800)));
+    const y = Math.max(0, Math.min(600, Math.round((event.clientY - rect.top) / rect.height * 600)));
     const location = createMapLocationTemplate(record, `新地点${record.locations.length + 1}`);
     location.position = { x, y };
     record.locations.push(location);
     state.mapEditor.selectedLocationIndex = record.locations.length - 1;
+    state.mapEditor.canvasMode = "select";
     syncFormToEditor();
     renderFormView();
   });
 
   const hint = document.createElement("div");
   hint.className = "map-canvas-hint";
-  hint.textContent = "点击空白新增点位；拖动编号调整大地图坐标。坐标按 800x600 源图保存。";
-  const wrap = document.createElement("div");
-  wrap.className = "map-canvas-wrap";
-  wrap.append(canvas, hint);
+  hint.textContent = state.mapEditor.canvasMode === "add"
+    ? "添加模式：点击画布空白处创建一个点位；创建后会自动回到选择模式。"
+    : "选择模式：点击图标选择点位，拖动图标调整坐标。坐标按 800×600 源图保存。";
+  wrap.append(toolbar, canvas, hint);
   return wrap;
+}
+
+function createMapIconVisual(iconInfo, badgeText = "", className = "") {
+  const visual = document.createElement("span");
+  visual.className = `map-icon-visual ${className}`.trim();
+  if (iconInfo.previewPath && isImage(iconInfo.previewPath.toLowerCase())) {
+    const image = document.createElement("img");
+    image.src = `/api/assets/file?path=${encodeURIComponent(iconInfo.previewPath)}`;
+    image.alt = iconInfo.resourceId || iconInfo.sourceLabel;
+    visual.appendChild(image);
+  } else {
+    const fallback = document.createElement("span");
+    fallback.className = "map-icon-fallback";
+    fallback.textContent = iconInfo.status === "empty" ? "默认" : "!";
+    visual.appendChild(fallback);
+  }
+
+  if (badgeText) {
+    const badge = document.createElement("span");
+    badge.className = "map-icon-index";
+    badge.textContent = badgeText;
+    visual.appendChild(badge);
+  }
+  return visual;
 }
 
 function moveMapLocationFromPointer(record, location, canvas, event) {
@@ -3340,7 +3417,7 @@ function createMapLocationPanel(record) {
   toolbar.className = "shop-product-toolbar";
   const title = document.createElement("div");
   title.className = "static-tool-note";
-  title.textContent = "点位上的事件按从上到下判断，第一个满足条件和概率的事件就是玩家当前能点到的内容。";
+  title.textContent = "运行时先选择第一个满足条件与概率的事件，再按“事件图标 → 点位图片 → 角色头像 → 默认图标”显示。";
   const actions = document.createElement("div");
   actions.className = "record-actions";
   actions.append(
@@ -3351,38 +3428,91 @@ function createMapLocationPanel(record) {
 
   const body = document.createElement("div");
   body.className = "map-location-body";
+  const navigation = document.createElement("div");
+  navigation.className = "map-location-navigation";
+  const search = document.createElement("input");
+  search.type = "search";
+  search.className = "map-location-search";
+  search.placeholder = "搜索点位、事件目标";
+  search.value = state.mapEditor.locationSearch;
+  const count = document.createElement("div");
+  count.className = "record-subtitle map-location-count";
   const list = document.createElement("div");
   list.className = "map-location-list";
-  record.locations.forEach((location, index) => {
-    const card = document.createElement("button");
-    card.type = "button";
-    card.className = "map-location-card";
-    card.classList.toggle("active", index === state.mapEditor.selectedLocationIndex);
-    card.addEventListener("click", () => {
-      state.mapEditor.selectedLocationIndex = index;
-      renderFormView();
-    });
-    const name = document.createElement("div");
-    name.className = "map-location-card-name";
-    name.textContent = location.name || location.id || `点位 ${index + 1}`;
-    const meta = document.createElement("div");
-    meta.className = "record-subtitle";
-    meta.textContent = `${location.events.length} 事件${isLargeMap(record) ? ` · (${normalizeMapPosition(location.position).x}, ${normalizeMapPosition(location.position).y})` : ""}`;
-    card.append(name, meta);
-    list.appendChild(card);
-  });
 
-  if (record.locations.length === 0) {
-    const empty = document.createElement("div");
-    empty.className = "record-empty";
-    empty.textContent = "还没有点位。先添加一个剧情 NPC、入口或返回点。";
-    list.appendChild(empty);
-  }
+  const refreshList = () => {
+    list.replaceChildren();
+    const query = state.mapEditor.locationSearch.trim().toLowerCase();
+    let visibleCount = 0;
+    record.locations.forEach((location, index) => {
+      if (!matchesMapLocationSearch(location, query)) {
+        return;
+      }
+      visibleCount += 1;
+      const card = document.createElement("button");
+      card.type = "button";
+      card.className = "map-location-card";
+      card.classList.toggle("active", index === state.mapEditor.selectedLocationIndex);
+      card.addEventListener("click", () => {
+        state.mapEditor.selectedLocationIndex = index;
+        state.mapEditor.canvasMode = "select";
+        renderFormView();
+      });
+
+      const iconInfo = getMapLocationIconInfo(location, location.events[0] || null);
+      const icon = createMapIconVisual(iconInfo, String(index + 1), "map-location-list-icon");
+      const content = document.createElement("div");
+      content.className = "map-location-card-content";
+      const name = document.createElement("div");
+      name.className = "map-location-card-name";
+      name.textContent = location.name || location.id || `点位 ${index + 1}`;
+      const meta = document.createElement("div");
+      meta.className = "record-subtitle";
+      meta.textContent = `${location.events.length} 事件${isLargeMap(record) ? ` · (${normalizeMapPosition(location.position).x}, ${normalizeMapPosition(location.position).y})` : ""}`;
+      const source = document.createElement("div");
+      source.className = `map-location-icon-source ${iconInfo.status}`;
+      source.textContent = iconInfo.sourceLabel;
+      content.append(name, meta, source);
+      card.append(icon, content);
+      list.appendChild(card);
+    });
+
+    count.textContent = `${visibleCount} / ${record.locations.length} 个点位`;
+    if (visibleCount === 0) {
+      const empty = document.createElement("div");
+      empty.className = "record-empty";
+      empty.textContent = record.locations.length === 0
+        ? "还没有点位。先添加一个剧情 NPC、入口或返回点。"
+        : "没有匹配的点位。";
+      list.appendChild(empty);
+    }
+  };
+
+  search.addEventListener("input", () => {
+    state.mapEditor.locationSearch = search.value;
+    refreshList();
+  });
+  refreshList();
+  navigation.append(search, count, list);
 
   const editor = createSelectedMapLocationEditor(record);
-  body.append(list, editor);
+  body.append(navigation, editor);
   panel.append(toolbar, body);
   return panel;
+}
+
+function matchesMapLocationSearch(location, query) {
+  if (!query) {
+    return true;
+  }
+  const eventText = (location.events || [])
+    .map((mapEvent) => `${mapEvent.type || ""} ${mapEvent.targetId || ""} ${mapEvent.description || ""}`)
+    .join(" ");
+  return [location.id, location.name, location.description, location.picture, eventText]
+    .filter((value) => value != null)
+    .join(" ")
+    .toLowerCase()
+    .includes(query);
 }
 
 function createSelectedMapLocationEditor(record) {
@@ -3418,7 +3548,11 @@ function createSelectedMapLocationEditor(record) {
   grid.append(
     createMapObjectTextField(location, "点位ID", "id", { placeholder: "例如：神秘人", rerenderOnChange: true }),
     createMapObjectTextField(location, "显示名", "name", { placeholder: "为空时显示 id", nullable: true, rerenderOnChange: true }),
-    createMapObjectResourceField(location, "点位图片", "picture", null),
+    createMapObjectResourceField(location, "点位图片（公共回退）", "picture", null, {
+      locationIndex: state.mapEditor.selectedLocationIndex,
+      eventIndex: -1,
+      help: "当当前事件没有填写 image 时使用；如果这里也为空，运行时会尝试使用与点位 ID 同名角色的头像。",
+    }),
     createMapObjectTextareaField(location, "点位描述", "description")
   );
 
@@ -3426,7 +3560,7 @@ function createSelectedMapLocationEditor(record) {
     grid.append(createMapPositionField(location, "x"), createMapPositionField(location, "y"));
   }
 
-  editor.append(header, grid, createMapEventSection(record, location));
+  editor.append(header, createMapLocationIconSummary(location), grid, createMapEventSection(record, location));
   return editor;
 }
 
@@ -3464,21 +3598,140 @@ function createMapObjectTextareaField(owner, labelCn, key) {
   return field;
 }
 
-function createMapObjectResourceField(owner, labelCn, key, group) {
+function createMapObjectResourceField(owner, labelCn, key, group, pickerContext = null) {
   const field = createCharacterFieldShell(labelCn, key, true);
+  field.classList.add("map-resource-field");
   const input = document.createElement("input");
   input.type = "text";
   input.value = owner[key] == null ? "" : String(owner[key]);
-  input.placeholder = "可填 town.*、头像.*、地图.* 等资源 id";
-  input.setAttribute("list", ensureResourceIdDatalist(group));
+  input.placeholder = "例如：town.kezhan；也可填写其他图片资源 id";
+  input.setAttribute("list", pickerContext ? ensureMapIconResourceDatalist() : ensureResourceIdDatalist(group));
   input.addEventListener("input", () => {
     owner[key] = input.value.trim() || null;
     syncFormToEditor();
   });
   input.addEventListener("change", () => renderFormView());
   field.appendChild(input);
-  field.appendChild(createShopResourcePreview(getMapResourceInfo(owner[key], group)));
+
+  const info = getMapResourceInfo(owner[key], group);
+  field.appendChild(createShopResourcePreview(info));
+  if (pickerContext) {
+    const actions = document.createElement("div");
+    actions.className = "shop-resource-actions";
+    const pickerButton = document.createElement("button");
+    pickerButton.type = "button";
+    pickerButton.textContent = "选择图标";
+    pickerButton.addEventListener("click", () => openMapResourcePicker({
+      ...pickerContext,
+      field: key,
+    }));
+    const clearButton = document.createElement("button");
+    clearButton.type = "button";
+    clearButton.textContent = "清空";
+    clearButton.disabled = !info.resourceId;
+    clearButton.addEventListener("click", () => {
+      owner[key] = null;
+      syncFormToEditor();
+      renderFormView();
+    });
+    actions.append(pickerButton, clearButton);
+    field.appendChild(actions);
+
+    if (pickerContext.help) {
+      const help = document.createElement("div");
+      help.className = "map-resource-help";
+      help.textContent = pickerContext.help;
+      field.appendChild(help);
+    }
+  }
   return field;
+}
+
+function createMapLocationIconSummary(location) {
+  const box = document.createElement("div");
+  box.className = "map-runtime-icon-summary";
+  const mapEvent = location.events[0] || null;
+  const info = getMapLocationIconInfo(location, mapEvent);
+  box.appendChild(createMapIconVisual(info, "", "map-runtime-icon-preview"));
+  const content = document.createElement("div");
+  content.className = "map-runtime-icon-content";
+  const title = document.createElement("div");
+  title.className = "map-runtime-icon-title";
+  title.textContent = mapEvent ? `首个事件的运行时图标：${info.sourceLabel}` : "当前没有事件，运行时不会显示这个交互点";
+  const detail = document.createElement("div");
+  detail.className = `map-runtime-icon-detail ${info.status}`;
+  detail.textContent = info.message;
+  const rule = document.createElement("div");
+  rule.className = "map-runtime-icon-rule";
+  rule.textContent = "回退顺序：事件 image → 点位 picture → 与点位 ID 同名角色的 portrait → 默认图标。已填写但失效的资源会直接落到默认图标，不会继续回退。";
+  content.append(title, detail, rule);
+  box.appendChild(content);
+  return box;
+}
+
+function getMapLocationIconInfo(location, mapEvent) {
+  if (!mapEvent) {
+    return {
+      resourceId: "",
+      previewPath: "",
+      sourceLabel: "默认图标",
+      status: "empty",
+      message: "没有可触发事件；运行时不会创建可交互按钮。",
+    };
+  }
+
+  const eventImage = typeof mapEvent.image === "string" ? mapEvent.image.trim() : "";
+  if (eventImage) {
+    return createMapResolvedIconInfo(eventImage, "事件图标");
+  }
+
+  const locationPicture = typeof location.picture === "string" ? location.picture.trim() : "";
+  if (locationPicture) {
+    return createMapResolvedIconInfo(locationPicture, "点位图片");
+  }
+
+  const character = state.contentIndex.charactersByIdOrName.get(String(location.id || "").trim());
+  const portraitId = typeof character?.portrait === "string" ? character.portrait.trim() : "";
+  if (portraitId) {
+    return createMapResolvedIconInfo(portraitId, "角色头像");
+  }
+
+  return {
+    resourceId: "",
+    previewPath: "",
+    sourceLabel: "默认图标",
+    status: "empty",
+    message: `事件和点位都未设置图标，且找不到 ID 为「${location.id || "未填写"}」的角色头像。`,
+  };
+}
+
+function createMapResolvedIconInfo(resourceId, sourceLabel) {
+  const resourceInfo = getMapResourceInfo(resourceId, null);
+  const available = resourceInfo.status === "ok";
+  return {
+    resourceId,
+    previewPath: available ? resourceInfo.previewPath : "",
+    sourceLabel: available ? sourceLabel : `${sourceLabel}失效，使用默认图标`,
+    status: resourceInfo.status,
+    message: available
+      ? `${sourceLabel}：${resourceInfo.message}`
+      : `${sourceLabel}已填写为「${resourceId}」，但${resourceInfo.message}；运行时会直接使用默认图标。`,
+  };
+}
+
+function ensureMapIconResourceDatalist() {
+  const id = "resourceIdOptions-map-icons";
+  document.getElementById(id)?.remove();
+  const datalist = document.createElement("datalist");
+  datalist.id = id;
+  for (const resource of getMapIconResources()) {
+    const option = document.createElement("option");
+    option.value = resource.id;
+    option.label = `${resource.group || "未分组"} · ${resource.value || ""}`;
+    datalist.appendChild(option);
+  }
+  document.body.appendChild(datalist);
+  return id;
 }
 
 function createMapPositionField(location, axis) {
@@ -3554,7 +3807,11 @@ function createMapEventCard(record, location, mapEvent, eventIndex) {
     createMapEventTargetField(mapEvent),
     createMapEventRepeatField(mapEvent),
     createMapEventProbabilityField(mapEvent),
-    createMapObjectResourceField(mapEvent, "事件图标", "image", null),
+    createMapObjectResourceField(mapEvent, "事件图标（仅当前事件）", "image", null, {
+      locationIndex: state.mapEditor.selectedLocationIndex,
+      eventIndex,
+      help: "填写后会覆盖点位 picture 和角色头像；清空后才会继续使用点位的公共回退图。",
+    }),
     createMapObjectTextareaField(mapEvent, "提示文本", "description")
   );
 
@@ -3567,7 +3824,7 @@ function createMapEventCard(record, location, mapEvent, eventIndex) {
     createPill(`概率 ${mapEvent.probability}%`)
   );
 
-  card.append(header, meta, grid, createMapConditionEditor(mapEvent));
+  card.append(header, meta, createMapEventIconSummary(location, mapEvent), grid, createMapConditionEditor(mapEvent));
   if (info.message) {
     const message = document.createElement("div");
     message.className = `shop-product-message ${info.severity}`;
@@ -3575,6 +3832,22 @@ function createMapEventCard(record, location, mapEvent, eventIndex) {
     card.appendChild(message);
   }
   return card;
+}
+
+function createMapEventIconSummary(location, mapEvent) {
+  const info = getMapLocationIconInfo(location, mapEvent);
+  const summary = document.createElement("div");
+  summary.className = `map-event-icon-summary ${info.status}`;
+  summary.appendChild(createMapIconVisual(info, "", "map-event-icon-preview"));
+  const text = document.createElement("div");
+  text.className = "map-event-icon-text";
+  const title = document.createElement("strong");
+  title.textContent = `运行时最终图标：${info.sourceLabel}`;
+  const detail = document.createElement("span");
+  detail.textContent = info.message;
+  text.append(title, detail);
+  summary.appendChild(text);
+  return summary;
 }
 
 function createMapEventTypeField(mapEvent) {
@@ -4042,6 +4315,9 @@ function getMapStats(record) {
   if (!record.id) {
     issues.push("地图缺少 id。");
   }
+  if (record.id && state.formRecords.filter((candidate) => candidate?.id === record.id).length > 1) {
+    issues.push(`地图 ID 重复：${record.id}`);
+  }
   if (!record.name) {
     issues.push(`地图「${record.id || "未命名"}」缺少显示名。`);
   }
@@ -4054,52 +4330,90 @@ function getMapStats(record) {
     }
   }
 
-  let hasReturn = false;
+  const locationIdCounts = new Map();
+  const occupiedPositions = new Map();
+  for (const location of locations) {
+    const id = String(location?.id || "").trim();
+    if (id) {
+      locationIdCounts.set(id, (locationIdCounts.get(id) || 0) + 1);
+    }
+  }
+
+  let hasExitMapEvent = false;
   locations.forEach((location, locationIndex) => {
     const locationName = location.name || location.id || `点位 ${locationIndex + 1}`;
-    if (!location.id) {
+    const locationId = String(location.id || "").trim();
+    if (!locationId) {
       issues.push(`点位 ${locationIndex + 1} 缺少 id。`);
+    } else if ((locationIdCounts.get(locationId) || 0) > 1) {
+      issues.push(`点位 ID 重复：${locationId}`);
     }
-    if (isLargeMap(record) && (!location.position || !Number.isFinite(location.position.x) || !Number.isFinite(location.position.y))) {
-      issues.push(`大地图点位「${locationName}」缺少坐标。`);
+
+    if (isLargeMap(record)) {
+      if (!location.position || !Number.isFinite(location.position.x) || !Number.isFinite(location.position.y)) {
+        issues.push(`大地图点位「${locationName}」缺少坐标。`);
+      } else {
+        const { x, y } = location.position;
+        if (x < 0 || x > 800 || y < 0 || y > 600) {
+          issues.push(`大地图点位「${locationName}」坐标越界：(${x}, ${y})，有效范围是 0..800 × 0..600。`);
+        }
+        const positionKey = `${x},${y}`;
+        const previousLocation = occupiedPositions.get(positionKey);
+        if (previousLocation) {
+          issues.push(`大地图点位「${locationName}」与「${previousLocation}」坐标重叠：(${x}, ${y})。`);
+        } else {
+          occupiedPositions.set(positionKey, locationName);
+        }
+      }
     }
-    if (location.picture && getMapResourceInfo(location.picture, null).status === "missing") {
-      issues.push(`点位「${locationName}」图片资源不存在：${location.picture}`);
+
+    if (location.picture && getMapResourceInfo(location.picture, null).status !== "ok") {
+      issues.push(`点位「${locationName}」图片资源不可用：${location.picture}`);
     }
     if (!Array.isArray(location.events) || location.events.length === 0) {
-      if (!isLargeMap(record)) {
-        issues.push(`小地图点位「${locationName}」没有事件，运行时不会显示。`);
-      }
+      issues.push(`${isLargeMap(record) ? "大" : "小"}地图点位「${locationName}」没有事件，${isLargeMap(record) ? "运行时会显示但无法交互" : "运行时不会显示"}。`);
       return;
     }
-    for (const mapEvent of location.events) {
+
+    let hasPermanentCatchAll = false;
+    location.events.forEach((mapEvent, eventIndex) => {
       events += 1;
+      if (hasPermanentCatchAll) {
+        issues.push(`点位「${locationName}」第 ${eventIndex + 1} 个事件永远不会触发：前面已有可重复、无条件、100% 概率事件。`);
+      }
       if (mapEvent.type === "story") {
         storyEvents += 1;
       }
       if (mapEvent.type === "map") {
         mapEvents += 1;
-        if (mapEvent.targetId === "大地图" || mapEvent.targetId === record.id) {
-          hasReturn = true;
+        if (mapEvent.targetId && mapEvent.targetId !== record.id) {
+          hasExitMapEvent = true;
         }
       }
       const eventInfo = getMapEventInfo(mapEvent);
       if (eventInfo.severity === "warn" && eventInfo.message) {
         issues.push(`点位「${locationName}」：${eventInfo.message}`);
       }
-      if (mapEvent.image && getMapResourceInfo(mapEvent.image, null).status === "missing") {
-        issues.push(`点位「${locationName}」事件图标不存在：${mapEvent.image}`);
+      if (mapEvent.image && getMapResourceInfo(mapEvent.image, null).status !== "ok") {
+        issues.push(`点位「${locationName}」事件图标不可用：${mapEvent.image}`);
       }
       for (const condition of mapEvent.conditions || []) {
         if (!MAP_CONDITION_CHOICES.some((choice) => choice.value === condition.type)) {
           issues.push(`点位「${locationName}」使用了未支持条件：${condition.type}`);
+        } else if (condition.type !== "always" && condition.type !== "in_newbie_task" && !String(condition.value || "").trim()) {
+          issues.push(`点位「${locationName}」条件「${condition.type}」缺少值。`);
         }
       }
-    }
+      if (mapEvent.repeatMode !== "once" &&
+          mapEvent.probability === 100 &&
+          (!Array.isArray(mapEvent.conditions) || mapEvent.conditions.length === 0)) {
+        hasPermanentCatchAll = true;
+      }
+    });
   });
 
-  if (!isLargeMap(record) && record.id !== "大地图" && !hasReturn) {
-    issues.push(`小地图「${record.id || "未命名"}」没有返回/跳转事件。`);
+  if (!isLargeMap(record) && record.id !== "大地图" && !hasExitMapEvent) {
+    issues.push(`小地图「${record.id || "未命名"}」没有跳转到其他地图的出口事件。`);
   }
 
   return {
@@ -4107,7 +4421,7 @@ function getMapStats(record) {
     events,
     storyEvents,
     mapEvents,
-    issues,
+    issues: Array.from(new Set(issues)),
   };
 }
 
@@ -9368,6 +9682,92 @@ function closeShopResourcePicker() {
   renderShopResourcePicker();
 }
 
+function openMapResourcePicker(context) {
+  const record = isMapFile() ? state.formRecords[state.selectedRecordIndex] : null;
+  const location = record?.locations?.[context.locationIndex];
+  const owner = context.eventIndex >= 0 ? location?.events?.[context.eventIndex] : location;
+  if (!owner || (context.field !== "picture" && context.field !== "image")) {
+    return;
+  }
+
+  const currentResourceId = typeof owner[context.field] === "string" ? owner[context.field].trim() : "";
+  const currentGroup = state.contentIndex.resourcesById.get(currentResourceId)?.group || "";
+  state.mapEditor.resourcePicker = {
+    open: true,
+    locationIndex: context.locationIndex,
+    eventIndex: context.eventIndex,
+    field: context.field,
+    filter: currentGroup && currentGroup !== "town" && currentGroup !== "头像" ? "all" : "recommended",
+    search: "",
+    selectedResourceId: currentResourceId,
+  };
+  renderMapResourcePicker();
+}
+
+function closeMapResourcePicker() {
+  state.mapEditor.resourcePicker = {
+    open: false,
+    locationIndex: -1,
+    eventIndex: -1,
+    field: "",
+    filter: "recommended",
+    search: "",
+    selectedResourceId: "",
+  };
+  renderMapResourcePicker();
+}
+
+function getCurrentMapResourcePickerTarget() {
+  if (!isMapFile()) {
+    return null;
+  }
+  const picker = state.mapEditor.resourcePicker;
+  const record = state.formRecords[state.selectedRecordIndex];
+  const location = record?.locations?.[picker.locationIndex];
+  const owner = picker.eventIndex >= 0 ? location?.events?.[picker.eventIndex] : location;
+  if (!record || !location || !owner || (picker.field !== "picture" && picker.field !== "image")) {
+    return null;
+  }
+  return { record, location, owner, picker };
+}
+
+function getMapIconResources() {
+  return Array.from(state.contentIndex.resourcesById.values())
+    .filter((resource) => {
+      if (typeof resource?.id !== "string") {
+        return false;
+      }
+      const assetPath = resolveResourceAssetPath(resource);
+      return Boolean(assetPath && isImage(assetPath.toLowerCase()));
+    })
+    .sort((left, right) => {
+      const rank = (resource) => resource.group === "town" ? 0 : resource.group === "头像" ? 1 : 2;
+      return rank(left) - rank(right) || left.id.localeCompare(right.id, "zh-Hans-CN");
+    });
+}
+
+function matchesMapResourcePickerFilter(resource, filter) {
+  if (filter === "town" || filter === "头像") {
+    return resource.group === filter;
+  }
+  if (filter === "recommended") {
+    return resource.group === "town" || resource.group === "头像";
+  }
+  return true;
+}
+
+function useMapResource(resourceId) {
+  const target = getCurrentMapResourcePickerTarget();
+  if (!target) {
+    closeMapResourcePicker();
+    return;
+  }
+  target.owner[target.picker.field] = resourceId || null;
+  syncFormToEditor();
+  closeMapResourcePicker();
+  renderFormView();
+}
+
 function getCurrentShopRecord() {
   if (!isShopFile()) {
     return null;
@@ -10311,6 +10711,181 @@ function renderShopResourcePicker() {
   restoreShopResourcePickerScrollState(scrollState);
 }
 
+function renderMapResourcePicker() {
+  document.getElementById("mapResourcePickerOverlay")?.remove();
+  if (!state.mapEditor.resourcePicker.open) {
+    return;
+  }
+
+  const target = getCurrentMapResourcePickerTarget();
+  if (!target) {
+    state.mapEditor.resourcePicker.open = false;
+    return;
+  }
+
+  const picker = target.picker;
+  const isEventIcon = picker.field === "image";
+  const overlay = document.createElement("div");
+  overlay.id = "mapResourcePickerOverlay";
+  overlay.className = "portrait-picker-overlay";
+  overlay.addEventListener("click", (event) => {
+    if (event.target === overlay) {
+      closeMapResourcePicker();
+    }
+  });
+
+  const dialog = document.createElement("div");
+  dialog.className = "portrait-picker-dialog map-resource-picker-dialog";
+  const header = document.createElement("div");
+  header.className = "portrait-picker-header";
+  const titleGroup = document.createElement("div");
+  const title = document.createElement("div");
+  title.className = "portrait-picker-title";
+  title.textContent = isEventIcon ? "选择当前事件图标" : "选择点位公共回退图";
+  const subtitle = document.createElement("div");
+  subtitle.className = "portrait-picker-subtitle";
+  subtitle.textContent = isEventIcon
+    ? "事件 image 优先级最高，只影响当前事件。推荐从 town 图标中选择。"
+    : "点位 picture 会被所有未填写 image 的事件复用；为空时才会尝试角色头像。";
+  titleGroup.append(title, subtitle);
+  const closeButton = document.createElement("button");
+  closeButton.type = "button";
+  closeButton.textContent = "关闭";
+  closeButton.addEventListener("click", closeMapResourcePicker);
+  header.append(titleGroup, closeButton);
+
+  const controls = document.createElement("div");
+  controls.className = "map-resource-picker-controls";
+  const search = document.createElement("input");
+  search.type = "search";
+  search.className = "portrait-picker-search";
+  search.placeholder = "搜索资源 id、资源组、文件路径";
+  search.value = picker.search;
+  search.addEventListener("input", () => {
+    picker.search = search.value;
+    renderMapResourcePicker();
+  });
+  const filter = document.createElement("select");
+  filter.className = "map-resource-picker-filter";
+  for (const choice of [
+    { value: "recommended", label: "推荐：town + 头像" },
+    { value: "town", label: "仅 town 交互图标" },
+    { value: "头像", label: "仅角色头像" },
+    { value: "all", label: "全部图片资源" },
+  ]) {
+    const option = document.createElement("option");
+    option.value = choice.value;
+    option.textContent = choice.label;
+    option.selected = picker.filter === choice.value;
+    filter.appendChild(option);
+  }
+  filter.addEventListener("change", () => {
+    picker.filter = filter.value;
+    picker.selectedResourceId = "";
+    renderMapResourcePicker();
+  });
+  controls.append(search, filter);
+
+  const query = picker.search.trim().toLowerCase();
+  const resources = getMapIconResources().filter((resource) => {
+    if (!matchesMapResourcePickerFilter(resource, picker.filter)) {
+      return false;
+    }
+    if (!query) {
+      return true;
+    }
+    return [resource.id, resource.group, resource.value]
+      .filter((value) => typeof value === "string")
+      .join(" ")
+      .toLowerCase()
+      .includes(query);
+  });
+  let selectedResource = resources.find((resource) => resource.id === picker.selectedResourceId) || null;
+  if (!selectedResource && resources.length > 0) {
+    selectedResource = resources[0];
+    picker.selectedResourceId = selectedResource.id;
+  }
+
+  const body = document.createElement("div");
+  body.className = "portrait-picker-body";
+  const gallery = document.createElement("div");
+  gallery.className = "portrait-picker-gallery map-resource-picker-gallery";
+  if (resources.length === 0) {
+    const empty = document.createElement("div");
+    empty.className = "record-empty";
+    empty.textContent = "没有匹配的图片资源。可以切换到“全部图片资源”继续查找。";
+    gallery.appendChild(empty);
+  } else {
+    for (const resource of resources) {
+      const assetPath = resolveResourceAssetPath(resource);
+      const card = document.createElement("button");
+      card.type = "button";
+      card.className = "portrait-picker-card map-resource-picker-card";
+      card.classList.toggle("active", resource.id === picker.selectedResourceId);
+      card.addEventListener("click", () => {
+        picker.selectedResourceId = resource.id;
+        renderMapResourcePicker();
+      });
+      const image = document.createElement("img");
+      image.className = "portrait-picker-card-image map-resource-picker-card-image";
+      image.src = `/api/assets/file?path=${encodeURIComponent(assetPath)}`;
+      image.alt = resource.id;
+      const content = document.createElement("div");
+      content.className = "portrait-picker-card-content";
+      const cardTitle = document.createElement("div");
+      cardTitle.className = "portrait-picker-card-title";
+      cardTitle.textContent = resource.id;
+      const cardMeta = document.createElement("div");
+      cardMeta.className = "portrait-picker-card-meta";
+      cardMeta.textContent = resource.group || "未分组";
+      content.append(cardTitle, cardMeta);
+      card.append(image, content);
+      gallery.appendChild(card);
+    }
+  }
+
+  const detail = document.createElement("div");
+  detail.className = "portrait-picker-detail";
+  if (!selectedResource) {
+    const empty = document.createElement("div");
+    empty.className = "record-empty";
+    empty.textContent = "请选择一个图片资源。";
+    detail.appendChild(empty);
+  } else {
+    const assetPath = resolveResourceAssetPath(selectedResource);
+    const preview = document.createElement("img");
+    preview.className = "portrait-picker-detail-image map-resource-picker-detail-image";
+    preview.src = `/api/assets/file?path=${encodeURIComponent(assetPath)}&v=${Date.now()}`;
+    preview.alt = selectedResource.id;
+    const info = document.createElement("div");
+    info.className = "portrait-picker-detail-info";
+    info.append(
+      createCharacterMetaRow("资源 ID", selectedResource.id),
+      createCharacterMetaRow("资源组", selectedResource.group || "未分组"),
+      createCharacterMetaRow("资源 value", selectedResource.value || ""),
+      createCharacterMetaRow("资产文件", assetPath)
+    );
+    const useButton = document.createElement("button");
+    useButton.type = "button";
+    useButton.className = "primary";
+    useButton.textContent = isEventIcon ? "用于当前事件" : "用作点位公共回退图";
+    useButton.addEventListener("click", () => useMapResource(selectedResource.id));
+    const clearButton = document.createElement("button");
+    clearButton.type = "button";
+    clearButton.textContent = "清空当前字段";
+    clearButton.addEventListener("click", () => useMapResource(""));
+    const actions = document.createElement("div");
+    actions.className = "portrait-picker-footer-actions";
+    actions.append(useButton, clearButton);
+    detail.append(preview, info, actions);
+  }
+
+  body.append(gallery, detail);
+  dialog.append(header, controls, body);
+  overlay.appendChild(dialog);
+  document.body.appendChild(overlay);
+}
+
 function capturePortraitPickerScrollState() {
   const overlay = document.getElementById("portraitPickerOverlay");
   return {
@@ -10546,6 +11121,12 @@ function handleGlobalKeydown(event) {
   if (event.key === "Escape" && state.shopResourcePicker.open) {
     event.preventDefault();
     closeShopResourcePicker();
+    return;
+  }
+
+  if (event.key === "Escape" && state.mapEditor.resourcePicker.open) {
+    event.preventDefault();
+    closeMapResourcePicker();
     return;
   }
 

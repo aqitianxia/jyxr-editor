@@ -1230,6 +1230,36 @@ body.map-focus-mode .map-location-editor {
   min-width: 0;
 }
 
+.map-canvas-wrap {
+  display: grid;
+  gap: 8px;
+}
+
+.map-canvas-toolbar {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+}
+
+.map-canvas-mode-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.map-canvas-mode-button.active {
+  border-color: #2d6cdf;
+  background: #2d6cdf;
+  color: #fff;
+}
+
+.map-canvas-legend {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+  text-align: right;
+}
+
 .map-canvas {
   position: relative;
   overflow: hidden;
@@ -1237,6 +1267,11 @@ body.map-focus-mode .map-location-editor {
   border-radius: 8px;
   aspect-ratio: 4 / 3;
   background: #f5f3ea;
+}
+
+.map-canvas.adding {
+  cursor: crosshair;
+  outline: 3px solid rgba(45, 108, 223, 0.16);
 }
 
 .map-canvas img,
@@ -1266,21 +1301,84 @@ body.map-focus-mode .map-location-editor {
 
 .map-location-pin {
   position: absolute;
-  width: 30px;
-  height: 30px;
+  width: 42px;
+  height: 42px;
+  padding: 0;
   transform: translate(-50%, -50%);
   border-radius: 50%;
   border: 2px solid #fff;
-  background: #2d6cdf;
+  background: #eef3f7;
   color: #fff;
-  font-weight: 700;
   box-shadow: 0 4px 12px rgba(25, 44, 88, 0.28);
   cursor: grab;
+  overflow: visible;
 }
 
 .map-location-pin.active {
-  background: #d45b36;
+  border-color: #d45b36;
   outline: 3px solid rgba(212, 91, 54, 0.22);
+  z-index: 2;
+}
+
+.map-canvas.adding .map-location-pin {
+  cursor: pointer;
+}
+
+.map-icon-visual {
+  position: relative;
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  overflow: hidden;
+  border-radius: 10px;
+  background: linear-gradient(180deg, #f1f5f8 0%, #e5ebf0 100%);
+  color: #39516a;
+}
+
+.map-icon-visual img {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: contain;
+}
+
+.map-location-pin-icon {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  overflow: visible;
+}
+
+.map-location-pin-icon img {
+  border-radius: 50%;
+}
+
+.map-icon-fallback {
+  font-weight: 800;
+  font-size: 12px;
+}
+
+.map-icon-index {
+  position: absolute;
+  right: -3px;
+  bottom: -3px;
+  min-width: 18px;
+  height: 18px;
+  display: grid;
+  place-items: center;
+  border: 2px solid #fff;
+  border-radius: 999px;
+  padding: 0 4px;
+  background: #2d6cdf;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 1;
+  box-sizing: border-box;
+}
+
+.map-location-pin.active .map-icon-index {
+  background: #d45b36;
 }
 
 .map-canvas-hint,
@@ -1310,6 +1408,21 @@ body.map-focus-mode .map-location-editor {
   gap: 10px;
 }
 
+.map-location-navigation {
+  min-width: 0;
+  display: grid;
+  gap: 6px;
+  align-content: start;
+}
+
+.map-location-search {
+  width: 100%;
+}
+
+.map-location-count {
+  padding: 0 2px;
+}
+
 .map-location-list {
   display: grid;
   gap: 6px;
@@ -1322,6 +1435,10 @@ body.map-focus-mode .map-location-editor {
   appearance: none;
   border: 1px solid var(--border);
   border-radius: 8px;
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr);
+  gap: 8px;
+  align-items: center;
   padding: 8px;
   background: #fffdf8;
   text-align: left;
@@ -1337,6 +1454,30 @@ body.map-focus-mode .map-location-editor {
   line-height: 1.3;
 }
 
+.map-location-list-icon {
+  width: 42px;
+  height: 42px;
+  border: 1px solid #d8d9c6;
+}
+
+.map-location-card-content {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.map-location-icon-source {
+  color: #34705f;
+  font-size: 11px;
+  line-height: 1.3;
+}
+
+.map-location-icon-source.empty,
+.map-location-icon-source.missing,
+.map-location-icon-source.broken {
+  color: var(--warn);
+}
+
 .map-location-editor {
   min-width: 0;
   display: grid;
@@ -1349,6 +1490,99 @@ body.map-focus-mode .map-location-editor {
 
 .map-location-grid {
   grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.map-runtime-icon-summary,
+.map-event-icon-summary {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+  border: 1px solid #d8d9c6;
+  border-radius: 10px;
+  padding: 9px;
+  background: #f7faf8;
+}
+
+.map-runtime-icon-preview {
+  width: 58px;
+  height: 58px;
+  border: 1px solid #d8d9c6;
+}
+
+.map-runtime-icon-content,
+.map-event-icon-text {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.map-runtime-icon-title,
+.map-event-icon-text strong {
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+.map-runtime-icon-detail,
+.map-runtime-icon-rule,
+.map-event-icon-text span,
+.map-resource-help {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.map-runtime-icon-detail.missing,
+.map-runtime-icon-detail.broken,
+.map-event-icon-summary.missing .map-event-icon-text,
+.map-event-icon-summary.broken .map-event-icon-text {
+  color: var(--warn);
+}
+
+.map-event-icon-summary {
+  margin: 8px 0 10px;
+  background: #fbfcfd;
+}
+
+.map-event-icon-preview {
+  width: 44px;
+  height: 44px;
+  border: 1px solid #d8d9c6;
+}
+
+.map-resource-field {
+  align-content: start;
+}
+
+.map-resource-picker-dialog {
+  width: min(1180px, 94vw);
+}
+
+.map-resource-picker-controls {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 220px;
+  gap: 10px;
+}
+
+.map-resource-picker-filter {
+  width: 100%;
+}
+
+.map-resource-picker-gallery {
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+}
+
+.map-resource-picker-card-image {
+  min-height: 96px;
+  height: 96px;
+  object-fit: contain;
+  background: linear-gradient(180deg, #f7fafb 0%, #edf2f4 100%);
+}
+
+.map-resource-picker-detail-image {
+  max-width: 360px;
+  aspect-ratio: 1 / 1;
+  object-fit: contain;
 }
 
 .map-event-section,
@@ -2881,8 +3115,19 @@ body.map-focus-mode .map-location-editor {
   .map-event-grid,
   .map-condition-row,
   .map-location-grid,
-  .map-music-row {
+  .map-music-row,
+  .map-canvas-toolbar,
+  .map-resource-picker-controls,
+  .portrait-picker-body {
     grid-template-columns: 1fr;
+  }
+
+  .map-canvas-legend {
+    text-align: left;
+  }
+
+  .map-resource-picker-gallery {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
   .map-summary-background,
