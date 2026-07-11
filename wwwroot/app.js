@@ -1,11 +1,11 @@
-import { state } from "./core/state.js?v=20260711-stage6-1";
-import { editorVersion } from "./core/version.js?v=20260711-stage6-1";
+import { state } from "./core/state.js?v=20260711-stage7-1";
+import { editorVersion } from "./core/version.js?v=20260711-stage7-1";
 import { createEditorApi } from "./core/api.js?v=20260711-core-17";
 import { createCommandRegistry } from "./core/commands.js?v=20260711-core-17";
 import { createDirtyStateController } from "./core/dirty-state.js?v=20260711-core-17";
 import { createEventBus } from "./core/events.js?v=20260711-core-17";
 import { createPreferences, storageKeys } from "./core/preferences.js?v=20260711-core-17";
-import { normalizeWorkspaceMode } from "./core/router.js?v=20260711-stage6-1";
+import { normalizeWorkspaceMode } from "./core/router.js?v=20260711-stage7-1";
 import { bindImeSafeInput } from "./core/input-composition.js?v=20260711-core-17";
 import { createProblem, summarizeProblems } from "./core/problems.js?v=20260711-core-17";
 import { createRecentItemsStore } from "./core/recent-items.js?v=20260711-core-17";
@@ -14,13 +14,15 @@ import { confirmAction, createDialogController } from "./ui/dialogs.js?v=2026071
 import { createField, createTextInput } from "./ui/fields.js?v=20260711-core-17";
 import { createTextList } from "./ui/lists.js?v=20260711-core-17";
 import { createProblemSummary, renderStatusMessage } from "./ui/problem-list.js?v=20260711-core-17";
-import { createShellController } from "./ui/shell.js?v=20260711-stage6-1";
+import { createShellController } from "./ui/shell.js?v=20260711-stage7-1";
 import { renderProjectHome } from "./ui/home.js?v=20260711-core-17";
 import { renderProblemCenter } from "./ui/problem-center.js?v=20260711-core-17";
 import { renderCharacterWorkspace } from "./ui/characters.js?v=20260711-stage6-1";
 import { createEmbeddedJsonEditor, disposeEmbeddedCodeEditors } from "./ui/code-editor.js?v=20260711-stage6-1";
 import { createItemDefinition } from "./domain/items.js?v=20260711-stage6-1";
 import { renderItemWorkspace } from "./workspaces/items.js?v=20260711-stage6-1";
+import { createShopDefinition, createShopProduct, ensureShopShape as ensureShopWorkspaceShape, moveShopProduct as moveShopProductEntry } from "./domain/shops.js?v=20260711-stage7-1";
+import { renderShopWorkspace } from "./workspaces/shops.js?v=20260711-stage7-1";
 import {
   buildResourceCatalog,
   findAssetPath as findCatalogAssetPath,
@@ -71,12 +73,14 @@ const elements = {
   problemsTab: document.getElementById("problemsTab"),
   charactersTab: document.getElementById("charactersTab"),
   itemsTab: document.getElementById("itemsTab"),
+  shopsTab: document.getElementById("shopsTab"),
   sidebarBrowser: document.getElementById("sidebarBrowser"),
   editorPane: document.getElementById("editorPane"),
   homeView: document.getElementById("homeView"),
   problemCenterView: document.getElementById("problemCenterView"),
   characterWorkspaceView: document.getElementById("characterWorkspaceView"),
   itemWorkspaceView: document.getElementById("itemWorkspaceView"),
+  shopWorkspaceView: document.getElementById("shopWorkspaceView"),
   resourceWorkspaceView: document.getElementById("resourceWorkspaceView"),
   workspacePaneHeader: document.getElementById("workspacePaneHeader"),
   editorTools: document.getElementById("editorTools"),
@@ -175,6 +179,7 @@ elements.homeTab.addEventListener("click", () => requestWorkspaceChange("home"))
 elements.problemsTab.addEventListener("click", () => requestWorkspaceChange("problems"));
 elements.charactersTab.addEventListener("click", () => requestWorkspaceChange("characters"));
 elements.itemsTab.addEventListener("click", () => requestWorkspaceChange("items"));
+elements.shopsTab.addEventListener("click", () => requestWorkspaceChange("shops"));
 elements.dataTab.addEventListener("click", () => requestWorkspaceChange("data"));
 elements.storyTab.addEventListener("click", () => requestWorkspaceChange("story"));
 elements.assetsTab.addEventListener("click", () => requestWorkspaceChange("assets"));
@@ -704,11 +709,13 @@ function setMode(mode) {
   const isStory = mode === "story";
   const isCharacters = mode === "characters";
   const isItems = mode === "items";
+  const isShops = mode === "shops";
   const isResources = mode === "assets";
 
   document.body.classList.toggle("story-mode", isStory);
   document.body.classList.toggle("characters-mode", isCharacters);
   document.body.classList.toggle("items-mode", isItems);
+  document.body.classList.toggle("shops-mode", isShops);
   document.body.classList.toggle("resources-mode", isResources);
   document.body.classList.toggle("overview-mode", isOverview);
   elements.editorPane.classList.toggle("overview-workspace", isOverview);
@@ -716,6 +723,7 @@ function setMode(mode) {
   elements.problemsTab.classList.toggle("active", mode === "problems");
   elements.charactersTab.classList.toggle("active", isCharacters);
   elements.itemsTab.classList.toggle("active", isItems);
+  elements.shopsTab.classList.toggle("active", isShops);
   elements.dataTab.classList.toggle("active", mode === "data");
   elements.storyTab.classList.toggle("active", isStory);
   elements.assetsTab.classList.toggle("active", mode === "assets");
@@ -723,10 +731,11 @@ function setMode(mode) {
   elements.problemCenterView.classList.toggle("hidden", mode !== "problems");
   elements.characterWorkspaceView.classList.toggle("hidden", !isCharacters);
   elements.itemWorkspaceView.classList.toggle("hidden", !isItems);
+  elements.shopWorkspaceView.classList.toggle("hidden", !isShops);
   elements.resourceWorkspaceView.classList.toggle("hidden", !isResources);
-  elements.workspacePaneHeader.classList.toggle("hidden", isOverview || isCharacters || isItems || isResources);
-  elements.editorTools.classList.toggle("hidden", isOverview || isStory || isCharacters || isItems || isResources);
-  elements.editorStatusbar.classList.toggle("hidden", isOverview || isStory || isCharacters || isItems || isResources);
+  elements.workspacePaneHeader.classList.toggle("hidden", isOverview || isCharacters || isItems || isShops || isResources);
+  elements.editorTools.classList.toggle("hidden", isOverview || isStory || isCharacters || isItems || isShops || isResources);
+  elements.editorStatusbar.classList.toggle("hidden", isOverview || isStory || isCharacters || isItems || isShops || isResources);
 
   elements.fileSearch.value = "";
   elements.fileSearch.placeholder = isStory
@@ -734,7 +743,7 @@ function setMode(mode) {
     : mode === "assets"
       ? "搜索资产"
       : "搜索文件";
-  elements.saveButton.disabled = mode !== "data" && !isCharacters && !isItems;
+  elements.saveButton.disabled = mode !== "data" && !isCharacters && !isItems && !isShops;
   elements.formatButton.disabled = mode !== "data";
 
   if (mode === "home") {
@@ -763,6 +772,14 @@ function setMode(mode) {
     setTextEditorVisible(false);
     elements.currentPath.textContent = "items.json";
     renderItemWorkspaceView();
+  } else if (isShops) {
+    disposeEmbeddedCodeEditors(elements.formView);
+    elements.formView.replaceChildren();
+    elements.formView.classList.add("hidden");
+    elements.storyView.classList.add("hidden");
+    setTextEditorVisible(false);
+    elements.currentPath.textContent = "shops.json";
+    renderShopWorkspaceView();
   } else if (isResources) {
     elements.formView.classList.add("hidden");
     elements.storyView.classList.add("hidden");
@@ -800,7 +817,7 @@ function setMode(mode) {
   updateMapFocusControl();
   updateStorySourceButton();
   renderShellContext();
-  if (!isOverview && !isCharacters && !isItems && !isResources) {
+  if (!isOverview && !isCharacters && !isItems && !isShops && !isResources) {
     renderFileList();
     renderCurrentFileInfo();
   }
@@ -855,6 +872,30 @@ async function requestWorkspaceChange(mode) {
     }
     return;
   }
+  const switchingShopSurface = isShopFile()
+    && ((state.mode === "shops" && mode === "data") || (state.mode === "data" && mode === "shops"));
+  if (switchingShopSurface) {
+    if (mode === "shops") {
+      try {
+        const records = parseJsonText(getEditorValue());
+        if (!Array.isArray(records) || !records.every((record) => record && typeof record === "object" && !Array.isArray(record))) {
+          throw new Error("shops.json 顶层必须是商店对象数组。");
+        }
+        state.formRecords = records;
+        state.formRecords.forEach(ensureShopWorkspaceShape);
+        state.selectedRecordIndex = Math.min(state.selectedRecordIndex, Math.max(0, records.length - 1));
+        state.shopWorkspace.selectedProductIndex = Math.min(state.shopWorkspace.selectedProductIndex, Math.max(0, (records[state.selectedRecordIndex]?.products?.length || 0) - 1));
+        state.viewMode = "form";
+        setMode("shops");
+      } catch (error) {
+        showValidation(false, error instanceof SyntaxError ? formatJsonError(error) : error.message);
+      }
+    } else {
+      setMode("data");
+      setViewMode("json");
+    }
+    return;
+  }
   if (dirtyStateController.isDirty()) {
     if (!(await confirmDiscardChanges())) return;
     await reloadCurrentDataFile();
@@ -863,6 +904,8 @@ async function requestWorkspaceChange(mode) {
     await openCharacterWorkspace();
   } else if (mode === "items") {
     await openItemWorkspace();
+  } else if (mode === "shops") {
+    await openShopWorkspace();
   } else if (mode === "data" || mode === "story" || mode === "assets") {
     await openWorkspaceMode(mode);
   } else {
@@ -878,7 +921,7 @@ async function reloadCurrentDataFile() {
   const file = await requestJson(`/api/data/file?path=${encodeURIComponent(state.currentPath)}`);
   setEditorValue(file.content);
   dirtyStateController.markClean({ render: false });
-  refreshFormFromEditor({ preferForm: state.viewMode === "form" || state.mode === "characters" });
+  refreshFormFromEditor({ preferForm: state.viewMode === "form" || state.mode === "characters" || state.mode === "items" || state.mode === "shops" });
   renderDirtyState();
 }
 
@@ -1257,6 +1300,199 @@ async function uploadCurrentItemPicture(file) {
   } catch (error) {
     showValidation(false, error instanceof Error ? error.message : String(error));
   }
+}
+
+async function openShopWorkspace() {
+  if (state.mode === "shops" && isShopFile() && state.formRecords.length > 0) {
+    renderShopWorkspaceView();
+    return;
+  }
+  if (!state.dataFiles.some((file) => file.path === "shops.json")) {
+    showValidation(false, "当前 MOD 缺少 shops.json。");
+    return;
+  }
+  await openDataFile("shops.json");
+  if (!isShopFile()) return;
+  state.formRecords.forEach(ensureShopWorkspaceShape);
+  state.viewMode = "form";
+  setMode("shops");
+}
+
+function renderShopWorkspaceView() {
+  if (state.mode !== "shops") return;
+  const record = state.formRecords[state.selectedRecordIndex];
+  if (record) ensureShopWorkspaceShape(record);
+  renderShopWorkspace(elements.shopWorkspaceView, {
+    state,
+    itemMap: state.contentIndex.itemsById,
+    itemOptions: getShopItemOptions(),
+    getResourceInfo: (shop, key) => getShopResourceInfo(shop, key, getShopResourceGroup(key)),
+    getReferences: getShopReferences,
+    onSelectShop: (index) => {
+      state.selectedRecordIndex = index;
+      state.shopWorkspace.selectedProductIndex = 0;
+      state.shopWorkspace.tab = "products";
+      renderShopWorkspaceView();
+      renderProblemIndicators();
+    },
+    onSearch: (value) => {
+      state.shopWorkspace.search = value;
+      renderShopWorkspaceView();
+      const search = elements.shopWorkspaceView.querySelector('.shop-workspace-shops input[type="search"]');
+      search?.focus();
+      search?.setSelectionRange(value.length, value.length);
+    },
+    onFilter: (value) => {
+      state.shopWorkspace.filter = value;
+      renderShopWorkspaceView();
+    },
+    onTab: (value) => {
+      state.shopWorkspace.tab = value;
+      renderShopWorkspaceView();
+    },
+    onSelectProduct: (index) => {
+      state.shopWorkspace.selectedProductIndex = index;
+      state.shopWorkspace.tab = "products";
+      renderShopWorkspaceView();
+    },
+    onMutateShop: (key, value) => {
+      const current = state.formRecords[state.selectedRecordIndex];
+      if (!current) return;
+      current[key] = value;
+      syncFormToEditor();
+      renderShopWorkspaceView();
+    },
+    onReplaceShop: (next) => {
+      state.formRecords[state.selectedRecordIndex] = ensureShopWorkspaceShape(next);
+      state.shopWorkspace.selectedProductIndex = Math.min(state.shopWorkspace.selectedProductIndex, Math.max(0, next.products.length - 1));
+      syncFormToEditor();
+      renderShopWorkspaceView();
+    },
+    onAddProduct: addWorkspaceShopProduct,
+    onPatchProduct: patchShopProduct,
+    onMoveProduct: moveCurrentShopProduct,
+    onDuplicateProduct: duplicateWorkspaceShopProduct,
+    onDeleteProduct: deleteWorkspaceShopProduct,
+    onCreate: createShopRecord,
+    onDuplicate: duplicateShopRecord,
+    onDelete: deleteShopRecord,
+    onPickResource: (field, path) => openShopResourcePicker(field, path),
+  });
+  renderShopResourcePicker();
+}
+
+function getShopItemOptions() {
+  const options = [];
+  for (const definitions of state.contentIndex.definitionsById.values()) {
+    for (const definition of definitions) {
+      if (definition.type === "items") options.push(createReferenceOption(definition, {
+        typeLabel: "物品",
+        subtitle: [definition.record?.type, Number.isFinite(definition.record?.price) ? `基础价 ${definition.record.price}` : ""].filter(Boolean).join(" · "),
+      }));
+    }
+  }
+  return Array.from(new Map(options.map((option) => [option.id, option])).values())
+    .sort((left, right) => left.name.localeCompare(right.name, "zh-Hans-CN") || left.id.localeCompare(right.id, "zh-Hans-CN"));
+}
+
+function getShopReferences(record) {
+  const id = typeof record?.id === "string" ? record.id.trim() : "";
+  if (!id) return [];
+  return (state.contentIndex.referencesByValue?.get(id) || [])
+    .filter((reference) => !(reference.path === "shops.json" && reference.ownerDefinitionId === record.id))
+    .map((reference) => ({ ...reference, value: id }))
+    .sort((left, right) => left.path.localeCompare(right.path, "zh-Hans-CN") || left.fieldPath.localeCompare(right.fieldPath));
+}
+
+function createShopRecord() {
+  const id = createUniqueId("新商店");
+  state.formRecords.push(createShopDefinition(id));
+  state.selectedRecordIndex = state.formRecords.length - 1;
+  state.shopWorkspace.search = "";
+  state.shopWorkspace.filter = "all";
+  state.shopWorkspace.tab = "settings";
+  state.shopWorkspace.selectedProductIndex = 0;
+  syncFormToEditor();
+  renderShopWorkspaceView();
+}
+
+function duplicateShopRecord() {
+  const current = state.formRecords[state.selectedRecordIndex];
+  if (!current) return;
+  const copy = structuredCloneCompat(current);
+  copy.id = createUniqueId(`${String(current.id || "新商店")}_copy`);
+  copy.name = `${String(current.name || current.id || "新商店")} 副本`;
+  state.formRecords.splice(state.selectedRecordIndex + 1, 0, copy);
+  state.selectedRecordIndex += 1;
+  state.shopWorkspace.selectedProductIndex = 0;
+  syncFormToEditor();
+  renderShopWorkspaceView();
+}
+
+function deleteShopRecord() {
+  const current = state.formRecords[state.selectedRecordIndex];
+  if (!current) return;
+  const references = getShopReferences(current);
+  const summary = references.length
+    ? `静态扫描找到 ${references.length} 处引用。\n\n${references.slice(0, 5).map((item) => `${item.path} · ${item.fieldPath}`).join("\n")}\n\n`
+    : "静态扫描未找到引用，但无法覆盖动态脚本或运行时引用。\n\n";
+  if (!confirmAction(`${summary}确认删除商店「${current.name || current.id}」？此操作会留在未保存状态。`)) return;
+  state.formRecords.splice(state.selectedRecordIndex, 1);
+  state.selectedRecordIndex = Math.max(0, Math.min(state.selectedRecordIndex, state.formRecords.length - 1));
+  state.shopWorkspace.selectedProductIndex = 0;
+  syncFormToEditor();
+  renderShopWorkspaceView();
+}
+
+function addWorkspaceShopProduct() {
+  const record = state.formRecords[state.selectedRecordIndex];
+  if (!record) return;
+  ensureShopWorkspaceShape(record);
+  const firstAvailable = getShopItemOptions().find((option) => !record.products.some((product) => product.contentId === option.id));
+  record.products.push(createShopProduct(firstAvailable?.id || ""));
+  state.shopWorkspace.selectedProductIndex = record.products.length - 1;
+  state.shopWorkspace.tab = "products";
+  syncFormToEditor();
+  renderShopWorkspaceView();
+}
+
+function patchShopProduct(index, patch) {
+  const record = state.formRecords[state.selectedRecordIndex];
+  if (!record?.products?.[index]) return;
+  record.products[index] = { ...record.products[index], ...patch };
+  syncFormToEditor();
+  renderShopWorkspaceView();
+}
+
+function moveCurrentShopProduct(index, direction) {
+  const record = state.formRecords[state.selectedRecordIndex];
+  if (!record) return;
+  const next = moveShopProductEntry(record.products, index, direction);
+  if (next === record.products) return;
+  record.products = next;
+  state.shopWorkspace.selectedProductIndex = index + direction;
+  syncFormToEditor();
+  renderShopWorkspaceView();
+}
+
+function duplicateWorkspaceShopProduct(index) {
+  const record = state.formRecords[state.selectedRecordIndex];
+  const product = record?.products?.[index];
+  if (!product) return;
+  record.products.splice(index + 1, 0, structuredCloneCompat(product));
+  state.shopWorkspace.selectedProductIndex = index + 1;
+  syncFormToEditor();
+  renderShopWorkspaceView();
+}
+
+function deleteWorkspaceShopProduct(index) {
+  const record = state.formRecords[state.selectedRecordIndex];
+  const product = record?.products?.[index];
+  if (!product || !confirmAction(`确认从当前商店删除商品「${product.contentId || "未命名商品"}」？`)) return;
+  record.products.splice(index, 1);
+  state.shopWorkspace.selectedProductIndex = Math.max(0, Math.min(index, record.products.length - 1));
+  syncFormToEditor();
+  renderShopWorkspaceView();
 }
 
 function getCharacterReferences(record) {
@@ -2402,7 +2638,7 @@ function previewAsset(path) {
 }
 
 async function saveCurrentFile() {
-  if (!state.currentPath || (state.mode !== "data" && state.mode !== "characters" && state.mode !== "items")) {
+  if (!state.currentPath || (state.mode !== "data" && state.mode !== "characters" && state.mode !== "items" && state.mode !== "shops")) {
     showValidation(false, "请选择可保存的数据工作区。");
     return;
   }
@@ -2446,6 +2682,8 @@ async function saveCurrentFile() {
       renderCharacterWorkspaceView();
     } else if (state.mode === "items") {
       renderItemWorkspaceView();
+    } else if (state.mode === "shops") {
+      renderShopWorkspaceView();
     }
   } catch (error) {
     showValidation(false, error instanceof SyntaxError ? formatJsonError(error) : error.message);
@@ -3308,11 +3546,12 @@ function setViewModeButtons() {
 }
 
 function renderFormView() {
-  if (state.mode === "characters" || state.mode === "items") {
+  if (state.mode === "characters" || state.mode === "items" || state.mode === "shops") {
     elements.formView.classList.add("hidden");
     setTextEditorVisible(false);
     renderPortraitPicker();
     renderItemPicturePicker();
+    renderShopResourcePicker();
     return;
   }
 
@@ -8966,6 +9205,8 @@ function updateRecordField(record, key, value, options = {}) {
       renderCharacterWorkspaceView();
     } else if (state.mode === "items") {
       renderItemWorkspaceView();
+    } else if (state.mode === "shops") {
+      renderShopWorkspaceView();
     } else {
       renderFormView();
     }
@@ -11128,7 +11369,7 @@ async function createAndUseShopResource(record, field, resourceId, entry, button
     await rebuildContentIndex();
     closeShopResourcePicker();
     showValidation(result.validation.ok, result.validation.message);
-    renderFormView();
+    state.mode === "shops" ? renderShopWorkspaceView() : renderFormView();
   } catch (error) {
     showValidation(false, error instanceof Error ? error.message : String(error));
   } finally {

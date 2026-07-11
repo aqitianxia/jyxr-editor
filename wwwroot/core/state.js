@@ -50,6 +50,12 @@ export function createEditorState() {
       filter: "all",
       tab: "overview",
     },
+    shopWorkspace: {
+      search: "",
+      filter: "all",
+      tab: "products",
+      selectedProductIndex: 0,
+    },
     resourceWorkspace: {
       tab: "resources",
       search: "",

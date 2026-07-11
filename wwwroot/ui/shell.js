@@ -5,6 +5,7 @@ const shellContexts = Object.freeze({
   problems: { eyebrow: "质量检查 / 问题中心", browserTitle: "问题筛选" },
   characters: { eyebrow: "内容创作 / 角色与伙伴", browserTitle: "角色" },
   items: { eyebrow: "内容创作 / 物品与装备", browserTitle: "物品" },
+  shops: { eyebrow: "内容创作 / 商店与经济", browserTitle: "商店" },
   data: { eyebrow: "高级数据", browserTitle: "数据文件" },
   story: { eyebrow: "剧情与任务 / 图谱", browserTitle: "剧情分组" },
   assets: { eyebrow: "资源管理", browserTitle: "资源目录" },
