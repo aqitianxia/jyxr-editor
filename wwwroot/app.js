@@ -1,5 +1,5 @@
 import { state } from "./core/state.js?v=20260711-stage5b-1";
-import { editorVersion } from "./core/version.js?v=20260711-stage5d-1";
+import { editorVersion } from "./core/version.js?v=20260711-stage5e-1";
 import { createEditorApi } from "./core/api.js?v=20260711-core-17";
 import { createCommandRegistry } from "./core/commands.js?v=20260711-core-17";
 import { createDirtyStateController } from "./core/dirty-state.js?v=20260711-core-17";
@@ -887,6 +887,13 @@ function renderResourceWorkspaceView(options = {}) {
     },
     onOpenDefinition: (id) => revealDefinitionById(id, ["resources"]),
   });
+}
+
+function revealAssetInResourceWorkspace(assetPath) {
+  state.resourceWorkspace.tab = "assets";
+  state.resourceWorkspace.search = "";
+  state.resourceWorkspace.selectedKey = assetPath;
+  setMode("assets");
 }
 
 
@@ -11263,8 +11270,7 @@ function renderPortraitPicker() {
     previewButton.textContent = "在资产面板中打开";
     previewButton.addEventListener("click", () => {
       closePortraitPicker();
-      setMode("assets");
-      openAssetFile(selectedEntry.assetPath);
+      revealAssetInResourceWorkspace(selectedEntry.assetPath);
     });
     footerActions.appendChild(previewButton);
 
@@ -11367,6 +11373,7 @@ function renderItemPicturePicker() {
       const card = document.createElement("button");
       card.type = "button";
       card.className = "portrait-picker-card item-picture-picker-card";
+      card.dataset.resourcePickerValue = entry.assetPath;
       card.classList.toggle("active", entry.assetPath === state.itemPicturePicker.selectedAssetPath);
       card.addEventListener("click", () => {
         state.itemPicturePicker.selectedAssetPath = entry.assetPath;
@@ -11461,8 +11468,7 @@ function renderItemPicturePicker() {
     previewButton.textContent = "在资产面板中打开";
     previewButton.addEventListener("click", () => {
       closeItemPicturePicker();
-      setMode("assets");
-      openAssetFile(selectedEntry.assetPath);
+      revealAssetInResourceWorkspace(selectedEntry.assetPath);
     });
     footerActions.appendChild(previewButton);
 
@@ -11470,6 +11476,16 @@ function renderItemPicturePicker() {
   }
 
   body.append(gallery, detail);
+  bindResourcePickerKeyboard(dialog, {
+    model: pickerModel,
+    getValue: (entry) => entry.assetPath,
+    onCancel: closeItemPicturePicker,
+    onSelect: (assetPath, options = {}) => {
+      state.itemPicturePicker.selectedAssetPath = assetPath;
+      renderItemPicturePicker();
+      if (options.restoreKeyboardFocus) restoreResourcePickerKeyboardFocus("itemPicturePickerOverlay", assetPath);
+    },
+  });
   dialog.append(header, search, body);
   overlay.appendChild(dialog);
   document.body.appendChild(overlay);
@@ -11559,6 +11575,7 @@ function renderShopResourcePicker() {
       const card = document.createElement("button");
       card.type = "button";
       card.className = "portrait-picker-card shop-resource-picker-card";
+      card.dataset.resourcePickerValue = entry.assetPath;
       card.classList.toggle("active", entry.assetPath === state.shopResourcePicker.selectedAssetPath);
       card.addEventListener("click", () => {
         state.shopResourcePicker.selectedAssetPath = entry.assetPath;
@@ -11669,8 +11686,7 @@ function renderShopResourcePicker() {
     previewButton.textContent = "在资产面板中打开";
     previewButton.addEventListener("click", () => {
       closeShopResourcePicker();
-      setMode("assets");
-      openAssetFile(selectedEntry.assetPath);
+      revealAssetInResourceWorkspace(selectedEntry.assetPath);
     });
     footerActions.appendChild(previewButton);
 
@@ -11678,6 +11694,16 @@ function renderShopResourcePicker() {
   }
 
   body.append(gallery, detail);
+  bindResourcePickerKeyboard(dialog, {
+    model: pickerModel,
+    getValue: (entry) => entry.assetPath,
+    onCancel: closeShopResourcePicker,
+    onSelect: (assetPath, options = {}) => {
+      state.shopResourcePicker.selectedAssetPath = assetPath;
+      renderShopResourcePicker();
+      if (options.restoreKeyboardFocus) restoreResourcePickerKeyboardFocus("shopResourcePickerOverlay", assetPath);
+    },
+  });
   dialog.append(header, search, body);
   overlay.appendChild(dialog);
   document.body.appendChild(overlay);
@@ -11789,6 +11815,7 @@ function renderMapResourcePicker() {
       const card = document.createElement("button");
       card.type = "button";
       card.className = "portrait-picker-card map-resource-picker-card";
+      card.dataset.resourcePickerValue = resource.id;
       card.classList.toggle("active", resource.id === picker.selectedResourceId);
       card.addEventListener("click", () => {
         picker.selectedResourceId = resource.id;
@@ -11849,6 +11876,16 @@ function renderMapResourcePicker() {
   }
 
   body.append(gallery, detail);
+  bindResourcePickerKeyboard(dialog, {
+    model: pickerModel,
+    getValue: (resource) => resource.id,
+    onCancel: closeMapResourcePicker,
+    onSelect: (resourceId, options = {}) => {
+      picker.selectedResourceId = resourceId;
+      renderMapResourcePicker();
+      if (options.restoreKeyboardFocus) restoreResourcePickerKeyboardFocus("mapResourcePickerOverlay", resourceId);
+    },
+  });
   dialog.append(header, controls, body);
   overlay.appendChild(dialog);
   document.body.appendChild(overlay);
