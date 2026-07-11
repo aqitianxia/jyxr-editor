@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>JYXR MOD 编辑器 · v0.7.0</title>
+  <title>JYXR MOD 编辑器 · v0.8.0</title>
   <link rel="stylesheet" data-name="vs/editor/editor.main" href="/vendor/monaco/vs/editor/editor.main.css?v=20260708-monaco-1">
   <link rel="stylesheet" href="/styles.css?v=20260710-map-icons-1">
   <link rel="stylesheet" href="/styles/tokens.css?v=20260711-shell-1">
@@ -14,8 +14,9 @@
   <link rel="stylesheet" href="/styles/stage5.css?v=20260711-stage5b-1">
   <link rel="stylesheet" href="/styles/stage6.css?v=20260711-stage6-2">
   <link rel="stylesheet" href="/styles/stage7.css?v=20260711-stage7-1">
+  <link rel="stylesheet" href="/styles/stage8.css?v=20260711-stage8-1">
 </head>
-<body data-editor-version="0.7.0">
+<body data-editor-version="0.8.0">
   <div class="app-shell">
     <header class="topbar">
       <div class="topbar-leading">
@@ -25,7 +26,7 @@
         <div class="brand-block">
           <div class="brand">JYXR MOD 编辑器</div>
           <div class="brand-meta" aria-label="编辑器版本与核心状态">
-            <span id="editorVersion" class="editor-version">v0.7.0 · 阶段 7</span>
+            <span id="editorVersion" class="editor-version">v0.8.0 · 阶段 8</span>
             <span id="coreLoadState" class="core-load-state pending" aria-live="polite">核心未加载</span>
           </div>
         </div>
@@ -103,6 +104,13 @@
               <small>商品、定价、限购与资源</small>
             </span>
           </button>
+          <button id="martialTab" type="button" class="navigation-item">
+            <span class="navigation-icon" aria-hidden="true">武</span>
+            <span class="navigation-copy">
+              <strong>武学与奥义</strong>
+              <small>外功、内功、绝技与奥义</small>
+            </span>
+          </button>
           <div class="navigation-section-label navigation-section-spaced">编辑工具</div>
           <button id="dataTab" type="button" class="navigation-item">
             <span class="navigation-icon" aria-hidden="true">▦</span>
@@ -147,6 +155,7 @@
         <div id="characterWorkspaceView" class="character-workspace-view hidden"></div>
         <div id="itemWorkspaceView" class="item-workspace-view hidden"></div>
         <div id="shopWorkspaceView" class="shop-workspace-view hidden"></div>
+        <div id="martialWorkspaceView" class="martial-workspace-view hidden"></div>
         <div id="resourceWorkspaceView" class="resource-workspace-view hidden"></div>
 
         <div id="workspacePaneHeader" class="pane-header hidden">
@@ -234,6 +243,6 @@
 
   <script src="/vendor/monaco/vs/loader.js?v=20260708-monaco-1"></script>
   <script src="/story-dsl.js?v=20260709-dsl-json-1"></script>
-  <script src="/bootstrap.js?v=20260711-stage7-1"></script>
+  <script src="/bootstrap.js?v=20260711-stage8-1"></script>
 </body>
 </html>

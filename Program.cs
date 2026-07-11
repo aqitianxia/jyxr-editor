@@ -533,6 +533,25 @@ app.MapGet("/api/assets/files", (bool? includeImport) =>
     return Results.Ok(ListFiles(workspace.AssetsPath, "*", includeImport == true));
 });
 
+app.MapGet("/api/assets/skill-animations", () =>
+    Results.Ok(GodotSkillAnimationCatalog.List(workspace.AssetsPath)));
+
+app.MapGet("/api/assets/skill-animation", IResult (string id) =>
+{
+    try
+    {
+        return Results.Ok(GodotSkillAnimationCatalog.Load(id, workspace.AssetsPath));
+    }
+    catch (FileNotFoundException exception)
+    {
+        return Results.NotFound(new ErrorResponse(exception.Message));
+    }
+    catch (Exception exception)
+    {
+        return Results.BadRequest(new ErrorResponse(exception.Message));
+    }
+});
+
 app.MapGet("/api/assets/file", IResult (string path) =>
 {
     var filePath = workspace.ResolveAssetFile(path);

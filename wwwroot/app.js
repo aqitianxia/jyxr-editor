@@ -1,11 +1,11 @@
-import { state } from "./core/state.js?v=20260711-stage7-1";
-import { editorVersion } from "./core/version.js?v=20260711-stage7-1";
+import { state } from "./core/state.js?v=20260711-stage8-1";
+import { editorVersion } from "./core/version.js?v=20260711-stage8-1";
 import { createEditorApi } from "./core/api.js?v=20260711-core-17";
 import { createCommandRegistry } from "./core/commands.js?v=20260711-core-17";
 import { createDirtyStateController } from "./core/dirty-state.js?v=20260711-core-17";
 import { createEventBus } from "./core/events.js?v=20260711-core-17";
 import { createPreferences, storageKeys } from "./core/preferences.js?v=20260711-core-17";
-import { normalizeWorkspaceMode } from "./core/router.js?v=20260711-stage7-1";
+import { normalizeWorkspaceMode } from "./core/router.js?v=20260711-stage8-1";
 import { bindImeSafeInput } from "./core/input-composition.js?v=20260711-core-17";
 import { createProblem, summarizeProblems } from "./core/problems.js?v=20260711-core-17";
 import { createRecentItemsStore } from "./core/recent-items.js?v=20260711-core-17";
@@ -14,7 +14,7 @@ import { confirmAction, createDialogController } from "./ui/dialogs.js?v=2026071
 import { createField, createTextInput } from "./ui/fields.js?v=20260711-core-17";
 import { createTextList } from "./ui/lists.js?v=20260711-core-17";
 import { createProblemSummary, renderStatusMessage } from "./ui/problem-list.js?v=20260711-core-17";
-import { createShellController } from "./ui/shell.js?v=20260711-stage7-1";
+import { createShellController } from "./ui/shell.js?v=20260711-stage8-1";
 import { renderProjectHome } from "./ui/home.js?v=20260711-core-17";
 import { renderProblemCenter } from "./ui/problem-center.js?v=20260711-core-17";
 import { renderCharacterWorkspace } from "./ui/characters.js?v=20260711-stage6-1";
@@ -23,6 +23,18 @@ import { createItemDefinition } from "./domain/items.js?v=20260711-stage6-1";
 import { renderItemWorkspace } from "./workspaces/items.js?v=20260711-stage6-1";
 import { createShopDefinition, createShopProduct, ensureShopShape as ensureShopWorkspaceShape, moveShopProduct as moveShopProductEntry } from "./domain/shops.js?v=20260711-stage7-1";
 import { renderShopWorkspace } from "./workspaces/shops.js?v=20260711-stage7-1";
+import {
+  buildMartialIndex,
+  cloneJson as cloneMartialJson,
+  createFormSkill,
+  createMartialDefinition,
+  ensureMartialShape,
+  getMartialPath,
+  getMartialIssues,
+  martialKinds,
+  moveEntry as moveMartialEntry,
+} from "./domain/martial-arts.js?v=20260711-stage8-1";
+import { renderMartialArtsWorkspace } from "./workspaces/martial-arts.js?v=20260711-stage8-1";
 import {
   buildResourceCatalog,
   findAssetPath as findCatalogAssetPath,
@@ -74,6 +86,7 @@ const elements = {
   charactersTab: document.getElementById("charactersTab"),
   itemsTab: document.getElementById("itemsTab"),
   shopsTab: document.getElementById("shopsTab"),
+  martialTab: document.getElementById("martialTab"),
   sidebarBrowser: document.getElementById("sidebarBrowser"),
   editorPane: document.getElementById("editorPane"),
   homeView: document.getElementById("homeView"),
@@ -81,6 +94,7 @@ const elements = {
   characterWorkspaceView: document.getElementById("characterWorkspaceView"),
   itemWorkspaceView: document.getElementById("itemWorkspaceView"),
   shopWorkspaceView: document.getElementById("shopWorkspaceView"),
+  martialWorkspaceView: document.getElementById("martialWorkspaceView"),
   resourceWorkspaceView: document.getElementById("resourceWorkspaceView"),
   workspacePaneHeader: document.getElementById("workspacePaneHeader"),
   editorTools: document.getElementById("editorTools"),
@@ -180,6 +194,7 @@ elements.problemsTab.addEventListener("click", () => requestWorkspaceChange("pro
 elements.charactersTab.addEventListener("click", () => requestWorkspaceChange("characters"));
 elements.itemsTab.addEventListener("click", () => requestWorkspaceChange("items"));
 elements.shopsTab.addEventListener("click", () => requestWorkspaceChange("shops"));
+elements.martialTab.addEventListener("click", () => requestWorkspaceChange("martial"));
 elements.dataTab.addEventListener("click", () => requestWorkspaceChange("data"));
 elements.storyTab.addEventListener("click", () => requestWorkspaceChange("story"));
 elements.assetsTab.addEventListener("click", () => requestWorkspaceChange("assets"));
@@ -650,6 +665,7 @@ async function switchMod(modId) {
   dirtyStateController.markClean({ render: false });
   state.formRecords = [];
   state.selectedRecordIndex = 0;
+  resetMartialWorkspaceState();
   state.storySource = {
     path: "",
     text: "",
@@ -710,12 +726,14 @@ function setMode(mode) {
   const isCharacters = mode === "characters";
   const isItems = mode === "items";
   const isShops = mode === "shops";
+  const isMartial = mode === "martial";
   const isResources = mode === "assets";
 
   document.body.classList.toggle("story-mode", isStory);
   document.body.classList.toggle("characters-mode", isCharacters);
   document.body.classList.toggle("items-mode", isItems);
   document.body.classList.toggle("shops-mode", isShops);
+  document.body.classList.toggle("martial-mode", isMartial);
   document.body.classList.toggle("resources-mode", isResources);
   document.body.classList.toggle("overview-mode", isOverview);
   elements.editorPane.classList.toggle("overview-workspace", isOverview);
@@ -724,6 +742,7 @@ function setMode(mode) {
   elements.charactersTab.classList.toggle("active", isCharacters);
   elements.itemsTab.classList.toggle("active", isItems);
   elements.shopsTab.classList.toggle("active", isShops);
+  elements.martialTab.classList.toggle("active", isMartial);
   elements.dataTab.classList.toggle("active", mode === "data");
   elements.storyTab.classList.toggle("active", isStory);
   elements.assetsTab.classList.toggle("active", mode === "assets");
@@ -732,10 +751,11 @@ function setMode(mode) {
   elements.characterWorkspaceView.classList.toggle("hidden", !isCharacters);
   elements.itemWorkspaceView.classList.toggle("hidden", !isItems);
   elements.shopWorkspaceView.classList.toggle("hidden", !isShops);
+  elements.martialWorkspaceView.classList.toggle("hidden", !isMartial);
   elements.resourceWorkspaceView.classList.toggle("hidden", !isResources);
-  elements.workspacePaneHeader.classList.toggle("hidden", isOverview || isCharacters || isItems || isShops || isResources);
-  elements.editorTools.classList.toggle("hidden", isOverview || isStory || isCharacters || isItems || isShops || isResources);
-  elements.editorStatusbar.classList.toggle("hidden", isOverview || isStory || isCharacters || isItems || isShops || isResources);
+  elements.workspacePaneHeader.classList.toggle("hidden", isOverview || isCharacters || isItems || isShops || isMartial || isResources);
+  elements.editorTools.classList.toggle("hidden", isOverview || isStory || isCharacters || isItems || isShops || isMartial || isResources);
+  elements.editorStatusbar.classList.toggle("hidden", isOverview || isStory || isCharacters || isItems || isShops || isMartial || isResources);
 
   elements.fileSearch.value = "";
   elements.fileSearch.placeholder = isStory
@@ -743,7 +763,7 @@ function setMode(mode) {
     : mode === "assets"
       ? "搜索资产"
       : "搜索文件";
-  elements.saveButton.disabled = mode !== "data" && !isCharacters && !isItems && !isShops;
+  elements.saveButton.disabled = mode !== "data" && !isCharacters && !isItems && !isShops && !isMartial;
   elements.formatButton.disabled = mode !== "data";
 
   if (mode === "home") {
@@ -780,6 +800,14 @@ function setMode(mode) {
     setTextEditorVisible(false);
     elements.currentPath.textContent = "shops.json";
     renderShopWorkspaceView();
+  } else if (isMartial) {
+    disposeEmbeddedCodeEditors(elements.formView);
+    elements.formView.replaceChildren();
+    elements.formView.classList.add("hidden");
+    elements.storyView.classList.add("hidden");
+    setTextEditorVisible(false);
+    elements.currentPath.textContent = "武学与奥义";
+    renderMartialWorkspaceView();
   } else if (isResources) {
     elements.formView.classList.add("hidden");
     elements.storyView.classList.add("hidden");
@@ -817,7 +845,7 @@ function setMode(mode) {
   updateMapFocusControl();
   updateStorySourceButton();
   renderShellContext();
-  if (!isOverview && !isCharacters && !isItems && !isShops && !isResources) {
+  if (!isOverview && !isCharacters && !isItems && !isShops && !isMartial && !isResources) {
     renderFileList();
     renderCurrentFileInfo();
   }
@@ -828,6 +856,11 @@ function setMode(mode) {
 
 async function requestWorkspaceChange(mode) {
   if (mode === state.mode) return;
+  if (state.mode === "martial") {
+    if (dirtyStateController.isDirty() && !(await confirmDiscardChanges("武学区有尚未保存的修改，是否放弃全部修改？"))) return;
+    resetMartialWorkspaceState();
+    dirtyStateController.markClean({ render: false });
+  }
   const switchingCharacterSurface = isCharacterFile()
     && ((state.mode === "characters" && mode === "data") || (state.mode === "data" && mode === "characters"));
   if (switchingCharacterSurface) {
@@ -906,6 +939,8 @@ async function requestWorkspaceChange(mode) {
     await openItemWorkspace();
   } else if (mode === "shops") {
     await openShopWorkspace();
+  } else if (mode === "martial") {
+    await openMartialWorkspace();
   } else if (mode === "data" || mode === "story" || mode === "assets") {
     await openWorkspaceMode(mode);
   } else {
@@ -1393,6 +1428,196 @@ function getShopItemOptions() {
   }
   return Array.from(new Map(options.map((option) => [option.id, option])).values())
     .sort((left, right) => left.name.localeCompare(right.name, "zh-Hans-CN") || left.id.localeCompare(right.id, "zh-Hans-CN"));
+}
+
+function resetMartialWorkspaceState() {
+  const workspace = state.martialArtsWorkspace;
+  workspace.documents = { external: [], internal: [], special: [], legend: [] };
+  workspace.baselines = { external: "", internal: "", special: "", legend: "" };
+  workspace.dirtyKinds = new Set();
+  workspace.activeKind = "external";
+  workspace.selectedIndex = 0;
+  workspace.selectedFormIndex = -1;
+  workspace.search = "";
+  workspace.tab = "overview";
+  workspace.animationCatalog = [];
+  workspace.loading = false;
+}
+
+async function openMartialWorkspace() {
+  const workspace = state.martialArtsWorkspace;
+  if (state.mode === "martial" && Object.values(workspace.documents).some((records) => records.length > 0)) {
+    renderMartialWorkspaceView();
+    return;
+  }
+  const missing = martialKinds.map(([, , path]) => path).filter((path) => !state.dataFiles.some((file) => file.path === path));
+  if (missing.length) {
+    showValidation(false, `当前 MOD 缺少武学数据文件：${missing.join("、")}`);
+    return;
+  }
+  workspace.loading = true;
+  try {
+    const [documents, animations] = await Promise.all([
+      Promise.all(martialKinds.map(async ([kind, , path]) => {
+        const file = await requestJson(`/api/data/file?path=${encodeURIComponent(path)}`);
+        const records = parseJsonText(file.content);
+        if (!Array.isArray(records) || !records.every((record) => record && typeof record === "object" && !Array.isArray(record))) {
+          throw new Error(`${path} 顶层必须是对象数组。`);
+        }
+        records.forEach((record) => ensureMartialShape(kind, record));
+        return [kind, records];
+      })),
+      requestJson("/api/assets/skill-animations"),
+    ]);
+    workspace.documents = Object.fromEntries(documents);
+    workspace.baselines = Object.fromEntries(documents.map(([kind, records]) => [kind, JSON.stringify(records)]));
+    workspace.dirtyKinds = new Set();
+    workspace.animationCatalog = animations;
+    workspace.selectedIndex = 0;
+    workspace.selectedFormIndex = -1;
+    workspace.tab = "overview";
+    state.currentPath = getMartialPath(workspace.activeKind);
+    dirtyStateController.markClean({ render: false });
+    setMode("martial");
+  } catch (error) {
+    resetMartialWorkspaceState();
+    showValidation(false, error instanceof Error ? error.message : String(error));
+  } finally {
+    workspace.loading = false;
+  }
+}
+
+function createMartialOptions() {
+  const byType = (type) => {
+    const result = [];
+    for (const definitions of state.contentIndex.definitionsById.values()) {
+      for (const definition of definitions) {
+        if (definition.type === type) result.push([definition.id, definition.displayName || definition.record?.name || definition.id]);
+      }
+    }
+    return Array.from(new Map(result.map((entry) => [entry[0], entry])).values())
+      .sort((left, right) => left[1].localeCompare(right[1], "zh-Hans-CN"));
+  };
+  const workspace = state.martialArtsWorkspace;
+  const index = buildMartialIndex(workspace.documents);
+  const external = (workspace.documents.external || []).map((record) => [record.id, record.name || record.id]);
+  const internal = (workspace.documents.internal || []).map((record) => [record.id, record.name || record.id]);
+  const special = (workspace.documents.special || []).map((record) => [record.id, record.name || record.id]);
+  const forms = [...index.formsById.values()].flat().map((entry) => [entry.id, `${entry.name}（${entry.parent.name || entry.parent.id}）`]);
+  return {
+    buffs: byType("buffs"),
+    audio: (state.contentIndex.resourceRecords || []).filter((record) => record.group === "音效").map((record) => [record.id, record.id]).sort((a, b) => a[0].localeCompare(b[0], "zh-Hans-CN")),
+    startSkills: [...external, ...forms],
+    conditions: {
+      skill: external,
+      internal_skill: internal,
+      special_skill: special,
+      talent: byType("talents"),
+    },
+  };
+}
+
+function getMartialIssueContext() {
+  const documents = state.martialArtsWorkspace.documents;
+  const index = buildMartialIndex(documents);
+  const ids = (kind) => new Set((documents[kind] || []).map((record) => record.id).filter(Boolean));
+  const formIdCounts = new Map([...index.formsById].map(([id, entries]) => [id, entries.length]));
+  return {
+    animationIds: new Set(state.martialArtsWorkspace.animationCatalog.map((entry) => entry.id)),
+    invalidAnimationIds: new Set(state.martialArtsWorkspace.animationCatalog.filter((entry) => !entry.previewable).map((entry) => entry.id)),
+    audioIds: new Set((state.contentIndex.resourceRecords || []).filter((record) => record.group === "音效").map((record) => record.id)),
+    iconExists: (id) => Boolean(getMartialIconPath(id)),
+    buffIds: new Set(createMartialOptions().buffs.map(([id]) => id)),
+    externalIds: ids("external"),
+    internalIds: ids("internal"),
+    specialIds: ids("special"),
+    talentIds: new Set(createMartialOptions().conditions.talent.map(([id]) => id)),
+    startSkillIds: new Set([...ids("external"), ...index.formsById.keys()]),
+    formIdCounts,
+  };
+}
+
+function getMartialIconPath(iconId) {
+  if (!iconId) return "";
+  const resource = state.contentIndex.resourcesById.get(iconId);
+  if (resource) return resolveResourceAssetPath(resource);
+  return findAssetPath(`icon/${iconId}`, { art: true }) || findAssetPath(iconId, { art: true });
+}
+
+function markMartialChanged() {
+  const workspace = state.martialArtsWorkspace;
+  for (const [kind] of martialKinds) {
+    const changed = JSON.stringify(workspace.documents[kind]) !== workspace.baselines[kind];
+    if (changed) workspace.dirtyKinds.add(kind); else workspace.dirtyKinds.delete(kind);
+  }
+  dirtyStateController.setDirty(workspace.dirtyKinds.size > 0, { render: false });
+  elements.saveState.textContent = workspace.dirtyKinds.size ? `${workspace.dirtyKinds.size} 个武学文件尚未保存` : "";
+  renderDirtyState();
+  renderMartialWorkspaceView();
+}
+
+function renderMartialWorkspaceView() {
+  if (state.mode !== "martial") return;
+  const workspace = state.martialArtsWorkspace;
+  const records = workspace.documents[workspace.activeKind] || [];
+  workspace.selectedIndex = Math.max(0, Math.min(workspace.selectedIndex, Math.max(0, records.length - 1)));
+  const record = records[workspace.selectedIndex];
+  if (record?.formSkills) workspace.selectedFormIndex = Math.min(workspace.selectedFormIndex, record.formSkills.length - 1);
+  const options = createMartialOptions();
+  const issueContext = getMartialIssueContext();
+  renderMartialArtsWorkspace(elements.martialWorkspaceView, {
+    state,
+    options,
+    animationChoices: workspace.animationCatalog.map((entry) => [entry.id, `${entry.id}${entry.previewable ? ` · ${entry.frameCount} 帧` : " · 不可预览"}`]),
+    getIssues: (entry) => getMartialIssues(entry, issueContext),
+    getIconPath: getMartialIconPath,
+    getAudioPath: (id) => {
+      const resource = state.contentIndex.resourcesById.get(id);
+      return resource ? resolveResourceAssetPath(resource) : "";
+    },
+    onSelectKind: (kind) => {
+      workspace.activeKind = kind; workspace.selectedIndex = 0; workspace.selectedFormIndex = -1; workspace.tab = "overview"; state.currentPath = getMartialPath(kind); renderMartialWorkspaceView();
+    },
+    onSelect: (index) => { workspace.selectedIndex = index; workspace.selectedFormIndex = -1; renderMartialWorkspaceView(); },
+    onSearch: (value) => { workspace.search = value; renderMartialWorkspaceView(); const search = elements.martialWorkspaceView.querySelector('.martial-catalog-tools input[type="search"]'); search?.focus(); search?.setSelectionRange(value.length, value.length); },
+    onTab: (tab) => { workspace.tab = tab; renderMartialWorkspaceView(); },
+    onMutate: markMartialChanged,
+    onReplace: (next) => {
+      if (!next || typeof next !== "object" || Array.isArray(next)) { showValidation(false, "武学定义必须是 JSON 对象。"); return; }
+      records[workspace.selectedIndex] = ensureMartialShape(workspace.activeKind, next); markMartialChanged();
+    },
+    onJsonError: (error) => showValidation(false, error.message),
+    onCreate: () => {
+      const id = createUniqueMartialId(`新${new Map(martialKinds.map(([kind, label]) => [kind, label])).get(workspace.activeKind)}`);
+      records.push(createMartialDefinition(workspace.activeKind, id)); workspace.selectedIndex = records.length - 1; workspace.search = ""; workspace.tab = "overview"; markMartialChanged();
+    },
+    onDuplicate: () => {
+      const current = records[workspace.selectedIndex]; if (!current) return;
+      const copy = cloneMartialJson(current); copy.id = createUniqueMartialId(`${copy.id || "武学"}_copy`); if (copy.name) copy.name = `${copy.name} 副本`; records.splice(workspace.selectedIndex + 1, 0, copy); workspace.selectedIndex += 1; markMartialChanged();
+    },
+    onDelete: () => {
+      const current = records[workspace.selectedIndex]; if (!current || !confirmAction(`确认删除「${current.name || current.id}」？引用不会自动修复。`)) return;
+      records.splice(workspace.selectedIndex, 1); workspace.selectedIndex = Math.max(0, Math.min(workspace.selectedIndex, records.length - 1)); markMartialChanged();
+    },
+    onMove: (direction) => {
+      const next = moveMartialEntry(records, workspace.selectedIndex, direction); if (next === records) return;
+      workspace.documents[workspace.activeKind] = next; workspace.selectedIndex += direction; markMartialChanged();
+    },
+    onAddForm: () => { const current = records[workspace.selectedIndex]; if (!current) return; current.formSkills.push(createFormSkill(createUniqueMartialId("新招式"))); workspace.selectedFormIndex = current.formSkills.length - 1; markMartialChanged(); },
+    onSelectForm: (index) => { workspace.selectedFormIndex = index; renderMartialWorkspaceView(); },
+    onDuplicateForm: (index) => { const forms = records[workspace.selectedIndex]?.formSkills; if (!forms?.[index]) return; const copy = cloneMartialJson(forms[index]); copy.id = createUniqueMartialId(`${copy.id || "招式"}_copy`); if (copy.name) copy.name = `${copy.name} 副本`; forms.splice(index + 1, 0, copy); workspace.selectedFormIndex = index + 1; markMartialChanged(); },
+    onDeleteForm: (index) => { const forms = records[workspace.selectedIndex]?.formSkills; if (!forms?.[index] || !confirmAction(`确认删除招式「${forms[index].name || forms[index].id}」？`)) return; forms.splice(index, 1); workspace.selectedFormIndex = Math.min(index, forms.length - 1); markMartialChanged(); },
+  });
+  renderProblemIndicators();
+}
+
+function createUniqueMartialId(base) {
+  const index = buildMartialIndex(state.martialArtsWorkspace.documents);
+  const used = new Set([...index.byId.keys(), ...index.formsById.keys()]);
+  if (!used.has(base)) return base;
+  let suffix = 2;
+  while (used.has(`${base}_${suffix}`)) suffix += 1;
+  return `${base}_${suffix}`;
 }
 
 function getShopReferences(record) {
@@ -2638,6 +2863,10 @@ function previewAsset(path) {
 }
 
 async function saveCurrentFile() {
+  if (state.mode === "martial") {
+    await saveMartialWorkspace();
+    return;
+  }
   if (!state.currentPath || (state.mode !== "data" && state.mode !== "characters" && state.mode !== "items" && state.mode !== "shops")) {
     showValidation(false, "请选择可保存的数据工作区。");
     return;
@@ -2687,6 +2916,49 @@ async function saveCurrentFile() {
     }
   } catch (error) {
     showValidation(false, error instanceof SyntaxError ? formatJsonError(error) : error.message);
+  } finally {
+    elements.saveButton.disabled = false;
+  }
+}
+
+async function saveMartialWorkspace() {
+  const workspace = state.martialArtsWorkspace;
+  const kinds = martialKinds.map(([kind]) => kind).filter((kind) => workspace.dirtyKinds.has(kind));
+  if (!kinds.length) {
+    showValidation(true, "武学区没有需要保存的修改。");
+    return;
+  }
+  elements.saveButton.disabled = true;
+  const saved = [];
+  let validation = null;
+  try {
+    for (const kind of kinds) {
+      const path = getMartialPath(kind);
+      const content = `${JSON.stringify(workspace.documents[kind], null, 2)}\n`;
+      const result = await requestJson("/api/data/file", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ path, content }),
+      });
+      validation = result.validation;
+      const records = parseJsonText(result.content);
+      records.forEach((record) => ensureMartialShape(kind, record));
+      workspace.documents[kind] = records;
+      workspace.baselines[kind] = JSON.stringify(records);
+      workspace.dirtyKinds.delete(kind);
+      saved.push(path);
+    }
+    dirtyStateController.markClean({ render: false });
+    elements.saveState.textContent = `已保存 ${saved.length} 个武学文件`;
+    await loadDataFiles();
+    await rebuildContentIndex();
+    await loadStoryGraph();
+    showValidation(validation?.ok ?? true, validation?.message || `已保存：${saved.join("、")}`);
+    renderMartialWorkspaceView();
+    renderDirtyState();
+  } catch (error) {
+    markMartialChanged();
+    showValidation(false, `${saved.length ? `已保存 ${saved.join("、")}；` : ""}${error instanceof Error ? error.message : String(error)}`);
   } finally {
     elements.saveButton.disabled = false;
   }
