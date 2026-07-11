@@ -8,6 +8,7 @@ export function createEditorState() {
     assetFiles: [],
     currentPath: "",
     dirty: false,
+    workspaceScrollPositions: {},
     searchMatches: [],
     searchIndex: -1,
     viewMode: "json",
@@ -78,6 +79,15 @@ export function createEditorState() {
       loading: false,
       creatorOpen: false,
       creatorTemplate: "",
+      resourcePicker: {
+        open: false,
+        type: "",
+        search: "",
+        selectedId: "",
+        target: null,
+        field: "",
+        clearValue: null,
+      },
     },
     resourceWorkspace: {
       tab: "resources",

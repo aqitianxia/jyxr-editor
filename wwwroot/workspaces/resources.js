@@ -1,5 +1,6 @@
 import { bindImeSafeInput } from "../core/input-composition.js?v=20260711-core-17";
 import { isAudioAsset, isImageAsset, resourceKinds } from "../domain/resource-catalog.js?v=20260711-stage5b-1";
+import { bindScrollMemory } from "../ui/scroll-memory.js?v=20260711-scroll-1";
 
 const el = (tag, className = "", text = "") => {
   const node = document.createElement(tag);
@@ -121,4 +122,5 @@ export function renderResourcesWorkspace(container, { state, catalog, assets, on
     if (!visible.length) list.appendChild(el("div", "resource-empty", "没有符合搜索条件的资产。")); renderAssetDetail(detail, assets.find((item) => item.path === ws.selectedKey) || visible[0]);
   }
   layout.append(list, detail); container.appendChild(layout);
+  bindScrollMemory(list, state.workspaceScrollPositions, `resources:list:${ws.tab}`);
 }

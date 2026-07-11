@@ -1,5 +1,6 @@
 import { bindImeSafeInput } from "../core/input-composition.js?v=20260711-core-17";
 import { createEmbeddedJsonEditor, disposeEmbeddedCodeEditors } from "../ui/code-editor.js?v=20260711-stage6-1";
+import { bindScrollMemory } from "../ui/scroll-memory.js?v=20260711-scroll-1";
 import {
   createFormSkill,
   createLegendCondition,
@@ -11,6 +12,7 @@ import {
   getMartialIssues,
   getMartialReadiness,
   estimateExternalMpCost,
+  filterMartialResources,
   impactTypes,
   legendConditionTypes,
   martialKinds,
@@ -21,7 +23,7 @@ import {
   specialEffectTypes,
   targetSelectorTypes,
   weaponTypes,
-} from "../domain/martial-arts.js?v=20260711-stage8-3";
+} from "../domain/martial-arts.js?v=20260711-stage8-5";
 
 const tabs = Object.freeze([
   ["overview", "概要"], ["combat", "战斗参数"], ["growth", "招式与成长"],
@@ -156,6 +158,7 @@ function renderCatalog(parent, context) {
   }
   if (!matches.length) empty(list, "没有匹配的武学", "清除搜索词后再试，或新建一条定义。");
   parent.appendChild(list);
+  bindScrollMemory(list, state.workspaceScrollPositions, `martial:list:${workspace.activeKind}`);
 }
 
 function renderHeaderMedia(context, record, kind) {
@@ -389,7 +392,11 @@ function renderFormEditor(parent, context, form, parentRecord, index) {
   const media = el("div", "martial-subsection");
   media.appendChild(el("h4", "", "招式表现"));
   const mediaFields = el("div", "martial-fields-grid");
-  mediaFields.append(field("图标 ID", input(form.icon ?? "", (value) => patchObject(context, form, { icon: value || null })), `空值继承：${presentation.icon || "未设置"}`), field("命中特效", select(form.animation ?? "", context.animationChoices, (value) => patchObject(context, form, { animation: value || null }), "继承父武学"), `当前生效：${presentation.animation || "未设置"}`), field("音效", select(form.audio ?? "", context.options.audio, (value) => patchObject(context, form, { audio: value || null }), "继承父武学"), `当前生效：${presentation.audio || "未设置"}`));
+  mediaFields.append(
+    field("图标", renderResourceSelection(context, { type: "icon", target: form, field: "icon", clearValue: null, value: form.icon, effectiveValue: presentation.icon }), `空值继承：${presentation.icon || "未设置"}`),
+    field("命中特效", select(form.animation ?? "", context.animationChoices, (value) => patchObject(context, form, { animation: value || null }), "继承父武学"), `当前生效：${presentation.animation || "未设置"}`),
+    field("音效", renderResourceSelection(context, { type: "audio", target: form, field: "audio", clearValue: null, value: form.audio, effectiveValue: presentation.audio }), `空值继承：${presentation.audio || "未设置"}`),
+  );
   media.appendChild(mediaFields);
   editor.appendChild(media);
   const buffs = form.buffs || [];
@@ -508,9 +515,9 @@ function renderPresentation(parent, context, record, kind) {
   if (kind !== "legend") {
     const icon = section(parent, "图标");
     renderIconField(icon, context, record);
-    const audio = section(parent, "音效", "音效 ID 来自 resources.json 的“音效”资源组。");
+    const audio = section(parent, "音效", "打开选择器后可搜索并试听 resources.json 中“音效”资源组的已有音效。");
     const audioPath = context.getAudioPath(record.audio);
-    audio.appendChild(field("音效资源", select(record.audio, context.options.audio, (value) => patchObject(context, record, { audio: value }), "未设置")));
+    audio.appendChild(field("音效资源", renderResourceSelection(context, { type: "audio", target: record, field: "audio", clearValue: "", value: record.audio })));
     if (audioPath) { const player = document.createElement("audio"); player.controls = true; player.src = `/api/assets/file?path=${encodeURIComponent(audioPath)}`; audio.appendChild(player); }
   }
   const animation = section(parent, kind === "legend" ? "奥义全屏动画" : "命中特效动画", kind === "legend" ? "这里是覆盖战场的全屏叠加动画。命中动画、图标和音效仍继承起手武学。可以更换已有动画引用，但新动画仍需在 Godot 制作。" : "可以从已有 Godot AnimationLibrary 中更换动画引用并立即预览；编辑器不会修改 .tres/.res，新增动画仍需在 Godot 制作并打入 PCK。");
@@ -520,16 +527,108 @@ function renderPresentation(parent, context, record, kind) {
 }
 
 function renderIconField(parent, context, record) {
-  const iconChoices = [...context.options.icons];
-  if (record.icon && !iconChoices.some((option) => option.id === record.icon)) iconChoices.unshift({ id: record.icon, name: `${record.icon}（当前自定义引用）` });
   const fields = el("div", "martial-fields-grid");
-  fields.append(field("从现有图标选择", select(record.icon ?? "", iconChoices, (value) => patchObject(context, record, { icon: value }), "未设置"), "选择后只修改当前武学的 icon ID，不会改动图片文件。"), field("图标 ID", input(record.icon ?? "", (value) => patchObject(context, record, { icon: value })), "可手动填写 PCK 中提供的自定义图标 ID；新增图片仍需进入资源制作流程。"));
+  fields.append(field("从现有图标选择", renderResourceSelection(context, { type: "icon", target: record, field: "icon", clearValue: "", value: record.icon }), "弹窗会显示现有图标缩略图；选择后只修改当前武学的 icon ID。"), field("图标 ID", input(record.icon ?? "", (value) => patchObject(context, record, { icon: value })), "可手动填写 PCK 中提供的自定义图标 ID；新增图片仍需进入资源制作流程。"));
   parent.appendChild(fields);
   const path = context.getIconPath(record.icon);
   const preview = el("div", "martial-icon-preview");
   if (path) { const image = document.createElement("img"); image.src = `/api/assets/file?path=${encodeURIComponent(path)}`; image.alt = record.name || record.id; preview.append(image, el("code", "", path)); }
   else preview.appendChild(el("span", "martial-missing", record.icon ? "未找到图标资产" : "尚未设置图标"));
   parent.appendChild(preview);
+}
+
+function renderResourceSelection(context, { type, target, field: fieldName, clearValue, value, effectiveValue = "" }) {
+  const resolvedValue = String(value || "");
+  const shownValue = resolvedValue || String(effectiveValue || "");
+  const path = type === "icon" ? context.getIconPath(shownValue) : context.getAudioPath(shownValue);
+  const control = button("", `martial-resource-select ${type}`, () => context.onOpenResourcePicker({ type, target, field: fieldName, clearValue, selectedId: resolvedValue }));
+  const media = el("span", "martial-resource-select-media");
+  if (type === "icon" && path) {
+    const image = document.createElement("img");
+    image.src = `/api/assets/file?path=${encodeURIComponent(path)}`;
+    image.alt = shownValue;
+    media.appendChild(image);
+  } else media.appendChild(el("span", "", type === "audio" ? "♪" : "图"));
+  const copy = el("span", "martial-resource-select-copy");
+  copy.append(el("strong", "", resolvedValue || (effectiveValue ? `继承 ${effectiveValue}` : type === "audio" ? "选择音效" : "选择图标")), el("small", "", path || (resolvedValue ? "当前引用无法预览" : "打开资源选择器")));
+  control.append(media, copy, el("span", "martial-resource-select-arrow", "›"));
+  return control;
+}
+
+function renderResourcePicker(root, context) {
+  const picker = context.state.martialArtsWorkspace.resourcePicker;
+  if (!picker?.open) return;
+  const isAudio = picker.type === "audio";
+  const allEntries = isAudio ? context.audioLibrary : context.options.icons;
+  const keyOf = (entry) => entry.key || entry.id || entry.path;
+  const entries = filterMartialResources(allEntries, picker.search);
+  const selected = entries.find((entry) => keyOf(entry) === picker.selectedId)
+    || allEntries.find((entry) => keyOf(entry) === picker.selectedId)
+    || null;
+  const overlay = el("div", "martial-resource-picker-overlay");
+  overlay.addEventListener("click", (event) => { if (event.target === overlay) context.onCloseResourcePicker(); });
+  overlay.addEventListener("keydown", (event) => { if (event.key === "Escape") context.onCloseResourcePicker(); });
+  const dialog = el("section", `martial-resource-picker ${isAudio ? "audio" : "icon"}`);
+  dialog.setAttribute("role", "dialog");
+  dialog.setAttribute("aria-modal", "true");
+  const header = el("header", "martial-resource-picker-header");
+  const title = el("div");
+  title.append(el("span", "martial-detail-eyebrow", isAudio ? "音效资源" : "图标资源"), el("h2", "", isAudio ? "选择、试听或注册音效" : "选择现有武学图标"), el("p", "", isAudio ? "已注册音效可直接使用；未注册文件需要先创建 resources.json 资源 ID。音频文件本身不会被修改。" : "这里只引用现有图片，不会修改 Godot 图集或 PCK。"));
+  header.append(title, button("×", "icon-button", context.onCloseResourcePicker, "关闭"));
+  const search = input(picker.search, context.onResourcePickerSearch, { type: "search", placeholder: isAudio ? "搜索音效 ID 或路径" : "搜索图标 ID 或路径", live: true });
+  search.classList.add("martial-resource-picker-search");
+  const body = el("div", "martial-resource-picker-body");
+  const gallery = el("div", `martial-resource-picker-gallery ${isAudio ? "audio" : "icon"}`);
+  for (const entry of entries) {
+    const entryKey = keyOf(entry);
+    const card = button("", "martial-resource-picker-card", () => context.onSelectResourcePicker(entryKey));
+    card.classList.toggle("active", entryKey === picker.selectedId);
+    const media = el("span", "martial-resource-picker-card-media");
+    if (!isAudio && entry.path) {
+      const image = document.createElement("img");
+      image.src = `/api/assets/file?path=${encodeURIComponent(entry.path)}`;
+      image.alt = entry.name || entry.id;
+      image.loading = "lazy";
+      media.appendChild(image);
+    } else media.appendChild(el("span", "", "♪"));
+    const copy = el("span", "martial-resource-picker-card-copy");
+    copy.append(el("strong", "", entry.name || entry.id || entry.path), el("code", "", entry.id || "未注册"), el("small", "", entry.path || entry.value || "资源路径不可预览"));
+    card.append(media, copy);
+    gallery.appendChild(card);
+  }
+  if (!entries.length) empty(gallery, "没有匹配资源", "更换搜索词后再试。自定义 PCK 图标仍可在表单中手动填写 ID。 ");
+  const detail = el("aside", "martial-resource-picker-detail");
+  if (!selected) empty(detail, "请选择一项", isAudio ? "选择音效后可先试听，再决定是否使用。" : "选择图标后可查看大图。 ");
+  else {
+    if (isAudio && selected.path) {
+      const player = document.createElement("audio");
+      player.controls = true;
+      player.preload = "metadata";
+      player.src = `/api/assets/file?path=${encodeURIComponent(selected.path)}`;
+      detail.appendChild(player);
+    } else if (!isAudio && selected.path) {
+      const image = document.createElement("img");
+      image.src = `/api/assets/file?path=${encodeURIComponent(selected.path)}`;
+      image.alt = selected.name || selected.id;
+      detail.appendChild(image);
+    }
+    detail.append(el("h3", "", selected.name || selected.id || selected.path), el("code", "", selected.id || "尚未注册资源 ID"), el("small", "", selected.path || selected.value || "资源路径不可预览"));
+    if (isAudio && !selected.id) {
+      const registration = el("div", "martial-audio-registration");
+      registration.append(el("strong", "", "注册为音效资源"), el("p", "", "注册会立即保存到 resources.json；武学修改仍需使用顶部保存按钮。"));
+      const resourceId = input(`音效.${selected.name || "新音效"}`, () => {});
+      resourceId.classList.add("martial-audio-registration-id");
+      registration.append(resourceId, button("注册并使用", "button primary", () => context.onRegisterAudioResource(resourceId.value, selected)));
+      detail.appendChild(registration);
+    } else detail.appendChild(button(isAudio ? "使用此音效" : "使用此图标", "button primary", context.onApplyResourcePicker));
+  }
+  const footer = el("footer", "martial-resource-picker-actions");
+  footer.append(button(picker.clearValue === null ? "继承父武学" : "清空当前引用", "button ghost", context.onClearResourcePicker), button("取消", "button secondary", context.onCloseResourcePicker));
+  body.append(gallery, detail);
+  dialog.append(header, search, body, footer);
+  overlay.appendChild(dialog);
+  root.appendChild(overlay);
+  queueMicrotask(() => search.focus());
 }
 
 function renderSpeech(parent, context, record) {
@@ -695,4 +794,5 @@ export function renderMartialArtsWorkspace(root, context) {
   shell.append(catalog, detail);
   root.appendChild(shell);
   renderCreator(root, context);
+  renderResourcePicker(root, context);
 }

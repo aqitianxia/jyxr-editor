@@ -5,6 +5,13 @@ export const martialKinds = Object.freeze([
   ["legend", "奥义", "legend-skills.json"],
 ]);
 
+export function filterMartialResources(entries, query) {
+  const normalized = String(query || "").trim().toLocaleLowerCase("zh-CN");
+  if (!normalized) return [...(entries || [])];
+  return (entries || []).filter((entry) => [entry?.id, entry?.name, entry?.path, entry?.value]
+    .some((value) => String(value || "").toLocaleLowerCase("zh-CN").includes(normalized)));
+}
+
 export const weaponTypes = Object.freeze([
   ["quanzhang", "拳掌"], ["jianfa", "剑法"], ["daofa", "刀法"], ["qimen", "奇门"],
 ]);

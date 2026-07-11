@@ -1,4 +1,4 @@
-import { state } from "./core/state.js?v=20260711-stage9-1";
+import { state } from "./core/state.js?v=20260711-stage9-3";
 import { editorVersion } from "./core/version.js?v=20260711-stage9-1";
 import { createEditorApi } from "./core/api.js?v=20260711-core-17";
 import { createCommandRegistry } from "./core/commands.js?v=20260711-core-17";
@@ -17,14 +17,14 @@ import { createProblemSummary, renderStatusMessage } from "./ui/problem-list.js?
 import { createShellController } from "./ui/shell.js?v=20260711-stage9-1";
 import { renderProjectHome } from "./ui/home.js?v=20260711-core-17";
 import { renderProblemCenter } from "./ui/problem-center.js?v=20260711-core-17";
-import { renderCharacterWorkspace } from "./ui/characters.js?v=20260711-stage6-1";
+import { renderCharacterWorkspace } from "./ui/characters.js?v=20260711-stage6-2";
 import { createEmbeddedJsonEditor, disposeEmbeddedCodeEditors } from "./ui/code-editor.js?v=20260711-stage6-1";
 import { createGrowthTemplate, ensureGrowthTemplateShape } from "./domain/growth-templates.js?v=20260711-stage9-1";
-import { renderGrowthTemplateWorkspace } from "./workspaces/growth-templates.js?v=20260711-stage9-1";
+import { renderGrowthTemplateWorkspace } from "./workspaces/growth-templates.js?v=20260711-stage9-2";
 import { createItemDefinition } from "./domain/items.js?v=20260711-stage6-1";
-import { renderItemWorkspace } from "./workspaces/items.js?v=20260711-stage6-1";
+import { renderItemWorkspace } from "./workspaces/items.js?v=20260711-stage6-2";
 import { createShopDefinition, createShopProduct, ensureShopShape as ensureShopWorkspaceShape, moveShopProduct as moveShopProductEntry } from "./domain/shops.js?v=20260711-stage7-1";
-import { renderShopWorkspace } from "./workspaces/shops.js?v=20260711-stage7-1";
+import { renderShopWorkspace } from "./workspaces/shops.js?v=20260711-stage7-2";
 import {
   buildMartialIndex,
   cloneJson as cloneMartialJson,
@@ -36,8 +36,8 @@ import {
   martialKinds,
   moveEntry as moveMartialEntry,
   resolvePresentation as resolveMartialPresentation,
-} from "./domain/martial-arts.js?v=20260711-stage8-3";
-import { renderMartialArtsWorkspace } from "./workspaces/martial-arts.js?v=20260711-stage8-3";
+} from "./domain/martial-arts.js?v=20260711-stage8-5";
+import { renderMartialArtsWorkspace } from "./workspaces/martial-arts.js?v=20260711-stage8-5";
 import {
   buildResourceCatalog,
   findAssetPath as findCatalogAssetPath,
@@ -45,9 +45,10 @@ import {
   isImageAsset,
   normalizeArtAssetValue,
 } from "./domain/resource-catalog.js?v=20260711-stage5b-1";
-import { renderResourcesWorkspace } from "./workspaces/resources.js?v=20260711-stage5b-1";
+import { renderResourcesWorkspace } from "./workspaces/resources.js?v=20260711-stage5b-2";
 import { createResourcePickerModel } from "./domain/resource-picker.js?v=20260711-stage5c-1";
 import { bindResourcePickerKeyboard, restoreResourcePickerKeyboardFocus } from "./ui/resource-picker-keyboard.js?v=20260711-stage5c-1";
+import { bindScrollMemory } from "./ui/scroll-memory.js?v=20260711-scroll-1";
 
 const dataFileDisplayNames = new Map([
   ["battles.json", "战斗"],
@@ -671,6 +672,7 @@ async function switchMod(modId) {
   dirtyStateController.markClean({ render: false });
   state.formRecords = [];
   state.selectedRecordIndex = 0;
+  state.workspaceScrollPositions = {};
   resetMartialWorkspaceState();
   state.storySource = {
     path: "",
@@ -1613,6 +1615,7 @@ function resetMartialWorkspaceState() {
   workspace.loading = false;
   workspace.creatorOpen = false;
   workspace.creatorTemplate = "";
+  workspace.resourcePicker = { open: false, type: "", search: "", selectedId: "", target: null, field: "", clearValue: null };
 }
 
 async function openMartialWorkspace() {
@@ -1683,7 +1686,10 @@ function createMartialOptions() {
         const id = file.path.split("/").pop().replace(/\.[^.]+$/, "");
         return [id, { id, name: id, path: file.path }];
       })).values()).sort((left, right) => left.id.localeCompare(right.id, "zh-Hans-CN")),
-    audio: (state.contentIndex.resourceRecords || []).filter((record) => record.group === "音效").map((record) => [record.id, record.id]).sort((a, b) => a[0].localeCompare(b[0], "zh-Hans-CN")),
+    audio: (state.contentIndex.resourceRecords || [])
+      .filter((record) => record.group === "音效")
+      .map((record) => ({ id: record.id, name: record.id, value: record.value || "", path: resolveResourceAssetPath(record) }))
+      .sort((left, right) => left.id.localeCompare(right.id, "zh-Hans-CN")),
     startSkills: [...external, ...forms],
     conditions: {
       skill: external,
@@ -1692,6 +1698,30 @@ function createMartialOptions() {
       talent: byType("talents"),
     },
   };
+}
+
+function createMartialAudioLibrary() {
+  const registered = (state.contentIndex.resourceRecords || [])
+    .filter((record) => record.group === "音效" && typeof record.id === "string")
+    .map((record) => ({
+      key: record.id,
+      id: record.id,
+      name: record.id,
+      value: record.value || "",
+      path: resolveResourceAssetPath(record),
+      registered: true,
+    }));
+  const registeredPaths = new Set(registered.map((entry) => entry.path).filter(Boolean));
+  const unregistered = state.assetFiles
+    .filter((file) => isAudioAsset(file.path) && !registeredPaths.has(file.path))
+    .map((file) => {
+      const name = String(file.name || file.path.split("/").pop() || "新音效").replace(/\.[^.]+$/, "");
+      return { key: file.path, id: "", name, value: file.path, path: file.path, registered: false };
+    });
+  return [...registered, ...unregistered].sort((left, right) => {
+    const registrationOrder = Number(right.registered) - Number(left.registered);
+    return registrationOrder || left.name.localeCompare(right.name, "zh-Hans-CN");
+  });
 }
 
 function getMartialQuickPresentation(kind, record) {
@@ -1767,6 +1797,7 @@ function renderMartialWorkspaceView() {
   renderMartialArtsWorkspace(elements.martialWorkspaceView, {
     state,
     options,
+    audioLibrary: createMartialAudioLibrary(),
     animationChoices: workspace.animationCatalog.map((entry) => [entry.id, `${entry.id}${entry.previewable ? ` · ${entry.frameCount} 帧` : " · 不可预览"}`]),
     getIssues: (entry) => getMartialIssues(entry, issueContext),
     getIconPath: getMartialIconPath,
@@ -1776,7 +1807,7 @@ function renderMartialWorkspaceView() {
       return resource ? resolveResourceAssetPath(resource) : "";
     },
     onSelectKind: (kind) => {
-      workspace.activeKind = kind; workspace.selectedIndex = 0; workspace.selectedFormIndex = -1; workspace.tab = "overview"; workspace.creatorOpen = false; workspace.creatorTemplate = ""; state.currentPath = getMartialPath(kind); renderMartialWorkspaceView();
+      workspace.activeKind = kind; workspace.selectedIndex = 0; workspace.selectedFormIndex = -1; workspace.tab = "overview"; workspace.creatorOpen = false; workspace.creatorTemplate = ""; workspace.resourcePicker.open = false; state.currentPath = getMartialPath(kind); renderMartialWorkspaceView();
     },
     onSelect: (index) => { workspace.selectedIndex = index; workspace.selectedFormIndex = -1; renderMartialWorkspaceView(); },
     onSearch: (value) => { workspace.search = value; renderMartialWorkspaceView(); const search = elements.martialWorkspaceView.querySelector('.martial-catalog-tools input[type="search"]'); search?.focus(); search?.setSelectionRange(value.length, value.length); },
@@ -1790,6 +1821,55 @@ function renderMartialWorkspaceView() {
     onOpenCreator: () => { workspace.creatorOpen = true; workspace.creatorTemplate = ""; renderMartialWorkspaceView(); },
     onCloseCreator: () => { workspace.creatorOpen = false; workspace.creatorTemplate = ""; renderMartialWorkspaceView(); },
     onSelectCreatorTemplate: (templateId) => { workspace.creatorTemplate = templateId; renderMartialWorkspaceView(); },
+    onOpenResourcePicker: ({ type, target, field, clearValue, selectedId }) => {
+      workspace.resourcePicker = { open: true, type, search: "", selectedId: selectedId || "", target, field, clearValue };
+      renderMartialWorkspaceView();
+    },
+    onCloseResourcePicker: () => {
+      workspace.resourcePicker = { open: false, type: "", search: "", selectedId: "", target: null, field: "", clearValue: null };
+      renderMartialWorkspaceView();
+    },
+    onResourcePickerSearch: (value) => {
+      workspace.resourcePicker.search = value;
+      renderMartialWorkspaceView();
+      const search = elements.martialWorkspaceView.querySelector(".martial-resource-picker-search");
+      search?.focus();
+      search?.setSelectionRange(value.length, value.length);
+    },
+    onSelectResourcePicker: (id) => { workspace.resourcePicker.selectedId = id; renderMartialWorkspaceView(); },
+    onApplyResourcePicker: () => {
+      const picker = workspace.resourcePicker;
+      if (!picker.target || !picker.field || !picker.selectedId) return;
+      picker.target[picker.field] = picker.selectedId;
+      workspace.resourcePicker = { open: false, type: "", search: "", selectedId: "", target: null, field: "", clearValue: null };
+      markMartialChanged();
+    },
+    onRegisterAudioResource: async (rawId, entry) => {
+      const picker = workspace.resourcePicker;
+      const id = String(rawId || "").trim();
+      if (!id) { showValidation(false, "请填写音效资源 ID。"); return; }
+      if (!id.startsWith("音效.") || id.length <= "音效.".length) { showValidation(false, "音效资源 ID 必须使用“音效.名称”格式。"); return; }
+      if (state.contentIndex.resourcesById.has(id)) { showValidation(false, `资源 ID 已存在：${id}`); return; }
+      if (!picker.target || !picker.field || !entry?.path) return;
+      try {
+        const result = await createGenericResource(id, "音效", entry.path);
+        picker.target[picker.field] = result.id || id;
+        workspace.resourcePicker = { open: false, type: "", search: "", selectedId: "", target: null, field: "", clearValue: null };
+        await loadDataFiles();
+        await rebuildContentIndex();
+        showValidation(result.validation.ok, result.validation.message);
+        markMartialChanged();
+      } catch (error) {
+        showValidation(false, error instanceof Error ? error.message : String(error));
+      }
+    },
+    onClearResourcePicker: () => {
+      const picker = workspace.resourcePicker;
+      if (!picker.target || !picker.field) return;
+      picker.target[picker.field] = picker.clearValue;
+      workspace.resourcePicker = { open: false, type: "", search: "", selectedId: "", target: null, field: "", clearValue: null };
+      markMartialChanged();
+    },
     onCreate: (templateId) => {
       if (!templateId) return;
       const id = createUniqueMartialId(`新${new Map(martialKinds.map(([kind, label]) => [kind, label])).get(workspace.activeKind)}`);
@@ -2445,11 +2525,13 @@ function renderFileList() {
   const query = elements.fileSearch.value.trim().toLowerCase();
   if (state.mode === "story") {
     renderStoryGroupList(query);
+    bindScrollMemory(elements.fileList, state.workspaceScrollPositions, "sidebar:story");
     return;
   }
 
   if (state.mode === "data") {
     renderDataFileGroupList(query);
+    bindScrollMemory(elements.fileList, state.workspaceScrollPositions, "sidebar:data");
     return;
   }
 
@@ -2463,6 +2545,7 @@ function renderFileList() {
 
     elements.fileList.appendChild(createFileListItem(file));
   }
+  bindScrollMemory(elements.fileList, state.workspaceScrollPositions, "sidebar:assets");
 }
 
 function renderDataFileGroupList(query) {

@@ -1,6 +1,7 @@
 import { createReferencePicker, createReferenceSummary } from "./reference-picker.js?v=20260711-core-17";
 import { bindImeSafeInput } from "../core/input-composition.js?v=20260711-core-17";
 import { createEmbeddedJsonEditor, disposeEmbeddedCodeEditors } from "./code-editor.js?v=20260711-stage6-1";
+import { bindScrollMemory } from "./scroll-memory.js?v=20260711-scroll-1";
 
 const CHARACTER_FILTERS = Object.freeze([
   { value: "all", label: "全部" },
@@ -187,6 +188,7 @@ function renderList(container, options) {
   }
   if (matches.length === 0) renderEmpty(list, "没有匹配的角色", "尝试清除搜索词或切换筛选条件。");
   container.appendChild(list);
+  bindScrollMemory(list, state.workspaceScrollPositions, "characters:list");
 }
 
 function renderPortraitCard(record, portraitInfo, onPickPortrait) {

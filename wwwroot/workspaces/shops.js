@@ -9,6 +9,7 @@ import {
 } from "../domain/shops.js?v=20260711-stage7-1";
 import { createEmbeddedJsonEditor, disposeEmbeddedCodeEditors } from "../ui/code-editor.js?v=20260711-stage6-1";
 import { createReferencePicker, createReferenceSummary } from "../ui/reference-picker.js?v=20260711-core-17";
+import { bindScrollMemory } from "../ui/scroll-memory.js?v=20260711-scroll-1";
 
 const tabs = Object.freeze([
   ["products", "商品"],
@@ -99,6 +100,7 @@ function renderShopList(parent, context) {
   }
   if (!matches.length) empty(list, "没有匹配的商店", "清除搜索词或切换筛选条件后再试。");
   parent.appendChild(list);
+  bindScrollMemory(list, state.workspaceScrollPositions, "shops:list");
 }
 
 function productPriceText(product, info) {
@@ -145,6 +147,7 @@ function renderProductList(parent, context, record) {
     list.appendChild(row);
   });
   parent.appendChild(list);
+  bindScrollMemory(list, state.workspaceScrollPositions, `shops:products:${record.id || state.selectedRecordIndex}`);
 }
 
 function segmented(value, choices, onChange) {

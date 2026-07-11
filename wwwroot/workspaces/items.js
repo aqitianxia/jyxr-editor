@@ -21,6 +21,7 @@ import {
   weaponTypes,
 } from "../domain/items.js?v=20260711-stage6-1";
 import { createEmbeddedJsonEditor, disposeEmbeddedCodeEditors } from "../ui/code-editor.js?v=20260711-stage6-1";
+import { bindScrollMemory } from "../ui/scroll-memory.js?v=20260711-scroll-1";
 import { createReferencePicker, createReferenceSummary } from "../ui/reference-picker.js?v=20260711-core-17";
 
 const tabs = Object.freeze([
@@ -172,6 +173,7 @@ function renderList(parent, options) {
   }
   if (!matches.length) renderEmpty(list, "没有匹配的物品", "清除搜索词或切换筛选条件后再试。");
   parent.appendChild(list);
+  bindScrollMemory(list, state.workspaceScrollPositions, "items:list");
 }
 
 function renderPictureCard(parent, context) {

@@ -14,6 +14,7 @@ import {
   createMartialFromTemplate,
   estimateExternalMpCost,
   getMartialReadiness,
+  filterMartialResources,
 } from "../wwwroot/domain/martial-arts.js";
 
 test("武学默认结构匹配四类运行时定义", () => {
@@ -115,4 +116,14 @@ test("完成度提示指出绝技必须配置实际效果", () => {
   assert.equal(rules.complete, false);
   special.effects.push(createSpecialEffect("add_hp"));
   assert.equal(getMartialReadiness("special", special).find((item) => item.id === "rules").complete, true);
+});
+
+test("武学资源选择器可按 ID、名称和路径搜索", () => {
+  const entries = [
+    { id: "拳法", name: "拳法图标", path: "art/icon/quanzhang.png" },
+    { id: "音效.剑", name: "挥剑", path: "audio/sword.wav" },
+  ];
+  assert.deepEqual(filterMartialResources(entries, "quanzhang").map((item) => item.id), ["拳法"]);
+  assert.deepEqual(filterMartialResources(entries, "挥剑").map((item) => item.id), ["音效.剑"]);
+  assert.equal(filterMartialResources(entries, "").length, 2);
 });
