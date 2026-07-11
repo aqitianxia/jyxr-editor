@@ -69,6 +69,8 @@ export function createEditorState() {
       previewLevel: 10,
       animationCatalog: [],
       loading: false,
+      creatorOpen: false,
+      creatorTemplate: "",
     },
     resourceWorkspace: {
       tab: "resources",

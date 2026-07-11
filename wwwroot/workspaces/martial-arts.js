@@ -9,16 +9,19 @@ import {
   createSpecialEffect,
   getImpactPositions,
   getMartialIssues,
+  getMartialReadiness,
+  estimateExternalMpCost,
   impactTypes,
   legendConditionTypes,
   martialKinds,
+  martialCreationTemplates,
   matchesMartialSearch,
   resolveEffectiveTargeting,
   resolvePresentation,
   specialEffectTypes,
   targetSelectorTypes,
   weaponTypes,
-} from "../domain/martial-arts.js?v=20260711-stage8-1";
+} from "../domain/martial-arts.js?v=20260711-stage8-3";
 
 const tabs = Object.freeze([
   ["overview", "概要"], ["combat", "战斗参数"], ["growth", "招式与成长"],
@@ -122,7 +125,7 @@ function renderCatalog(parent, context) {
   }
   parent.appendChild(kinds);
   const tools = el("div", "martial-catalog-tools");
-  tools.append(input(workspace.search, context.onSearch, { type: "search", placeholder: "搜索名称、ID、招式…", live: true }), button("＋ 新建", "button primary", context.onCreate));
+  tools.append(input(workspace.search, context.onSearch, { type: "search", placeholder: "搜索名称、ID、招式…", live: true }), button("＋ 新建", "button primary", context.onOpenCreator));
   parent.appendChild(tools);
 
   const records = workspace.documents[workspace.activeKind] || [];
@@ -134,19 +137,122 @@ function renderCatalog(parent, context) {
     const issues = context.getIssues({ kind: workspace.activeKind, record });
     const row = button("", "martial-record-row", () => context.onSelect(index));
     row.classList.toggle("active", index === workspace.selectedIndex);
+    const thumb = el("span", "martial-record-thumb");
+    const iconPath = context.getIconPath(record.icon);
+    if (iconPath) {
+      const image = document.createElement("img");
+      image.src = `/api/assets/file?path=${encodeURIComponent(iconPath)}`;
+      image.alt = "";
+      image.loading = "lazy";
+      thumb.appendChild(image);
+    } else thumb.appendChild(el("span", "", kindLabels.get(workspace.activeKind)?.slice(0, 1) || "武"));
     const copy = el("span", "martial-record-copy");
     copy.append(el("strong", "", record.name || record.id || `未命名 ${index + 1}`), el("code", "", record.id || "缺少 ID"));
     const meta = el("span", "martial-record-meta");
     if ((record.formSkills || []).length) meta.appendChild(el("span", "", `${record.formSkills.length} 招`));
     if (issues.length) meta.appendChild(el("span", "martial-issue-count", String(issues.length)));
-    row.append(copy, meta);
+    row.append(thumb, copy, meta);
     list.appendChild(row);
   }
   if (!matches.length) empty(list, "没有匹配的武学", "清除搜索词后再试，或新建一条定义。");
   parent.appendChild(list);
 }
 
+function renderHeaderMedia(context, record, kind) {
+  const presentation = context.getQuickPresentation(kind, record);
+  const media = el("div", "martial-header-media");
+  const icon = button("", "martial-header-preview icon", () => context.onTab("presentation"), "查看或更换图标");
+  const iconPath = context.getIconPath(presentation.icon);
+  if (iconPath) {
+    const image = document.createElement("img");
+    image.src = `/api/assets/file?path=${encodeURIComponent(iconPath)}`;
+    image.alt = record.name || record.id;
+    icon.appendChild(image);
+  } else icon.appendChild(el("span", "martial-header-placeholder", "无图标"));
+  icon.appendChild(el("small", "", "图标"));
+  const animation = el("div", "martial-header-preview animation");
+  animation.setAttribute("role", "button");
+  animation.tabIndex = 0;
+  animation.title = presentation.animation ? `查看或更换动画：${presentation.animation}` : presentation.animationLabel;
+  animation.addEventListener("click", () => context.onTab(presentation.targetTab));
+  animation.addEventListener("keydown", (event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); context.onTab(presentation.targetTab); } });
+  if (presentation.animation) {
+    const player = renderAnimationPlayer(presentation.animation, context);
+    player.classList.add("compact");
+    animation.appendChild(player);
+  } else animation.appendChild(el("span", "martial-header-placeholder", "无动画"));
+  animation.appendChild(el("small", "", presentation.animationLabel));
+  media.append(icon, animation);
+  return media;
+}
+
+function renderCreationProgress(parent, context, record, kind) {
+  const issues = context.getIssues({ kind, record });
+  const readiness = getMartialReadiness(kind, record, { issues });
+  const completeCount = readiness.filter((item) => item.complete).length;
+  const guide = el("section", "martial-creation-progress");
+  const header = el("div", "martial-progress-header");
+  const copy = el("div");
+  copy.append(el("strong", "", `创作进度 ${completeCount} / ${readiness.length}`), el("small", "", "按身份、规则、效果、演出、检查完成一门可运行武学"));
+  header.append(copy, el("span", completeCount === readiness.length ? "martial-ready-badge ready" : "martial-ready-badge", completeCount === readiness.length ? "可进入游戏验证" : "继续完善"));
+  guide.appendChild(header);
+  const steps = el("div", "martial-progress-steps");
+  readiness.forEach((item) => {
+    const step = button("", `martial-progress-step ${item.complete ? "complete" : "pending"}`, () => context.onTab(item.tab));
+    step.append(el("span", "martial-progress-mark", item.complete ? "✓" : "○"), el("strong", "", item.label), el("small", "", item.detail));
+    steps.appendChild(step);
+  });
+  guide.appendChild(steps);
+  const boundary = el("div", "martial-boundary-note");
+  boundary.append(el("strong", "", "制作边界"), el("span", "", "数值、范围、Buff、词缀和现有效果可在这里完成；新动画、图集和 PCK 要去 Godot；全新战斗机制需要扩展运行时代码。"));
+  guide.appendChild(boundary);
+  parent.appendChild(guide);
+}
+
+function renderCreator(root, context) {
+  const workspace = context.state.martialArtsWorkspace;
+  if (!workspace.creatorOpen) return;
+  const kind = workspace.activeKind;
+  const overlay = el("div", "martial-creator-overlay");
+  const dialog = el("section", "martial-creator-dialog");
+  dialog.setAttribute("role", "dialog");
+  dialog.setAttribute("aria-modal", "true");
+  dialog.setAttribute("aria-label", `新建${kindLabels.get(kind)}`);
+  const header = el("header", "martial-creator-header");
+  const title = el("div");
+  title.append(el("div", "martial-detail-eyebrow", `新建${kindLabels.get(kind)}`), el("h2", "", "先选择接近目标的起点"), el("p", "", "模板只填写运行时已有字段，不会自动创建 Godot 资源。已有武学很接近时，关闭此窗口后直接使用“复制”通常更快。"));
+  header.append(title, button("×", "icon-button", context.onCloseCreator, "关闭"));
+  dialog.appendChild(header);
+  const templates = el("div", "martial-template-list");
+  for (const template of martialCreationTemplates[kind] || []) {
+    const card = button("", "martial-template-card", () => context.onSelectCreatorTemplate(template.id));
+    card.classList.toggle("active", workspace.creatorTemplate === template.id);
+    card.append(el("span", "martial-template-radio", workspace.creatorTemplate === template.id ? "●" : "○"), el("strong", "", template.name), el("p", "", template.description), el("small", "", template.result));
+    templates.appendChild(card);
+  }
+  dialog.appendChild(templates);
+  const reminder = el("div", "martial-creator-reminder");
+  const reminders = kind === "external"
+    ? ["外功可直接造成伤害", "空内力会按威力和范围自动计算", "动画是每个命中格的特效"]
+    : kind === "internal"
+      ? ["内功本体不能主动施展", "倍率和词缀提供被动收益", "主动能力必须放在内功招式中"]
+      : kind === "special"
+        ? ["绝技威力恒为 0", "至少添加 Buff 或 effects", "适合治疗、驱散、强化和资源变化"]
+        : ["奥义由起手武学触发", "继承起手的图标、音效和命中范围", "同起手奥义按列表顺序判定"];
+  reminders.forEach((text) => reminder.appendChild(el("span", "", text)));
+  dialog.appendChild(reminder);
+  const footer = el("footer", "martial-creator-actions");
+  const create = button(`创建${kindLabels.get(kind)}`, "button primary", () => context.onCreate(workspace.creatorTemplate));
+  create.disabled = !workspace.creatorTemplate;
+  footer.append(button("取消", "button ghost", context.onCloseCreator), create);
+  dialog.appendChild(footer);
+  overlay.appendChild(dialog);
+  overlay.addEventListener("click", (event) => { if (event.target === overlay) context.onCloseCreator(); });
+  root.appendChild(overlay);
+}
+
 function renderOverview(parent, context, record, kind) {
+  renderCreationProgress(parent, context, record, kind);
   const basic = section(parent, "基础信息", "ID 是剧情、角色与奥义引用的稳定键；发布后不宜随意修改。");
   const grid = el("div", "martial-fields-grid");
   grid.append(field("武学 ID", input(record.id, (value) => patchObject(context, record, { id: value }))), field("显示名称", input(record.name, (value) => patchObject(context, record, { name: value }))));
@@ -154,15 +260,16 @@ function renderOverview(parent, context, record, kind) {
   basic.appendChild(grid);
 
   if (kind === "external") {
-    const identity = section(parent, "武学类型");
+    const identity = section(parent, "武学类型", "兵器分类决定使用哪项角色武学属性，也决定范围字段为空时的默认攻击形状。");
     const fields = el("div", "martial-fields-grid");
-    fields.append(field("兵器分类", select(record.type, weaponTypes, (value) => patchObject(context, record, { type: value }))), field("修炼难度", input(record.hard, (value) => patchObject(context, record, { hard: value }), { type: "number", min: 0 })), field("适性", input(record.affinity, (value) => patchObject(context, record, { affinity: value }), { type: "number" })), checkbox(record.isHarmony, (value) => patchObject(context, record, { isHarmony: value }), "阴阳调和"));
+    fields.append(field("兵器分类", select(record.type, weaponTypes, (value) => patchObject(context, record, { type: value })), "伤害计算会读取角色对应的拳掌、剑法、刀法或奇门属性。"), field("修炼难度", input(record.hard, (value) => patchObject(context, record, { hard: value }), { type: "number", min: 0 }), "数值越高，每级需要的修炼经验越多；它不直接增加伤害。"), field("内功适性", input(record.affinity, (value) => patchObject(context, record, { affinity: value }), { type: "number" }), "正数按装备内功阳性增伤，负数按阴性增伤，0 表示不吃阴阳适性。"), checkbox(record.isHarmony, (value) => patchObject(context, record, { isHarmony: value }), "阴阳调和"));
     identity.appendChild(fields);
   } else if (kind === "internal") {
-    const scales = section(parent, "内功倾向", "百分比以小数保存，例如 0.15 表示 15%。内功本身不进入技能栏，只有嵌套招式可在战斗中施展。");
+    const scales = section(parent, "内功倾向", "百分比以小数保存，例如 0.15 表示 15%。10 级时阴阳值达到配置值；攻防倍率继续随等级增长，暴击倍率在 10 级达到上限。");
     const fields = el("div", "martial-fields-grid three");
-    [["yin", "阴性"], ["yang", "阳性"], ["attackScale", "攻击倍率"], ["criticalScale", "暴击倍率"], ["defenceScale", "防御倍率"], ["hard", "修炼难度"]].forEach(([key, label]) => fields.appendChild(field(label, input(record[key], (value) => patchObject(context, record, { [key]: value }), { type: "number" }))));
+    fields.append(field("阴性", input(record.yin, (value) => patchObject(context, record, { yin: value }), { type: "number" }), "供负适性外功计算阴性增伤。"), field("阳性", input(record.yang, (value) => patchObject(context, record, { yang: value }), { type: "number" }), "供正适性外功计算阳性增伤。"), field("攻击倍率", input(record.attackScale, (value) => patchObject(context, record, { attackScale: value }), { type: "number" }), "装备后扩大攻击浮动上限；0.15 表示 10 级基础值 15%。"), field("暴击倍率", input(record.criticalScale, (value) => patchObject(context, record, { criticalScale: value }), { type: "number" }), "乘到基础暴击概率上；10 级后不再随等级增加。"), field("防御倍率", input(record.defenceScale, (value) => patchObject(context, record, { defenceScale: value }), { type: "number" }), "装备后提高战斗防御计算。"), field("修炼难度", input(record.hard, (value) => patchObject(context, record, { hard: value }), { type: "number", min: 0 }), "越高越难升级，并提高内功自身的自动内力消耗。"));
     scales.appendChild(fields);
+    scales.appendChild(el("div", "martial-callout", "内功本体不会出现在战斗技能栏。希望玩家主动施展时，请在“招式与成长”中添加内功招式；该招式只有装备本内功时可用。"));
   } else if (kind === "legend") {
     const trigger = section(parent, "触发入口", "同一批奥义按 JSON 顺序从上到下判定，第一条满足条件且概率成功的定义生效。");
     const fields = el("div", "martial-fields-grid");
@@ -177,6 +284,7 @@ function renderTargeting(sectionNode, context, record, kind, parentRecord = null
   const grid = el("div", "martial-fields-grid");
   grid.append(field("施展距离", input(targeting.castSize ?? "", (value) => nestedPatch(context, record, "targeting", { castSize: value }), { type: "number", min: 0, nullable: true }), `当前生效：${effective.castSize} 格`), field("影响形状", select(targeting.impactType ?? "", impactTypes, (value) => nestedPatch(context, record, "targeting", { impactType: value || null }), "继承 / 默认"), `当前生效：${new Map(impactTypes).get(effective.impactType) || effective.impactType}`), field("影响尺寸", input(targeting.impactSize ?? "", (value) => nestedPatch(context, record, "targeting", { impactSize: value }), { type: "number", min: 0, nullable: true }), `当前生效：${effective.impactSize}`), checkbox(targeting.canTargetSelf ?? false, (value) => nestedPatch(context, record, "targeting", { canTargetSelf: value }), "允许选择自己"));
   sectionNode.appendChild(grid);
+  sectionNode.appendChild(el("div", "martial-targeting-help", "施展距离决定目标能选多远；影响形状决定命中哪些格；影响尺寸的含义随形状变化。直线表示从施展者向目标方向延伸，面攻击按目标点展开，十字/米字/环状通常用于以自身为中心的范围技。"));
 }
 
 function renderCombat(parent, context, record, kind) {
@@ -190,15 +298,20 @@ function renderCombat(parent, context, record, kind) {
     note.appendChild(el("div", "martial-callout", `起手：${record.startSkill || "未设置"} · 额外威力：${record.powerExtra ?? 0}`));
     return;
   }
+  if (kind === "special") {
+    const warning = section(parent, "绝技作用方式", "绝技运行时威力固定为 0，不会因为选择了敌人或动画就自动造成伤害。");
+    warning.appendChild(el("div", "martial-callout warning", "必须在“效果与条件”里至少添加一个 Buff 或战斗效果。治疗用“恢复生命”，强化用 Buff，驱散用移除状态，怒气与行动值使用对应 effects。"));
+  }
   const costs = section(parent, "消耗与冷却");
   const cost = record.cost || {};
   const costFields = el("div", "martial-fields-grid three");
-  costFields.append(field("内力", input(cost.mp ?? "", (value) => nestedPatch(context, record, "cost", { mp: value }), { type: "number", min: 0, nullable: true }), kind === "external" ? "空值由运行时按等级计算。" : "施展时扣除。"), field("怒气", input(cost.rage ?? 0, (value) => nestedPatch(context, record, "cost", { rage: value }), { type: "number", min: 0 })), field("冷却回合", input(record.cooldown ?? 0, (value) => patchObject(context, record, { cooldown: value }), { type: "number", min: 0 })));
+  const autoMp = kind === "external" ? estimateExternalMpCost(record, context.state.martialArtsWorkspace.previewLevel) : null;
+  costFields.append(field("内力", input(cost.mp ?? "", (value) => nestedPatch(context, record, "cost", { mp: value }), { type: "number", min: 0, nullable: true }), kind === "external" ? `留空自动计算；按当前 ${context.state.martialArtsWorkspace.previewLevel} 级预览约为 ${autoMp}。范围越大通常越贵。` : "施展时固定扣除；绝技不会自动计算。"), field("怒气", input(cost.rage ?? 0, (value) => nestedPatch(context, record, "cost", { rage: value }), { type: "number", min: 0 }), "施展时固定扣除；0 表示不消耗怒气。"), field("冷却回合", input(record.cooldown ?? 0, (value) => patchObject(context, record, { cooldown: value }), { type: "number", min: 0 }), "0 表示没有额外冷却；数值越大，重复使用间隔越长。"));
   costs.appendChild(costFields);
   if (kind === "external") {
-    const power = section(parent, "基础威力", "这里只显示配置值。最终伤害还会受角色属性、技能等级、Buff 和战斗规则影响。");
+    const power = section(parent, "基础威力", "配置威力 = 基础威力 +（当前等级 - 1）× 每级成长。最终伤害还会乘入兵器属性、臂力、装备内功、词缀、Buff 与目标防御。");
     const fields = el("div", "martial-fields-grid");
-    fields.append(field("基础威力", input(record.powerBase, (value) => patchObject(context, record, { powerBase: value }), { type: "number" })), field("每级成长", input(record.powerStep, (value) => patchObject(context, record, { powerStep: value }), { type: "number" })), field(`等级 ${context.state.martialArtsWorkspace.previewLevel} 配置威力`, input((Number(record.powerBase) + (context.state.martialArtsWorkspace.previewLevel - 1) * Number(record.powerStep)).toFixed(2), () => {}), "只读估算，不包含最终伤害公式。"));
+    fields.append(field("基础威力", input(record.powerBase, (value) => patchObject(context, record, { powerBase: value }), { type: "number" }), "1 级时使用的配置威力。"), field("每级成长", input(record.powerStep, (value) => patchObject(context, record, { powerStep: value }), { type: "number" }), "每提升一级增加的配置威力。"), field(`等级 ${context.state.martialArtsWorkspace.previewLevel} 配置威力`, input((Number(record.powerBase) + (context.state.martialArtsWorkspace.previewLevel - 1) * Number(record.powerStep)).toFixed(2), () => {}), "只读估算，不是最终伤害。"));
     fields.lastElementChild.querySelector("input").readOnly = true;
     power.appendChild(fields);
   }
@@ -308,6 +421,15 @@ function renderLevelOverrides(parent, context, record) {
 }
 
 function renderEffects(parent, context, record, kind) {
+  const guide = section(parent, "效果怎么选");
+  const guideText = kind === "external"
+    ? "想让命中的敌人中毒、眩晕或减速，用“命中 Buff”；想让角色学会武学后永久获得属性或强化另一技能，用“被动词缀”；更复杂的即时规则不属于外功现有数据能力。"
+    : kind === "internal"
+      ? "内功的常驻收益主要写在“被动词缀”；需要玩家主动施展的能力应创建内功招式，再给招式配置 Buff。只有标记 requiresEquippedInternalSkill 的词缀才要求当前装备。"
+      : kind === "special"
+        ? "持续数回合的状态用 Buff；立即治疗、增减怒气、调整行动值或驱散状态用 effects。绝技本身不造成伤害，至少需要其中一种效果。"
+        : "奥义 Buff 会随奥义命中处理；触发条件必须全部满足，之后才按基础概率判定。起手相同的多条奥义按列表从上到下尝试。";
+  guide.appendChild(el("div", "martial-callout", guideText));
   if (kind === "external" || kind === "internal") renderAffixes(parent, context, record);
   if (kind !== "internal") renderBuffs(parent, context, record);
   if (kind === "special") renderSpecialEffects(parent, context, record);
@@ -391,14 +513,18 @@ function renderPresentation(parent, context, record, kind) {
     audio.appendChild(field("音效资源", select(record.audio, context.options.audio, (value) => patchObject(context, record, { audio: value }), "未设置")));
     if (audioPath) { const player = document.createElement("audio"); player.controls = true; player.src = `/api/assets/file?path=${encodeURIComponent(audioPath)}`; audio.appendChild(player); }
   }
-  const animation = section(parent, kind === "legend" ? "奥义全屏动画" : "命中特效动画", kind === "legend" ? "这里是覆盖战场的全屏叠加动画。命中动画、图标和音效仍继承起手武学。" : "Web 编辑器只读解析 Godot AnimationLibrary，不会修改 .tres/.res 资源。");
+  const animation = section(parent, kind === "legend" ? "奥义全屏动画" : "命中特效动画", kind === "legend" ? "这里是覆盖战场的全屏叠加动画。命中动画、图标和音效仍继承起手武学。可以更换已有动画引用，但新动画仍需在 Godot 制作。" : "可以从已有 Godot AnimationLibrary 中更换动画引用并立即预览；编辑器不会修改 .tres/.res，新增动画仍需在 Godot 制作并打入 PCK。");
   animation.appendChild(field("Godot 动画", select(record.animation ?? "", context.animationChoices, (value) => patchObject(context, record, { animation: value || null }), "未设置")));
   animation.appendChild(renderAnimationPlayer(record.animation, context));
   if (kind === "special") renderSpeech(parent, context, record);
 }
 
 function renderIconField(parent, context, record) {
-  parent.appendChild(field("图标 ID", input(record.icon ?? "", (value) => patchObject(context, record, { icon: value })), "优先按 assets/art/icon/{id} 查找，再使用 resources.json 回退。"));
+  const iconChoices = [...context.options.icons];
+  if (record.icon && !iconChoices.some((option) => option.id === record.icon)) iconChoices.unshift({ id: record.icon, name: `${record.icon}（当前自定义引用）` });
+  const fields = el("div", "martial-fields-grid");
+  fields.append(field("从现有图标选择", select(record.icon ?? "", iconChoices, (value) => patchObject(context, record, { icon: value }), "未设置"), "选择后只修改当前武学的 icon ID，不会改动图片文件。"), field("图标 ID", input(record.icon ?? "", (value) => patchObject(context, record, { icon: value })), "可手动填写 PCK 中提供的自定义图标 ID；新增图片仍需进入资源制作流程。"));
+  parent.appendChild(fields);
   const path = context.getIconPath(record.icon);
   const preview = el("div", "martial-icon-preview");
   if (path) { const image = document.createElement("img"); image.src = `/api/assets/file?path=${encodeURIComponent(path)}`; image.alt = record.name || record.id; preview.append(image, el("code", "", path)); }
@@ -527,14 +653,16 @@ function renderDetail(parent, context) {
   const record = records[workspace.selectedIndex];
   if (!record) { empty(parent, "当前分类没有定义", "新建第一条武学后即可开始编辑。"); return; }
   const header = el("header", "martial-detail-header");
+  const identity = el("div", "martial-detail-identity");
   const copy = el("div", "martial-detail-copy");
   copy.append(el("div", "martial-detail-eyebrow", kindLabels.get(kind)), el("h2", "", record.name || record.id || "未命名武学"), el("code", "", record.id || "缺少 ID"));
+  identity.append(renderHeaderMedia(context, record, kind), copy);
   const actions = el("div", "martial-detail-actions");
   const up = button("↑", "icon-button", () => context.onMove(-1), "上移定义");
   const down = button("↓", "icon-button", () => context.onMove(1), "下移定义");
   up.disabled = workspace.selectedIndex === 0; down.disabled = workspace.selectedIndex === records.length - 1;
   actions.append(up, down, button("复制", "button ghost", context.onDuplicate), button("删除", "button danger", context.onDelete));
-  header.append(copy, actions); parent.appendChild(header);
+  header.append(identity, actions); parent.appendChild(header);
   const tabbar = el("div", "martial-tabs");
   for (const [tab, label] of tabs) {
     if (tab === "growth" && kind === "special") continue;
@@ -566,4 +694,5 @@ export function renderMartialArtsWorkspace(root, context) {
   renderDetail(detail, context);
   shell.append(catalog, detail);
   root.appendChild(shell);
+  renderCreator(root, context);
 }

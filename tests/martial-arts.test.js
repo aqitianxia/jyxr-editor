@@ -11,6 +11,9 @@ import {
   resolveEffectiveTargeting,
   resolvePresentation,
   getMartialIssues,
+  createMartialFromTemplate,
+  estimateExternalMpCost,
+  getMartialReadiness,
 } from "../wwwroot/domain/martial-arts.js";
 
 test("武学默认结构匹配四类运行时定义", () => {
@@ -84,4 +87,32 @@ test("诊断缺失表现资源和重复嵌套招式", () => {
   assert.ok(issues.some((issue) => issue.includes("音效资源不存在")));
   assert.ok(issues.some((issue) => issue.includes("无法在 Web 预览")));
   assert.ok(issues.some((issue) => issue.includes("招式 ID 重复")));
+});
+
+test("新建模板只生成运行时已有字段", () => {
+  const sword = createMartialFromTemplate("external", "external-line", "新剑法");
+  assert.equal(sword.type, "jianfa");
+  assert.equal(sword.targeting.impactType, "line");
+  assert.equal(sword.targeting.impactSize, 4);
+  const internal = createMartialFromTemplate("internal", "internal-form", "新内功");
+  assert.equal(internal.formSkills.length, 1);
+  assert.equal(internal.formSkills[0].powerExtra, 2);
+  const special = createMartialFromTemplate("special", "special-self", "新绝技");
+  assert.equal(special.targeting.canTargetSelf, true);
+  assert.deepEqual(special.effects, []);
+});
+
+test("自动内力估算与 SkillHelper 公式一致", () => {
+  const single = createMartialFromTemplate("external", "external-single", "拳");
+  assert.equal(estimateExternalMpCost(single, 1), 48);
+  const line = createMartialFromTemplate("external", "external-line", "剑");
+  assert.equal(estimateExternalMpCost(line, 1), 43);
+});
+
+test("完成度提示指出绝技必须配置实际效果", () => {
+  const special = createMartialFromTemplate("special", "special-target", "医术");
+  const rules = getMartialReadiness("special", special).find((item) => item.id === "rules");
+  assert.equal(rules.complete, false);
+  special.effects.push(createSpecialEffect("add_hp"));
+  assert.equal(getMartialReadiness("special", special).find((item) => item.id === "rules").complete, true);
 });

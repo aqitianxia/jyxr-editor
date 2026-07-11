@@ -1,5 +1,5 @@
-import { state } from "./core/state.js?v=20260711-stage8-1";
-import { editorVersion } from "./core/version.js?v=20260711-stage8-1";
+import { state } from "./core/state.js?v=20260711-stage8-3";
+import { editorVersion } from "./core/version.js?v=20260711-stage8-3";
 import { createEditorApi } from "./core/api.js?v=20260711-core-17";
 import { createCommandRegistry } from "./core/commands.js?v=20260711-core-17";
 import { createDirtyStateController } from "./core/dirty-state.js?v=20260711-core-17";
@@ -27,14 +27,15 @@ import {
   buildMartialIndex,
   cloneJson as cloneMartialJson,
   createFormSkill,
-  createMartialDefinition,
+  createMartialFromTemplate,
   ensureMartialShape,
   getMartialPath,
   getMartialIssues,
   martialKinds,
   moveEntry as moveMartialEntry,
-} from "./domain/martial-arts.js?v=20260711-stage8-1";
-import { renderMartialArtsWorkspace } from "./workspaces/martial-arts.js?v=20260711-stage8-1";
+  resolvePresentation as resolveMartialPresentation,
+} from "./domain/martial-arts.js?v=20260711-stage8-3";
+import { renderMartialArtsWorkspace } from "./workspaces/martial-arts.js?v=20260711-stage8-3";
 import {
   buildResourceCatalog,
   findAssetPath as findCatalogAssetPath,
@@ -1442,6 +1443,8 @@ function resetMartialWorkspaceState() {
   workspace.tab = "overview";
   workspace.animationCatalog = [];
   workspace.loading = false;
+  workspace.creatorOpen = false;
+  workspace.creatorTemplate = "";
 }
 
 async function openMartialWorkspace() {
@@ -1506,6 +1509,12 @@ function createMartialOptions() {
   const forms = [...index.formsById.values()].flat().map((entry) => [entry.id, `${entry.name}（${entry.parent.name || entry.parent.id}）`]);
   return {
     buffs: byType("buffs"),
+    icons: Array.from(new Map(state.assetFiles
+      .filter((file) => /^art\/icon\//i.test(file.path) && isImageAsset(file.path))
+      .map((file) => {
+        const id = file.path.split("/").pop().replace(/\.[^.]+$/, "");
+        return [id, { id, name: id, path: file.path }];
+      })).values()).sort((left, right) => left.id.localeCompare(right.id, "zh-Hans-CN")),
     audio: (state.contentIndex.resourceRecords || []).filter((record) => record.group === "音效").map((record) => [record.id, record.id]).sort((a, b) => a[0].localeCompare(b[0], "zh-Hans-CN")),
     startSkills: [...external, ...forms],
     conditions: {
@@ -1515,6 +1524,28 @@ function createMartialOptions() {
       talent: byType("talents"),
     },
   };
+}
+
+function getMartialQuickPresentation(kind, record) {
+  if (kind === "internal") {
+    const form = record.formSkills?.[0];
+    const presentation = form ? resolveMartialPresentation(form, "form", record) : { icon: record.icon || "", animation: "", audio: "" };
+    return { ...presentation, animationLabel: form ? `招式：${form.name || form.id}` : "内功本体无动画", targetTab: form ? "growth" : "presentation" };
+  }
+  if (kind === "legend") {
+    const index = buildMartialIndex(state.martialArtsWorkspace.documents);
+    const form = index.formsById.get(record.startSkill)?.[0];
+    const external = index.byId.get(record.startSkill)?.find((entry) => entry.kind === "external");
+    const inherited = form ? resolveMartialPresentation(form.record, "form", form.parent) : external ? resolveMartialPresentation(external.record, "external") : { icon: "", animation: "", audio: "" };
+    return {
+      icon: inherited.icon,
+      animation: record.animation || inherited.animation,
+      audio: inherited.audio,
+      animationLabel: record.animation ? "奥义全屏动画" : "继承起手武学动画",
+      targetTab: "presentation",
+    };
+  }
+  return { ...resolveMartialPresentation(record, kind), animationLabel: kind === "special" ? "绝技命中特效" : "外功命中特效", targetTab: "presentation" };
 }
 
 function getMartialIssueContext() {
@@ -1571,12 +1602,13 @@ function renderMartialWorkspaceView() {
     animationChoices: workspace.animationCatalog.map((entry) => [entry.id, `${entry.id}${entry.previewable ? ` · ${entry.frameCount} 帧` : " · 不可预览"}`]),
     getIssues: (entry) => getMartialIssues(entry, issueContext),
     getIconPath: getMartialIconPath,
+    getQuickPresentation: getMartialQuickPresentation,
     getAudioPath: (id) => {
       const resource = state.contentIndex.resourcesById.get(id);
       return resource ? resolveResourceAssetPath(resource) : "";
     },
     onSelectKind: (kind) => {
-      workspace.activeKind = kind; workspace.selectedIndex = 0; workspace.selectedFormIndex = -1; workspace.tab = "overview"; state.currentPath = getMartialPath(kind); renderMartialWorkspaceView();
+      workspace.activeKind = kind; workspace.selectedIndex = 0; workspace.selectedFormIndex = -1; workspace.tab = "overview"; workspace.creatorOpen = false; workspace.creatorTemplate = ""; state.currentPath = getMartialPath(kind); renderMartialWorkspaceView();
     },
     onSelect: (index) => { workspace.selectedIndex = index; workspace.selectedFormIndex = -1; renderMartialWorkspaceView(); },
     onSearch: (value) => { workspace.search = value; renderMartialWorkspaceView(); const search = elements.martialWorkspaceView.querySelector('.martial-catalog-tools input[type="search"]'); search?.focus(); search?.setSelectionRange(value.length, value.length); },
@@ -1587,9 +1619,13 @@ function renderMartialWorkspaceView() {
       records[workspace.selectedIndex] = ensureMartialShape(workspace.activeKind, next); markMartialChanged();
     },
     onJsonError: (error) => showValidation(false, error.message),
-    onCreate: () => {
+    onOpenCreator: () => { workspace.creatorOpen = true; workspace.creatorTemplate = ""; renderMartialWorkspaceView(); },
+    onCloseCreator: () => { workspace.creatorOpen = false; workspace.creatorTemplate = ""; renderMartialWorkspaceView(); },
+    onSelectCreatorTemplate: (templateId) => { workspace.creatorTemplate = templateId; renderMartialWorkspaceView(); },
+    onCreate: (templateId) => {
+      if (!templateId) return;
       const id = createUniqueMartialId(`新${new Map(martialKinds.map(([kind, label]) => [kind, label])).get(workspace.activeKind)}`);
-      records.push(createMartialDefinition(workspace.activeKind, id)); workspace.selectedIndex = records.length - 1; workspace.search = ""; workspace.tab = "overview"; markMartialChanged();
+      records.push(createMartialFromTemplate(workspace.activeKind, templateId, id)); workspace.selectedIndex = records.length - 1; workspace.search = ""; workspace.tab = "overview"; workspace.creatorOpen = false; workspace.creatorTemplate = ""; markMartialChanged();
     },
     onDuplicate: () => {
       const current = records[workspace.selectedIndex]; if (!current) return;
