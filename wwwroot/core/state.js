@@ -45,6 +45,13 @@ export function createEditorState() {
       referencesOpen: false,
       focusField: "",
     },
+    growthWorkspace: {
+      search: "",
+      filter: "all",
+      tab: "overview",
+      creatorOpen: false,
+      creatorTemplate: "balanced",
+    },
     itemWorkspace: {
       search: "",
       filter: "all",

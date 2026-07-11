@@ -4,6 +4,7 @@ const shellContexts = Object.freeze({
   home: { eyebrow: "项目首页", browserTitle: "项目导航" },
   problems: { eyebrow: "质量检查 / 问题中心", browserTitle: "问题筛选" },
   characters: { eyebrow: "内容创作 / 角色与伙伴", browserTitle: "角色" },
+  growth: { eyebrow: "内容创作 / 成长模板", browserTitle: "成长模板" },
   items: { eyebrow: "内容创作 / 物品与装备", browserTitle: "物品" },
   shops: { eyebrow: "内容创作 / 商店与经济", browserTitle: "商店" },
   martial: { eyebrow: "内容创作 / 武学与奥义", browserTitle: "武学" },

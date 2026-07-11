@@ -1,11 +1,11 @@
-import { state } from "./core/state.js?v=20260711-stage8-3";
-import { editorVersion } from "./core/version.js?v=20260711-stage8-3";
+import { state } from "./core/state.js?v=20260711-stage9-1";
+import { editorVersion } from "./core/version.js?v=20260711-stage9-1";
 import { createEditorApi } from "./core/api.js?v=20260711-core-17";
 import { createCommandRegistry } from "./core/commands.js?v=20260711-core-17";
 import { createDirtyStateController } from "./core/dirty-state.js?v=20260711-core-17";
 import { createEventBus } from "./core/events.js?v=20260711-core-17";
 import { createPreferences, storageKeys } from "./core/preferences.js?v=20260711-core-17";
-import { normalizeWorkspaceMode } from "./core/router.js?v=20260711-stage8-1";
+import { normalizeWorkspaceMode } from "./core/router.js?v=20260711-stage9-1";
 import { bindImeSafeInput } from "./core/input-composition.js?v=20260711-core-17";
 import { createProblem, summarizeProblems } from "./core/problems.js?v=20260711-core-17";
 import { createRecentItemsStore } from "./core/recent-items.js?v=20260711-core-17";
@@ -14,11 +14,13 @@ import { confirmAction, createDialogController } from "./ui/dialogs.js?v=2026071
 import { createField, createTextInput } from "./ui/fields.js?v=20260711-core-17";
 import { createTextList } from "./ui/lists.js?v=20260711-core-17";
 import { createProblemSummary, renderStatusMessage } from "./ui/problem-list.js?v=20260711-core-17";
-import { createShellController } from "./ui/shell.js?v=20260711-stage8-1";
+import { createShellController } from "./ui/shell.js?v=20260711-stage9-1";
 import { renderProjectHome } from "./ui/home.js?v=20260711-core-17";
 import { renderProblemCenter } from "./ui/problem-center.js?v=20260711-core-17";
 import { renderCharacterWorkspace } from "./ui/characters.js?v=20260711-stage6-1";
 import { createEmbeddedJsonEditor, disposeEmbeddedCodeEditors } from "./ui/code-editor.js?v=20260711-stage6-1";
+import { createGrowthTemplate, ensureGrowthTemplateShape } from "./domain/growth-templates.js?v=20260711-stage9-1";
+import { renderGrowthTemplateWorkspace } from "./workspaces/growth-templates.js?v=20260711-stage9-1";
 import { createItemDefinition } from "./domain/items.js?v=20260711-stage6-1";
 import { renderItemWorkspace } from "./workspaces/items.js?v=20260711-stage6-1";
 import { createShopDefinition, createShopProduct, ensureShopShape as ensureShopWorkspaceShape, moveShopProduct as moveShopProductEntry } from "./domain/shops.js?v=20260711-stage7-1";
@@ -85,6 +87,7 @@ const elements = {
   homeTab: document.getElementById("homeTab"),
   problemsTab: document.getElementById("problemsTab"),
   charactersTab: document.getElementById("charactersTab"),
+  growthTab: document.getElementById("growthTab"),
   itemsTab: document.getElementById("itemsTab"),
   shopsTab: document.getElementById("shopsTab"),
   martialTab: document.getElementById("martialTab"),
@@ -93,6 +96,7 @@ const elements = {
   homeView: document.getElementById("homeView"),
   problemCenterView: document.getElementById("problemCenterView"),
   characterWorkspaceView: document.getElementById("characterWorkspaceView"),
+  growthWorkspaceView: document.getElementById("growthWorkspaceView"),
   itemWorkspaceView: document.getElementById("itemWorkspaceView"),
   shopWorkspaceView: document.getElementById("shopWorkspaceView"),
   martialWorkspaceView: document.getElementById("martialWorkspaceView"),
@@ -193,6 +197,7 @@ elements.problemCenterButton.addEventListener("click", () => requestWorkspaceCha
 elements.homeTab.addEventListener("click", () => requestWorkspaceChange("home"));
 elements.problemsTab.addEventListener("click", () => requestWorkspaceChange("problems"));
 elements.charactersTab.addEventListener("click", () => requestWorkspaceChange("characters"));
+elements.growthTab.addEventListener("click", () => requestWorkspaceChange("growth"));
 elements.itemsTab.addEventListener("click", () => requestWorkspaceChange("items"));
 elements.shopsTab.addEventListener("click", () => requestWorkspaceChange("shops"));
 elements.martialTab.addEventListener("click", () => requestWorkspaceChange("martial"));
@@ -725,6 +730,7 @@ function setMode(mode) {
   const isOverview = mode === "home" || mode === "problems";
   const isStory = mode === "story";
   const isCharacters = mode === "characters";
+  const isGrowth = mode === "growth";
   const isItems = mode === "items";
   const isShops = mode === "shops";
   const isMartial = mode === "martial";
@@ -732,6 +738,7 @@ function setMode(mode) {
 
   document.body.classList.toggle("story-mode", isStory);
   document.body.classList.toggle("characters-mode", isCharacters);
+  document.body.classList.toggle("growth-mode", isGrowth);
   document.body.classList.toggle("items-mode", isItems);
   document.body.classList.toggle("shops-mode", isShops);
   document.body.classList.toggle("martial-mode", isMartial);
@@ -741,6 +748,7 @@ function setMode(mode) {
   elements.homeTab.classList.toggle("active", mode === "home");
   elements.problemsTab.classList.toggle("active", mode === "problems");
   elements.charactersTab.classList.toggle("active", isCharacters);
+  elements.growthTab.classList.toggle("active", isGrowth);
   elements.itemsTab.classList.toggle("active", isItems);
   elements.shopsTab.classList.toggle("active", isShops);
   elements.martialTab.classList.toggle("active", isMartial);
@@ -750,13 +758,14 @@ function setMode(mode) {
   elements.homeView.classList.toggle("hidden", mode !== "home");
   elements.problemCenterView.classList.toggle("hidden", mode !== "problems");
   elements.characterWorkspaceView.classList.toggle("hidden", !isCharacters);
+  elements.growthWorkspaceView.classList.toggle("hidden", !isGrowth);
   elements.itemWorkspaceView.classList.toggle("hidden", !isItems);
   elements.shopWorkspaceView.classList.toggle("hidden", !isShops);
   elements.martialWorkspaceView.classList.toggle("hidden", !isMartial);
   elements.resourceWorkspaceView.classList.toggle("hidden", !isResources);
-  elements.workspacePaneHeader.classList.toggle("hidden", isOverview || isCharacters || isItems || isShops || isMartial || isResources);
-  elements.editorTools.classList.toggle("hidden", isOverview || isStory || isCharacters || isItems || isShops || isMartial || isResources);
-  elements.editorStatusbar.classList.toggle("hidden", isOverview || isStory || isCharacters || isItems || isShops || isMartial || isResources);
+  elements.workspacePaneHeader.classList.toggle("hidden", isOverview || isCharacters || isGrowth || isItems || isShops || isMartial || isResources);
+  elements.editorTools.classList.toggle("hidden", isOverview || isStory || isCharacters || isGrowth || isItems || isShops || isMartial || isResources);
+  elements.editorStatusbar.classList.toggle("hidden", isOverview || isStory || isCharacters || isGrowth || isItems || isShops || isMartial || isResources);
 
   elements.fileSearch.value = "";
   elements.fileSearch.placeholder = isStory
@@ -764,7 +773,7 @@ function setMode(mode) {
     : mode === "assets"
       ? "搜索资产"
       : "搜索文件";
-  elements.saveButton.disabled = mode !== "data" && !isCharacters && !isItems && !isShops && !isMartial;
+  elements.saveButton.disabled = mode !== "data" && !isCharacters && !isGrowth && !isItems && !isShops && !isMartial;
   elements.formatButton.disabled = mode !== "data";
 
   if (mode === "home") {
@@ -785,6 +794,14 @@ function setMode(mode) {
     setTextEditorVisible(false);
     elements.currentPath.textContent = "characters.json";
     renderCharacterWorkspaceView();
+  } else if (isGrowth) {
+    disposeEmbeddedCodeEditors(elements.formView);
+    elements.formView.replaceChildren();
+    elements.formView.classList.add("hidden");
+    elements.storyView.classList.add("hidden");
+    setTextEditorVisible(false);
+    elements.currentPath.textContent = "grow-templates.json";
+    renderGrowthWorkspaceView();
   } else if (isItems) {
     disposeEmbeddedCodeEditors(elements.formView);
     elements.formView.replaceChildren();
@@ -846,7 +863,7 @@ function setMode(mode) {
   updateMapFocusControl();
   updateStorySourceButton();
   renderShellContext();
-  if (!isOverview && !isCharacters && !isItems && !isShops && !isMartial && !isResources) {
+  if (!isOverview && !isCharacters && !isGrowth && !isItems && !isShops && !isMartial && !isResources) {
     renderFileList();
     renderCurrentFileInfo();
   }
@@ -875,6 +892,29 @@ async function requestWorkspaceChange(mode) {
         state.selectedRecordIndex = Math.min(state.selectedRecordIndex, Math.max(0, records.length - 1));
         state.viewMode = "form";
         setMode("characters");
+      } catch (error) {
+        showValidation(false, error instanceof SyntaxError ? formatJsonError(error) : error.message);
+      }
+    } else {
+      setMode("data");
+      setViewMode("json");
+    }
+    return;
+  }
+  const switchingGrowthSurface = isGrowthFile()
+    && ((state.mode === "growth" && mode === "data") || (state.mode === "data" && mode === "growth"));
+  if (switchingGrowthSurface) {
+    if (mode === "growth") {
+      try {
+        const records = parseJsonText(getEditorValue());
+        if (!Array.isArray(records) || !records.every((record) => record && typeof record === "object" && !Array.isArray(record))) {
+          throw new Error("grow-templates.json 顶层必须是成长模板对象数组。");
+        }
+        state.formRecords = records;
+        state.formRecords.forEach(ensureGrowthTemplateShape);
+        state.selectedRecordIndex = Math.min(state.selectedRecordIndex, Math.max(0, records.length - 1));
+        state.viewMode = "form";
+        setMode("growth");
       } catch (error) {
         showValidation(false, error instanceof SyntaxError ? formatJsonError(error) : error.message);
       }
@@ -936,6 +976,8 @@ async function requestWorkspaceChange(mode) {
   }
   if (mode === "characters") {
     await openCharacterWorkspace();
+  } else if (mode === "growth") {
+    await openGrowthWorkspace();
   } else if (mode === "items") {
     await openItemWorkspace();
   } else if (mode === "shops") {
@@ -957,7 +999,7 @@ async function reloadCurrentDataFile() {
   const file = await requestJson(`/api/data/file?path=${encodeURIComponent(state.currentPath)}`);
   setEditorValue(file.content);
   dirtyStateController.markClean({ render: false });
-  refreshFormFromEditor({ preferForm: state.viewMode === "form" || state.mode === "characters" || state.mode === "items" || state.mode === "shops" });
+  refreshFormFromEditor({ preferForm: state.viewMode === "form" || state.mode === "characters" || state.mode === "growth" || state.mode === "items" || state.mode === "shops" });
   renderDirtyState();
 }
 
@@ -1336,6 +1378,132 @@ async function uploadCurrentItemPicture(file) {
   } catch (error) {
     showValidation(false, error instanceof Error ? error.message : String(error));
   }
+}
+
+async function openGrowthWorkspace() {
+  if (state.mode === "growth" && isGrowthFile() && state.formRecords.length > 0) {
+    renderGrowthWorkspaceView();
+    return;
+  }
+  if (!state.dataFiles.some((file) => file.path === "grow-templates.json")) {
+    showValidation(false, "当前 MOD 缺少 grow-templates.json。");
+    return;
+  }
+  await openDataFile("grow-templates.json");
+  if (!isGrowthFile()) return;
+  state.formRecords.forEach(ensureGrowthTemplateShape);
+  state.viewMode = "form";
+  setMode("growth");
+}
+
+function getGrowthCharacterRecords() {
+  const records = [];
+  for (const definitions of state.contentIndex.definitionsById.values()) {
+    for (const definition of definitions) {
+      if (definition.type === "characters" && definition.record) records.push(definition.record);
+    }
+  }
+  return records;
+}
+
+function getGrowthTemplateUsage(templateId) {
+  return getGrowthCharacterRecords()
+    .filter((record) => record.growTemplate === templateId || (templateId === "default" && !String(record.growTemplate || "").trim()))
+    .map((record) => ({ ...record, implicit: templateId === "default" && !String(record.growTemplate || "").trim() }))
+    .sort((left, right) => String(left.name || left.id).localeCompare(String(right.name || right.id), "zh-Hans-CN"));
+}
+
+function renderGrowthWorkspaceView() {
+  if (state.mode !== "growth") return;
+  state.formRecords.forEach(ensureGrowthTemplateShape);
+  const idCounts = new Map();
+  for (const record of state.formRecords) {
+    const id = String(record.id || "").trim();
+    if (id) idCounts.set(id, (idCounts.get(id) || 0) + 1);
+  }
+  renderGrowthTemplateWorkspace(elements.growthWorkspaceView, {
+    state,
+    records: state.formRecords,
+    idCounts,
+    getUsage: getGrowthTemplateUsage,
+    onSelect: (index) => {
+      state.selectedRecordIndex = index;
+      state.growthWorkspace.tab = "overview";
+      renderGrowthWorkspaceView();
+    },
+    onSearch: (value) => {
+      state.growthWorkspace.search = value;
+      renderGrowthWorkspaceView();
+      const search = elements.growthWorkspaceView.querySelector('.growth-catalog-tools input[type="search"]');
+      search?.focus();
+      search?.setSelectionRange(value.length, value.length);
+    },
+    onFilter: (value) => { state.growthWorkspace.filter = value; renderGrowthWorkspaceView(); },
+    onTab: (value) => { state.growthWorkspace.tab = value; renderGrowthWorkspaceView(); },
+    onPatch: (key, value) => {
+      const record = state.formRecords[state.selectedRecordIndex];
+      if (!record) return;
+      record[key] = value;
+      syncFormToEditor();
+      renderGrowthWorkspaceView();
+    },
+    onPatchGrowth: (key, value) => {
+      const record = state.formRecords[state.selectedRecordIndex];
+      if (!record) return;
+      ensureGrowthTemplateShape(record).statGrowth[key] = value;
+      syncFormToEditor();
+      renderGrowthWorkspaceView();
+    },
+    onReplace: (next) => {
+      state.formRecords[state.selectedRecordIndex] = ensureGrowthTemplateShape(next);
+      syncFormToEditor();
+      renderGrowthWorkspaceView();
+    },
+    onDuplicate: duplicateGrowthTemplateRecord,
+    onDelete: deleteGrowthTemplateRecord,
+    onOpenCreator: () => { state.growthWorkspace.creatorOpen = true; state.growthWorkspace.creatorTemplate = "balanced"; renderGrowthWorkspaceView(); },
+    onCloseCreator: () => { state.growthWorkspace.creatorOpen = false; renderGrowthWorkspaceView(); },
+    onSelectCreatorTemplate: (value) => { state.growthWorkspace.creatorTemplate = value; renderGrowthWorkspaceView(); },
+    onCreate: createGrowthTemplateRecord,
+  });
+  renderProblemIndicators();
+}
+
+function createGrowthTemplateRecord() {
+  const id = createUniqueId("新成长模板");
+  state.formRecords.push(createGrowthTemplate(id, state.growthWorkspace.creatorTemplate));
+  state.selectedRecordIndex = state.formRecords.length - 1;
+  state.growthWorkspace.creatorOpen = false;
+  state.growthWorkspace.search = "";
+  state.growthWorkspace.filter = "all";
+  state.growthWorkspace.tab = "overview";
+  syncFormToEditor();
+  renderGrowthWorkspaceView();
+}
+
+function duplicateGrowthTemplateRecord() {
+  const current = state.formRecords[state.selectedRecordIndex];
+  if (!current) return;
+  const copy = structuredCloneCompat(current);
+  copy.id = createUniqueId(`${String(current.id || "成长模板")}_copy`);
+  copy.name = `${String(current.name || current.id || "成长模板")} 副本`;
+  state.formRecords.splice(state.selectedRecordIndex + 1, 0, copy);
+  state.selectedRecordIndex += 1;
+  syncFormToEditor();
+  renderGrowthWorkspaceView();
+}
+
+function deleteGrowthTemplateRecord() {
+  const current = state.formRecords[state.selectedRecordIndex];
+  if (!current) return;
+  const usage = getGrowthTemplateUsage(current.id);
+  const defaultWarning = current.id === "default" ? "\n\n这是运行时回退模板，删除后未指定模板的角色升级会失败。" : "";
+  const usageWarning = usage.length ? `\n\n当前静态扫描发现 ${usage.length} 名角色使用：${usage.slice(0, 6).map((item) => item.name || item.id).join("、")}${usage.length > 6 ? "等" : ""}。` : "";
+  if (!confirmAction(`确认删除成长模板「${current.name || current.id}」？${defaultWarning}${usageWarning}\n\n此操作会留在未保存状态。`)) return;
+  state.formRecords.splice(state.selectedRecordIndex, 1);
+  state.selectedRecordIndex = Math.max(0, Math.min(state.selectedRecordIndex, state.formRecords.length - 1));
+  syncFormToEditor();
+  renderGrowthWorkspaceView();
 }
 
 async function openShopWorkspace() {
@@ -2903,7 +3071,7 @@ async function saveCurrentFile() {
     await saveMartialWorkspace();
     return;
   }
-  if (!state.currentPath || (state.mode !== "data" && state.mode !== "characters" && state.mode !== "items" && state.mode !== "shops")) {
+  if (!state.currentPath || (state.mode !== "data" && state.mode !== "characters" && state.mode !== "growth" && state.mode !== "items" && state.mode !== "shops")) {
     showValidation(false, "请选择可保存的数据工作区。");
     return;
   }
@@ -2945,6 +3113,8 @@ async function saveCurrentFile() {
     renderFileList();
     if (state.mode === "characters") {
       renderCharacterWorkspaceView();
+    } else if (state.mode === "growth") {
+      renderGrowthWorkspaceView();
     } else if (state.mode === "items") {
       renderItemWorkspaceView();
     } else if (state.mode === "shops") {
@@ -3854,7 +4024,7 @@ function setViewModeButtons() {
 }
 
 function renderFormView() {
-  if (state.mode === "characters" || state.mode === "items" || state.mode === "shops") {
+  if (state.mode === "characters" || state.mode === "growth" || state.mode === "items" || state.mode === "shops") {
     elements.formView.classList.add("hidden");
     setTextEditorVisible(false);
     renderPortraitPicker();
@@ -6243,6 +6413,10 @@ function matchesMapFilter(record, filter) {
 
 function isShopFile() {
   return state.currentPath === "shops.json";
+}
+
+function isGrowthFile() {
+  return state.currentPath === "grow-templates.json";
 }
 
 function renderShopFormView() {
@@ -9511,6 +9685,8 @@ function updateRecordField(record, key, value, options = {}) {
   if (options.rerender) {
     if (state.mode === "characters") {
       renderCharacterWorkspaceView();
+    } else if (state.mode === "growth") {
+      renderGrowthWorkspaceView();
     } else if (state.mode === "items") {
       renderItemWorkspaceView();
     } else if (state.mode === "shops") {

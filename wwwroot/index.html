@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>JYXR MOD 编辑器 · v0.8.2</title>
+  <title>JYXR MOD 编辑器 · v0.9.0</title>
   <link rel="stylesheet" data-name="vs/editor/editor.main" href="/vendor/monaco/vs/editor/editor.main.css?v=20260708-monaco-1">
   <link rel="stylesheet" href="/styles.css?v=20260710-map-icons-1">
   <link rel="stylesheet" href="/styles/tokens.css?v=20260711-shell-1">
@@ -15,8 +15,9 @@
   <link rel="stylesheet" href="/styles/stage6.css?v=20260711-stage6-2">
   <link rel="stylesheet" href="/styles/stage7.css?v=20260711-stage7-1">
   <link rel="stylesheet" href="/styles/stage8.css?v=20260711-stage8-3">
+  <link rel="stylesheet" href="/styles/stage9.css?v=20260711-stage9-1">
 </head>
-<body data-editor-version="0.8.2">
+<body data-editor-version="0.9.0">
   <div class="app-shell">
     <header class="topbar">
       <div class="topbar-leading">
@@ -26,7 +27,7 @@
         <div class="brand-block">
           <div class="brand">JYXR MOD 编辑器</div>
           <div class="brand-meta" aria-label="编辑器版本与核心状态">
-            <span id="editorVersion" class="editor-version">v0.8.2 · 阶段 8</span>
+            <span id="editorVersion" class="editor-version">v0.9.0 · 阶段 9</span>
             <span id="coreLoadState" class="core-load-state pending" aria-live="polite">核心未加载</span>
           </div>
         </div>
@@ -88,6 +89,13 @@
             <span class="navigation-copy">
               <strong>角色与伙伴</strong>
               <small>角色、头像、成长与武学</small>
+            </span>
+          </button>
+          <button id="growthTab" type="button" class="navigation-item">
+            <span class="navigation-icon" aria-hidden="true">长</span>
+            <span class="navigation-copy">
+              <strong>成长模板</strong>
+              <small>升级属性、定位与角色引用</small>
             </span>
           </button>
           <button id="itemsTab" type="button" class="navigation-item">
@@ -153,6 +161,7 @@
         <div id="homeView" class="project-home-view"></div>
         <div id="problemCenterView" class="problem-center-view hidden"></div>
         <div id="characterWorkspaceView" class="character-workspace-view hidden"></div>
+        <div id="growthWorkspaceView" class="growth-workspace-view hidden"></div>
         <div id="itemWorkspaceView" class="item-workspace-view hidden"></div>
         <div id="shopWorkspaceView" class="shop-workspace-view hidden"></div>
         <div id="martialWorkspaceView" class="martial-workspace-view hidden"></div>
@@ -243,6 +252,6 @@
 
   <script src="/vendor/monaco/vs/loader.js?v=20260708-monaco-1"></script>
   <script src="/story-dsl.js?v=20260709-dsl-json-1"></script>
-  <script src="/bootstrap.js?v=20260711-stage8-3"></script>
+  <script src="/bootstrap.js?v=20260711-stage9-1"></script>
 </body>
 </html>
