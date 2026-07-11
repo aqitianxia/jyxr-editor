@@ -11,6 +11,7 @@
   <link rel="stylesheet" href="/styles/shell.css?v=20260711-stage3-1">
   <link rel="stylesheet" href="/styles/stage3.css?v=20260711-stage3-1">
   <link rel="stylesheet" href="/styles/stage4.css?v=20260711-stage4-8">
+  <link rel="stylesheet" href="/styles/stage5.css?v=20260711-stage5b-1">
 </head>
 <body data-editor-version="0.5.0">
   <div class="app-shell">
@@ -22,7 +23,7 @@
         <div class="brand-block">
           <div class="brand">JYXR MOD 编辑器</div>
           <div class="brand-meta" aria-label="编辑器版本与核心状态">
-            <span id="editorVersion" class="editor-version">v0.5.0 · 阶段 5A</span>
+            <span id="editorVersion" class="editor-version">v0.5.0 · 阶段 5B</span>
             <span id="coreLoadState" class="core-load-state pending" aria-live="polite">核心未加载</span>
           </div>
         </div>
@@ -104,8 +105,8 @@
           <button id="assetsTab" type="button" class="navigation-item">
             <span class="navigation-icon" aria-hidden="true">◇</span>
             <span class="navigation-copy">
-              <strong>资源浏览</strong>
-              <small>图片、音频与文件</small>
+              <strong>资源管理</strong>
+              <small>定义、资产与引用状态</small>
             </span>
           </button>
         </nav>
@@ -128,6 +129,7 @@
         <div id="homeView" class="project-home-view"></div>
         <div id="problemCenterView" class="problem-center-view hidden"></div>
         <div id="characterWorkspaceView" class="character-workspace-view hidden"></div>
+        <div id="resourceWorkspaceView" class="resource-workspace-view hidden"></div>
 
         <div id="workspacePaneHeader" class="pane-header hidden">
           <div class="file-context">
@@ -214,6 +216,6 @@
 
   <script src="/vendor/monaco/vs/loader.js?v=20260708-monaco-1"></script>
   <script src="/story-dsl.js?v=20260709-dsl-json-1"></script>
-  <script src="/bootstrap.js?v=20260711-bootstrap-14"></script>
+  <script src="/bootstrap.js?v=20260711-bootstrap-16"></script>
 </body>
 </html>

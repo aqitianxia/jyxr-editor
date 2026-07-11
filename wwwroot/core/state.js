@@ -45,6 +45,13 @@ export function createEditorState() {
       referencesOpen: false,
       focusField: "",
     },
+    resourceWorkspace: {
+      tab: "resources",
+      search: "",
+      group: "all",
+      status: "all",
+      selectedKey: "",
+    },
     itemTab: "requirements",
     portraitPicker: {
       open: false,
@@ -97,6 +104,7 @@ export function createEditorState() {
       parseErrors: [],
       resourcesById: new Map(),
       resourcesByGroup: new Map(),
+      resourceRecords: [],
       charactersByIdOrName: new Map(),
       itemsById: new Map(),
       storySpeakers: new Map(),

@@ -96,3 +96,34 @@ export function buildResourceContractSummary(resources) {
     duplicateIds: new Set([...idCounts].filter(([, count]) => count > 1).map(([id]) => id)),
   };
 }
+
+const resourceReferenceFields = new Set(["background", "icon", "image", "music", "musics", "picture", "portrait"]);
+
+export function isResourceReferenceLocation(fieldPath) {
+  const segments = String(fieldPath || "").replace(/\[\d+\]/g, "").split(".");
+  return segments.some((segment) => resourceReferenceFields.has(segment));
+}
+
+export function buildResourceCatalog(resources, assetFilePaths, referencesByValue = new Map()) {
+  const summary = buildResourceContractSummary(resources);
+  return (resources || []).map((resource, index) => {
+    const id = typeof resource?.id === "string" ? resource.id : "";
+    const contract = getResourceGroupContract(resource?.group);
+    const assetPath = contract.assetBacked ? resolveResourceAssetPath(resource, assetFilePaths) : "";
+    const references = (referencesByValue.get(id) || []).filter((reference) =>
+      reference?.path !== "resources.json" && isResourceReferenceLocation(reference?.fieldPath));
+    return {
+      id,
+      group: contract.group,
+      value: typeof resource?.value === "string" ? resource.value : "",
+      kind: contract.kind,
+      contract,
+      assetPath,
+      assetExists: contract.assetBacked && Boolean(assetPath) && assetFilePaths.has(assetPath),
+      duplicate: Boolean(id) && summary.duplicateIds.has(id),
+      references,
+      sourceIndex: index,
+      record: resource,
+    };
+  });
+}

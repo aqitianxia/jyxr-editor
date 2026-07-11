@@ -1,5 +1,5 @@
-import { state } from "./core/state.js?v=20260711-core-17";
-import { editorVersion } from "./core/version.js?v=20260711-core-17";
+import { state } from "./core/state.js?v=20260711-stage5b-1";
+import { editorVersion } from "./core/version.js?v=20260711-stage5b-1";
 import { createEditorApi } from "./core/api.js?v=20260711-core-17";
 import { createCommandRegistry } from "./core/commands.js?v=20260711-core-17";
 import { createDirtyStateController } from "./core/dirty-state.js?v=20260711-core-17";
@@ -14,16 +14,18 @@ import { confirmAction, createDialogController } from "./ui/dialogs.js?v=2026071
 import { createField, createTextInput } from "./ui/fields.js?v=20260711-core-17";
 import { createTextList } from "./ui/lists.js?v=20260711-core-17";
 import { createProblemSummary, renderStatusMessage } from "./ui/problem-list.js?v=20260711-core-17";
-import { createShellController } from "./ui/shell.js?v=20260711-core-17";
+import { createShellController } from "./ui/shell.js?v=20260711-stage5b-1";
 import { renderProjectHome } from "./ui/home.js?v=20260711-core-17";
 import { renderProblemCenter } from "./ui/problem-center.js?v=20260711-core-17";
 import { renderCharacterWorkspace } from "./ui/characters.js?v=20260711-core-17";
 import {
+  buildResourceCatalog,
   findAssetPath as findCatalogAssetPath,
   isAudioAsset,
   isImageAsset,
   normalizeArtAssetValue,
-} from "./domain/resource-catalog.js?v=20260711-stage5a-1";
+} from "./domain/resource-catalog.js?v=20260711-stage5b-1";
+import { renderResourcesWorkspace } from "./workspaces/resources.js?v=20260711-stage5b-1";
 
 const dataFileDisplayNames = new Map([
   ["battles.json", "战斗"],
@@ -68,6 +70,7 @@ const elements = {
   homeView: document.getElementById("homeView"),
   problemCenterView: document.getElementById("problemCenterView"),
   characterWorkspaceView: document.getElementById("characterWorkspaceView"),
+  resourceWorkspaceView: document.getElementById("resourceWorkspaceView"),
   workspacePaneHeader: document.getElementById("workspacePaneHeader"),
   editorTools: document.getElementById("editorTools"),
   editorStatusbar: document.getElementById("editorStatusbar"),
@@ -692,9 +695,11 @@ function setMode(mode) {
   const isOverview = mode === "home" || mode === "problems";
   const isStory = mode === "story";
   const isCharacters = mode === "characters";
+  const isResources = mode === "assets";
 
   document.body.classList.toggle("story-mode", isStory);
   document.body.classList.toggle("characters-mode", isCharacters);
+  document.body.classList.toggle("resources-mode", isResources);
   document.body.classList.toggle("overview-mode", isOverview);
   elements.editorPane.classList.toggle("overview-workspace", isOverview);
   elements.homeTab.classList.toggle("active", mode === "home");
@@ -706,9 +711,10 @@ function setMode(mode) {
   elements.homeView.classList.toggle("hidden", mode !== "home");
   elements.problemCenterView.classList.toggle("hidden", mode !== "problems");
   elements.characterWorkspaceView.classList.toggle("hidden", !isCharacters);
-  elements.workspacePaneHeader.classList.toggle("hidden", isOverview || isCharacters);
-  elements.editorTools.classList.toggle("hidden", isOverview || isStory || isCharacters);
-  elements.editorStatusbar.classList.toggle("hidden", isOverview || isStory || isCharacters);
+  elements.resourceWorkspaceView.classList.toggle("hidden", !isResources);
+  elements.workspacePaneHeader.classList.toggle("hidden", isOverview || isCharacters || isResources);
+  elements.editorTools.classList.toggle("hidden", isOverview || isStory || isCharacters || isResources);
+  elements.editorStatusbar.classList.toggle("hidden", isOverview || isStory || isCharacters || isResources);
 
   elements.fileSearch.value = "";
   elements.fileSearch.placeholder = isStory
@@ -735,6 +741,11 @@ function setMode(mode) {
     setTextEditorVisible(false);
     elements.currentPath.textContent = "characters.json";
     renderCharacterWorkspaceView();
+  } else if (isResources) {
+    elements.formView.classList.add("hidden");
+    elements.storyView.classList.add("hidden");
+    setTextEditorVisible(false);
+    renderResourceWorkspaceView();
   } else if (isStory) {
     elements.currentPath.textContent = "剧情图谱";
     elements.saveState.textContent = "";
@@ -767,7 +778,7 @@ function setMode(mode) {
   updateMapFocusControl();
   updateStorySourceButton();
   renderShellContext();
-  if (!isOverview && !isCharacters) {
+  if (!isOverview && !isCharacters && !isResources) {
     renderFileList();
     renderCurrentFileInfo();
   }
@@ -833,6 +844,47 @@ async function openWorkspaceMode(mode) {
       await openDataFile(state.dataFiles[0].path);
     }
   }
+}
+
+function renderResourceWorkspaceView(options = {}) {
+  if (state.mode !== "assets") return;
+  const catalog = buildResourceCatalog(state.contentIndex.resourceRecords, state.assetFilePathSet, state.contentIndex.referencesByValue);
+  const resourceIdsByAssetPath = new Map();
+  for (const item of catalog) {
+    if (!item.assetExists || !item.id) continue;
+    const ids = resourceIdsByAssetPath.get(item.assetPath) || [];
+    ids.push(item.id);
+    resourceIdsByAssetPath.set(item.assetPath, ids);
+  }
+  const assets = state.assetFiles
+    .filter((file) => !file.path.endsWith(".import") && !file.path.split("/").some((segment) => segment.startsWith(".")))
+    .map((file) => ({
+      ...file,
+      resourceIds: resourceIdsByAssetPath.get(file.path) || [],
+    }))
+    .sort((left, right) => {
+      const rank = (file) => isImageAsset(file.path) ? 0 : isAudioAsset(file.path) ? 1 : 2;
+      return rank(left) - rank(right) || left.path.localeCompare(right.path, "zh-CN");
+    });
+  renderResourcesWorkspace(elements.resourceWorkspaceView, {
+    state,
+    catalog,
+    assets,
+    onChange: (key, value, changeOptions = {}) => {
+      state.resourceWorkspace[key] = value;
+      if (key === "tab") {
+        state.resourceWorkspace.selectedKey = "";
+        state.resourceWorkspace.search = "";
+      }
+      renderResourceWorkspaceView(changeOptions);
+      if (changeOptions.restoreFocus) {
+        const search = elements.resourceWorkspaceView.querySelector(".resource-workspace-search");
+        search?.focus();
+        search?.setSelectionRange(value.length, value.length);
+      }
+    },
+    onOpenDefinition: (id) => revealDefinitionById(id, ["resources"]),
+  });
 }
 
 
@@ -9147,6 +9199,7 @@ async function rebuildContentIndex() {
   const resourceValues = new Map();
   const resourcesById = new Map();
   const resourcesByGroup = new Map();
+  const resourceRecords = [];
   const charactersByIdOrName = new Map();
   const itemsById = new Map();
   const storySpeakers = new Map();
@@ -9167,6 +9220,7 @@ async function rebuildContentIndex() {
       indexStaticStringReferences(referencesByValue, file.path, json);
       if (file.path === "resources.json" && Array.isArray(json)) {
         for (const resource of json) {
+          resourceRecords.push(resource);
           if (typeof resource?.id === "string" && typeof resource?.value === "string") {
             resourceValues.set(resource.id, resource.value);
           }
@@ -9234,6 +9288,7 @@ async function rebuildContentIndex() {
     parseErrors,
     resourcesById,
     resourcesByGroup,
+    resourceRecords,
     charactersByIdOrName,
     itemsById,
     storySpeakers,

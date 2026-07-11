@@ -2,9 +2,11 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   buildResourceContractSummary,
+  buildResourceCatalog,
   findAssetPath,
   getResourceGroupContract,
   normalizeArtAssetValue,
+  isResourceReferenceLocation,
   resolveResourceAssetPath,
   resourceKinds,
 } from "../wwwroot/domain/resource-catalog.js";
@@ -16,6 +18,31 @@ test("资源组区分图片、音频、文本和未知类型", () => {
   assert.equal(getResourceGroupContract("战斗音乐").kind, resourceKinds.audio);
   assert.equal(getResourceGroupContract("nick").kind, resourceKinds.text);
   assert.equal(getResourceGroupContract("自定义组").kind, resourceKinds.unknown);
+});
+
+test("资源引用索引只接受已知资源字段", () => {
+  assert.equal(isResourceReferenceLocation("$[0].portrait"), true);
+  assert.equal(isResourceReferenceLocation("$[0].musics[2]"), true);
+  assert.equal(isResourceReferenceLocation("$[0].description"), false);
+  assert.equal(isResourceReferenceLocation("$[0].commands[1].args[0]"), false);
+});
+
+test("只读目录保留重复记录并区分文本和缺失资产", () => {
+  const references = new Map([["头像.甲", [
+    { path: "characters.json", fieldPath: "$[0].portrait", ownerDefinitionId: "甲" },
+    { path: "items.json", fieldPath: "$[0].description", ownerDefinitionId: "说明" },
+  ]]]);
+  const catalog = buildResourceCatalog([
+    { id: "头像.甲", group: "头像", value: "head/missing" },
+    { id: "头像.甲", group: "头像", value: "head/other" },
+    { id: "nick.甲", group: "nick", value: "称号说明" },
+  ], files, references);
+  assert.equal(catalog.length, 3);
+  assert.equal(catalog[0].duplicate, true);
+  assert.equal(catalog[0].assetExists, false);
+  assert.equal(catalog[0].references.length, 1);
+  assert.equal(catalog[2].kind, resourceKinds.text);
+  assert.equal(catalog[2].assetExists, false);
 });
 
 test("只有后端通用注册接口支持的资源组被标记为可注册", () => {

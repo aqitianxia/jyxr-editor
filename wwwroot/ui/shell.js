@@ -6,7 +6,7 @@ const shellContexts = Object.freeze({
   characters: { eyebrow: "内容创作 / 角色与伙伴", browserTitle: "角色" },
   data: { eyebrow: "高级数据", browserTitle: "数据文件" },
   story: { eyebrow: "剧情与任务 / 图谱", browserTitle: "剧情分组" },
-  assets: { eyebrow: "资源管理 / 浏览", browserTitle: "资源文件" },
+  assets: { eyebrow: "资源管理", browserTitle: "资源目录" },
 });
 
 export function createShellController({
