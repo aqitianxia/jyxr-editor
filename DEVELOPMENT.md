@@ -27,6 +27,8 @@ Resource and asset semantics shared by workspaces live in `wwwroot/domain/resour
 
 Resource picker search, selection fallback, draft confirmation/cancellation, and directional navigation live in `wwwroot/domain/resource-picker.js`. Domain-specific pickers may keep different layouts, previews, and actions; they should reuse this kernel instead of duplicating search state rules.
 
+Direct resource writes must use `Services/ResourceWritePolicy.cs` or an equally explicit preflight decision. A write flow must distinguish create, reuse, and conflict; complete validation before backups and writes; and use an expected-state token or expected old value when a confirmation and write are separate requests.
+
 ## Architecture
 
 ### Backend

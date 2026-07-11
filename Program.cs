@@ -1,9 +1,11 @@
 using System.Buffers.Binary;
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Game.Content.Loading;
+using JsonEditor.Services;
 using Microsoft.AspNetCore.StaticFiles;
 
 var workspace = WorkspacePaths.FromCurrentDirectory();
@@ -602,11 +604,26 @@ app.MapPost("/api/assets/item/upload-bind", IResult (UploadItemImageRequest requ
             return Results.BadRequest(new ErrorResponse($"Data directory was not found: {modWorkspace.DataPath}"));
         }
 
-        var itemId = NormalizeRequiredId(request.ItemId, "Item id");
-        var pictureId = NormalizeRequiredId(
-            string.IsNullOrWhiteSpace(request.PictureId) ? $"物品.{itemId}" : request.PictureId,
-            "Picture id");
+        var preflight = BuildItemImageUploadPreflight(workspace, modWorkspace, new ItemImageUploadPreflightRequest(
+            request.ItemId,
+            request.PictureId,
+            request.FileName,
+            request.MimeType));
+        if (!preflight.CanApply)
+        {
+            return Results.BadRequest(new ErrorResponse(preflight.Message));
+        }
+        if (!string.Equals(request.PreflightToken, preflight.Token, StringComparison.Ordinal))
+        {
+            return Results.Conflict(new ErrorResponse("Item image upload state changed after preflight. Run the upload check again."));
+        }
+        if (preflight.AssetExists && !request.AllowAssetOverwrite)
+        {
+            return Results.Conflict(new ErrorResponse($"Asset already exists and overwrite was not confirmed: {preflight.AssetPath}"));
+        }
 
+        var itemId = preflight.ItemId;
+        var pictureId = preflight.PictureId;
         var extension = NormalizeImageExtension(request.FileName, request.MimeType);
         var imageBytes = Convert.FromBase64String(request.ImageBase64);
         if (imageBytes.Length == 0)
@@ -616,61 +633,28 @@ app.MapPost("/api/assets/item/upload-bind", IResult (UploadItemImageRequest requ
 
         ValidateImageSignature(imageBytes, extension);
 
-        var assetValue = NormalizeItemAssetValue(null, pictureId.Replace("物品.", "", StringComparison.Ordinal));
-        var relativeAssetPath = $"art/{assetValue}{extension}";
+        var assetValue = preflight.AssetValue;
+        var relativeAssetPath = preflight.AssetPath;
         var assetFilePath = workspace.ResolveAssetFile(relativeAssetPath);
-        Directory.CreateDirectory(Path.GetDirectoryName(assetFilePath)!);
-
-        string? assetBackupPath = null;
-        if (File.Exists(assetFilePath))
-        {
-            assetBackupPath = BackupAssetFile(workspace, assetFilePath);
-        }
-
-        File.WriteAllBytes(assetFilePath, imageBytes);
-
         var resourcesPath = modWorkspace.ResolveDataFile("resources.json");
         var resources = ReadJsonArray(resourcesPath, "resources.json");
-        string? resourceBackupPath = null;
-        var resourceChanged = false;
-        var resource = resources
-            .OfType<JsonObject>()
-            .FirstOrDefault(record =>
-                string.Equals(TryGetStringProperty(record, "id"), pictureId, StringComparison.Ordinal));
-
-        if (resource is null)
+        var resourceChanged = string.Equals(preflight.ResourceAction, "create", StringComparison.Ordinal);
+        if (resourceChanged)
         {
-            resource = new JsonObject
+            resources.Add(new JsonObject
             {
                 ["id"] = pictureId,
                 ["group"] = "物品",
                 ["value"] = assetValue,
-            };
-            resources.Add(resource);
-            resourceChanged = true;
-        }
-        else
-        {
-            var currentGroup = TryGetStringProperty(resource, "group");
-            var currentValue = TryGetStringProperty(resource, "value");
-            if (!string.Equals(currentGroup, "物品", StringComparison.Ordinal))
-            {
-                resource["group"] = "物品";
-                resourceChanged = true;
-            }
-
-            if (!string.Equals(currentValue, assetValue, StringComparison.Ordinal))
-            {
-                resource["value"] = assetValue;
-                resourceChanged = true;
-            }
+            });
         }
 
-        if (resourceChanged)
-        {
-            resourceBackupPath = BackupFile(modWorkspace, resourcesPath);
-            WriteJson(resourcesPath, resources);
-        }
+        // All validation and conflict checks complete before either target is backed up or written.
+        var assetBackupPath = preflight.AssetExists ? BackupAssetFile(workspace, assetFilePath) : null;
+        var resourceBackupPath = resourceChanged ? BackupFile(modWorkspace, resourcesPath) : null;
+        Directory.CreateDirectory(Path.GetDirectoryName(assetFilePath)!);
+        File.WriteAllBytes(assetFilePath, imageBytes);
+        if (resourceChanged) WriteJson(resourcesPath, resources);
 
         var validation = ValidateContent(modWorkspace);
         return Results.Ok(new UploadItemImageResponse(
@@ -693,7 +677,85 @@ app.MapPost("/api/assets/item/upload-bind", IResult (UploadItemImageRequest requ
     }
 });
 
+app.MapPost("/api/assets/item/upload-bind/preflight", IResult (ItemImageUploadPreflightRequest request, string? modId) =>
+{
+    try
+    {
+        var modWorkspace = workspace.ForMod(modId);
+        if (!Directory.Exists(workspace.AssetsPath))
+        {
+            return Results.BadRequest(new ErrorResponse($"Assets directory was not found: {workspace.AssetsPath}"));
+        }
+        if (!Directory.Exists(modWorkspace.DataPath))
+        {
+            return Results.BadRequest(new ErrorResponse($"Data directory was not found: {modWorkspace.DataPath}"));
+        }
+        return Results.Ok(BuildItemImageUploadPreflight(workspace, modWorkspace, request));
+    }
+    catch (Exception ex)
+    {
+        return Results.BadRequest(new ErrorResponse(ex.Message));
+    }
+});
+
 app.Run();
+
+static ItemImageUploadPreflightResponse BuildItemImageUploadPreflight(
+    WorkspacePaths workspace,
+    WorkspacePaths modWorkspace,
+    ItemImageUploadPreflightRequest request)
+{
+    var itemId = NormalizeRequiredId(request.ItemId, "Item id");
+    var pictureId = NormalizeRequiredId(
+        string.IsNullOrWhiteSpace(request.PictureId) ? $"物品.{itemId}" : request.PictureId,
+        "Picture id");
+    var extension = NormalizeImageExtension(request.FileName, request.MimeType);
+    var assetValue = NormalizeItemAssetValue(null, pictureId.Replace("物品.", "", StringComparison.Ordinal));
+    var assetPath = $"art/{assetValue}{extension}";
+    var assetFilePath = workspace.ResolveAssetFile(assetPath);
+    var assetInfo = new FileInfo(assetFilePath);
+    var resourcesPath = modWorkspace.ResolveDataFile("resources.json");
+    var resources = ReadJsonArray(resourcesPath, "resources.json");
+    var matchingResources = resources.OfType<JsonObject>()
+        .Where(record => string.Equals(TryGetStringProperty(record, "id"), pictureId, StringComparison.Ordinal))
+        .ToArray();
+    var resource = matchingResources.FirstOrDefault();
+    var existingGroup = resource is null ? null : TryGetStringProperty(resource, "group") ?? string.Empty;
+    var existingValue = resource is null ? null : TryGetStringProperty(resource, "value") ?? string.Empty;
+    var decision = matchingResources.Length > 1
+        ? new ResourceWriteDecision(
+            ResourceWriteAction.Conflict,
+            false,
+            $"Resource conflict: {pictureId} has {matchingResources.Length} duplicate definitions. Resolve duplicates before uploading.")
+        : ResourceWritePolicy.Decide(pictureId, "物品", assetValue, existingGroup, existingValue);
+    var action = decision.Action.ToString().ToLowerInvariant();
+    var message = decision.CanApply
+        ? $"{decision.Message} Write asset {assetPath}."
+        : decision.Message;
+    var tokenSource = string.Join('\0', new[]
+    {
+        pictureId,
+        existingGroup ?? "<missing>",
+        existingValue ?? "<missing>",
+        assetInfo.Exists.ToString(),
+        assetInfo.Exists ? assetInfo.Length.ToString() : "0",
+        assetInfo.Exists ? assetInfo.LastWriteTimeUtc.Ticks.ToString() : "0",
+    });
+    var token = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(tokenSource)));
+    return new ItemImageUploadPreflightResponse(
+        decision.CanApply,
+        message,
+        token,
+        itemId,
+        pictureId,
+        assetValue,
+        assetPath,
+        action,
+        existingGroup,
+        existingValue,
+        assetInfo.Exists,
+        assetInfo.Exists ? assetInfo.LastWriteTimeUtc : null);
+}
 
 static IReadOnlyList<FileEntry> ListFiles(string rootPath, string pattern, bool includeImportFiles)
 {
@@ -2926,7 +2988,29 @@ sealed record UploadItemImageRequest(
     string PictureId,
     string FileName,
     string MimeType,
-    string ImageBase64);
+    string ImageBase64,
+    string PreflightToken,
+    bool AllowAssetOverwrite);
+
+sealed record ItemImageUploadPreflightRequest(
+    string ItemId,
+    string PictureId,
+    string FileName,
+    string MimeType);
+
+sealed record ItemImageUploadPreflightResponse(
+    bool CanApply,
+    string Message,
+    string Token,
+    string ItemId,
+    string PictureId,
+    string AssetValue,
+    string AssetPath,
+    string ResourceAction,
+    string? ExistingResourceGroup,
+    string? ExistingResourceValue,
+    bool AssetExists,
+    DateTime? AssetModifiedAtUtc);
 
 sealed record UploadItemImageResponse(
     string ItemId,

@@ -99,6 +99,12 @@ cd tools/JsonEditor
 npm test
 ```
 
+运行编辑器后端资源写入策略测试：
+
+```bash
+dotnet test tools/JsonEditor.Tests/JsonEditor.Tests.csproj
+```
+
 运行项目测试：
 
 ```bash

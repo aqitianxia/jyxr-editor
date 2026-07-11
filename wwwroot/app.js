@@ -1,5 +1,5 @@
 import { state } from "./core/state.js?v=20260711-stage5b-1";
-import { editorVersion } from "./core/version.js?v=20260711-stage5c-1";
+import { editorVersion } from "./core/version.js?v=20260711-stage5d-1";
 import { createEditorApi } from "./core/api.js?v=20260711-core-17";
 import { createCommandRegistry } from "./core/commands.js?v=20260711-core-17";
 import { createDirtyStateController } from "./core/dirty-state.js?v=20260711-core-17";
@@ -7032,6 +7032,7 @@ function createItemPictureSection(record, pictureInfo) {
     try {
       const pictureId = getBindableItemPictureId(record);
       const result = await uploadItemImageAndBind(record, file, pictureId);
+      if (!result) return;
       await loadAssetFiles();
       await loadDataFiles();
       await rebuildContentIndex();
@@ -10428,6 +10429,25 @@ function getBindableItemPictureId(record) {
 }
 
 async function uploadItemImageAndBind(record, file, pictureId) {
+  const itemId = typeof record?.id === "string" ? record.id.trim() : "";
+  const preflight = await requestJson("/api/assets/item/upload-bind/preflight", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      itemId,
+      pictureId,
+      fileName: file.name,
+      mimeType: file.type || "application/octet-stream",
+    }),
+  });
+  if (!preflight.canApply) {
+    throw new Error(preflight.message || "物品图片上传预检未通过。");
+  }
+  const actionLabel = preflight.resourceAction === "create" ? "创建资源" : "复用资源";
+  const overwriteLabel = preflight.assetExists ? "覆盖现有资产（覆盖前备份）" : "创建新资产";
+  if (!confirmAction(`确认上传并绑定物品图片？\n\n资源 ID：${preflight.pictureId}\n资源组：物品\nvalue：${preflight.assetValue}\n资产路径：${preflight.assetPath}\n资源动作：${actionLabel}\n资产动作：${overwriteLabel}`)) {
+    return null;
+  }
   const dataUrl = await readFileAsDataUrl(file);
   const [, mimeType = "application/octet-stream", base64 = ""] = dataUrl.match(/^data:([^;]+);base64,(.+)$/) || [];
   if (!base64) {
@@ -10438,11 +10458,13 @@ async function uploadItemImageAndBind(record, file, pictureId) {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      itemId: typeof record?.id === "string" ? record.id.trim() : "",
+      itemId,
       pictureId,
       fileName: file.name,
       mimeType,
       imageBase64: base64,
+      preflightToken: preflight.token,
+      allowAssetOverwrite: preflight.assetExists,
     }),
   });
 }
