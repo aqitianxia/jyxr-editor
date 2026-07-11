@@ -92,6 +92,13 @@ dotnet build tools/JsonEditor/JsonEditor.csproj
 node --check tools/JsonEditor/wwwroot/app.js
 ```
 
+运行编辑器前端纯逻辑测试：
+
+```bash
+cd tools/JsonEditor
+npm test
+```
+
 运行项目测试：
 
 ```bash

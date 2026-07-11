@@ -23,6 +23,8 @@ The editor currently focuses on static JSON data and light validation:
 
 It is not a Godot scene editor, PCK builder, external mod manager, or general filesystem editor.
 
+Resource and asset semantics shared by workspaces live in `wwwroot/domain/resource-catalog.js`. Keep that module free of DOM and global editor state so its path resolution, group contracts, and conflict summaries remain testable with `npm test`.
+
 ## Architecture
 
 ### Backend

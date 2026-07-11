@@ -18,6 +18,12 @@ import { createShellController } from "./ui/shell.js?v=20260711-core-17";
 import { renderProjectHome } from "./ui/home.js?v=20260711-core-17";
 import { renderProblemCenter } from "./ui/problem-center.js?v=20260711-core-17";
 import { renderCharacterWorkspace } from "./ui/characters.js?v=20260711-core-17";
+import {
+  findAssetPath as findCatalogAssetPath,
+  isAudioAsset,
+  isImageAsset,
+  normalizeArtAssetValue,
+} from "./domain/resource-catalog.js?v=20260711-stage5a-1";
 
 const dataFileDisplayNames = new Map([
   ["battles.json", "战斗"],
@@ -9005,44 +9011,7 @@ function resolveResourceAssetPath(resource) {
 }
 
 function findAssetPath(value, options = {}) {
-  const normalized = value.trim().replaceAll("\\", "/").replace(/^res:\/\/assets\//, "").replace(/^assets\//, "");
-  const candidates = [];
-  const hasExtension = /\.[a-z0-9]+$/i.test(normalized);
-  const imageExtensions = [".png", ".jpg", ".jpeg", ".webp"];
-  const audioExtensions = [".ogg", ".mp3", ".wav", ".flac"];
-  const extensions = options.audio ? audioExtensions : imageExtensions;
-  const roots = [];
-
-  if (options.audio) {
-    roots.push("", "audio/");
-  } else if (options.art) {
-    roots.push("", "art/");
-  } else {
-    roots.push("", "art/", "audio/");
-  }
-
-  for (const root of roots) {
-    const base = normalized.startsWith(root) ? normalized : `${root}${normalized}`;
-    if (hasExtension) {
-      candidates.push(base);
-      const extensionlessBase = base.replace(/\.[a-z0-9]+$/i, "");
-      for (const extension of extensions) {
-        candidates.push(`${extensionlessBase}${extension}`);
-      }
-    } else {
-      for (const extension of extensions) {
-        candidates.push(`${base}${extension}`);
-      }
-    }
-  }
-
-  for (const candidate of candidates) {
-    if (state.assetFilePathSet.has(candidate)) {
-      return candidate;
-    }
-  }
-
-  return "";
+  return findCatalogAssetPath(value, state.assetFilePathSet, options);
 }
 
 function isAssetField(key, value) {
@@ -9986,13 +9955,7 @@ function formatNormalizePortraitError(error) {
 }
 
 function normalizeToolAssetValue(value) {
-  return value
-    .trim()
-    .replaceAll("\\", "/")
-    .replace(/^res:\/\/assets\/art\//i, "")
-    .replace(/^assets\/art\//i, "")
-    .replace(/^art\//i, "")
-    .replace(/\.(png|jpg|jpeg|webp)$/i, "");
+  return normalizeArtAssetValue(value);
 }
 
 function normalizeToolSearchValue(value) {
@@ -12155,11 +12118,11 @@ function parseJsonText(text) {
 }
 
 function isImage(path) {
-  return [".png", ".jpg", ".jpeg", ".webp", ".bmp", ".gif"].some((extension) => path.endsWith(extension));
+  return isImageAsset(path);
 }
 
 function isAudio(path) {
-  return [".ogg", ".wav", ".mp3", ".flac"].some((extension) => path.endsWith(extension));
+  return isAudioAsset(path);
 }
 
 function isStorySourceFile(path = state.currentPath) {

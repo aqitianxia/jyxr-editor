@@ -1,6 +1,6 @@
 export const editorVersion = Object.freeze({
-  number: "0.4.0",
-  label: "v0.4.0",
-  phase: "阶段 4",
+  number: "0.5.0",
+  label: "v0.5.0",
+  phase: "阶段 5A",
   date: "2026-07-11",
 });
