@@ -1,11 +1,11 @@
-import { state } from "./core/state.js?v=20260711-stage5b-1";
-import { editorVersion } from "./core/version.js?v=20260711-stage5e-1";
+import { state } from "./core/state.js?v=20260711-stage6-1";
+import { editorVersion } from "./core/version.js?v=20260711-stage6-1";
 import { createEditorApi } from "./core/api.js?v=20260711-core-17";
 import { createCommandRegistry } from "./core/commands.js?v=20260711-core-17";
 import { createDirtyStateController } from "./core/dirty-state.js?v=20260711-core-17";
 import { createEventBus } from "./core/events.js?v=20260711-core-17";
 import { createPreferences, storageKeys } from "./core/preferences.js?v=20260711-core-17";
-import { normalizeWorkspaceMode } from "./core/router.js?v=20260711-core-17";
+import { normalizeWorkspaceMode } from "./core/router.js?v=20260711-stage6-1";
 import { bindImeSafeInput } from "./core/input-composition.js?v=20260711-core-17";
 import { createProblem, summarizeProblems } from "./core/problems.js?v=20260711-core-17";
 import { createRecentItemsStore } from "./core/recent-items.js?v=20260711-core-17";
@@ -14,10 +14,13 @@ import { confirmAction, createDialogController } from "./ui/dialogs.js?v=2026071
 import { createField, createTextInput } from "./ui/fields.js?v=20260711-core-17";
 import { createTextList } from "./ui/lists.js?v=20260711-core-17";
 import { createProblemSummary, renderStatusMessage } from "./ui/problem-list.js?v=20260711-core-17";
-import { createShellController } from "./ui/shell.js?v=20260711-stage5b-1";
+import { createShellController } from "./ui/shell.js?v=20260711-stage6-1";
 import { renderProjectHome } from "./ui/home.js?v=20260711-core-17";
 import { renderProblemCenter } from "./ui/problem-center.js?v=20260711-core-17";
-import { renderCharacterWorkspace } from "./ui/characters.js?v=20260711-core-17";
+import { renderCharacterWorkspace } from "./ui/characters.js?v=20260711-stage6-1";
+import { createEmbeddedJsonEditor, disposeEmbeddedCodeEditors } from "./ui/code-editor.js?v=20260711-stage6-1";
+import { createItemDefinition } from "./domain/items.js?v=20260711-stage6-1";
+import { renderItemWorkspace } from "./workspaces/items.js?v=20260711-stage6-1";
 import {
   buildResourceCatalog,
   findAssetPath as findCatalogAssetPath,
@@ -67,11 +70,13 @@ const elements = {
   homeTab: document.getElementById("homeTab"),
   problemsTab: document.getElementById("problemsTab"),
   charactersTab: document.getElementById("charactersTab"),
+  itemsTab: document.getElementById("itemsTab"),
   sidebarBrowser: document.getElementById("sidebarBrowser"),
   editorPane: document.getElementById("editorPane"),
   homeView: document.getElementById("homeView"),
   problemCenterView: document.getElementById("problemCenterView"),
   characterWorkspaceView: document.getElementById("characterWorkspaceView"),
+  itemWorkspaceView: document.getElementById("itemWorkspaceView"),
   resourceWorkspaceView: document.getElementById("resourceWorkspaceView"),
   workspacePaneHeader: document.getElementById("workspacePaneHeader"),
   editorTools: document.getElementById("editorTools"),
@@ -169,6 +174,7 @@ elements.problemCenterButton.addEventListener("click", () => requestWorkspaceCha
 elements.homeTab.addEventListener("click", () => requestWorkspaceChange("home"));
 elements.problemsTab.addEventListener("click", () => requestWorkspaceChange("problems"));
 elements.charactersTab.addEventListener("click", () => requestWorkspaceChange("characters"));
+elements.itemsTab.addEventListener("click", () => requestWorkspaceChange("items"));
 elements.dataTab.addEventListener("click", () => requestWorkspaceChange("data"));
 elements.storyTab.addEventListener("click", () => requestWorkspaceChange("story"));
 elements.assetsTab.addEventListener("click", () => requestWorkspaceChange("assets"));
@@ -697,26 +703,30 @@ function setMode(mode) {
   const isOverview = mode === "home" || mode === "problems";
   const isStory = mode === "story";
   const isCharacters = mode === "characters";
+  const isItems = mode === "items";
   const isResources = mode === "assets";
 
   document.body.classList.toggle("story-mode", isStory);
   document.body.classList.toggle("characters-mode", isCharacters);
+  document.body.classList.toggle("items-mode", isItems);
   document.body.classList.toggle("resources-mode", isResources);
   document.body.classList.toggle("overview-mode", isOverview);
   elements.editorPane.classList.toggle("overview-workspace", isOverview);
   elements.homeTab.classList.toggle("active", mode === "home");
   elements.problemsTab.classList.toggle("active", mode === "problems");
   elements.charactersTab.classList.toggle("active", isCharacters);
+  elements.itemsTab.classList.toggle("active", isItems);
   elements.dataTab.classList.toggle("active", mode === "data");
   elements.storyTab.classList.toggle("active", isStory);
   elements.assetsTab.classList.toggle("active", mode === "assets");
   elements.homeView.classList.toggle("hidden", mode !== "home");
   elements.problemCenterView.classList.toggle("hidden", mode !== "problems");
   elements.characterWorkspaceView.classList.toggle("hidden", !isCharacters);
+  elements.itemWorkspaceView.classList.toggle("hidden", !isItems);
   elements.resourceWorkspaceView.classList.toggle("hidden", !isResources);
-  elements.workspacePaneHeader.classList.toggle("hidden", isOverview || isCharacters || isResources);
-  elements.editorTools.classList.toggle("hidden", isOverview || isStory || isCharacters || isResources);
-  elements.editorStatusbar.classList.toggle("hidden", isOverview || isStory || isCharacters || isResources);
+  elements.workspacePaneHeader.classList.toggle("hidden", isOverview || isCharacters || isItems || isResources);
+  elements.editorTools.classList.toggle("hidden", isOverview || isStory || isCharacters || isItems || isResources);
+  elements.editorStatusbar.classList.toggle("hidden", isOverview || isStory || isCharacters || isItems || isResources);
 
   elements.fileSearch.value = "";
   elements.fileSearch.placeholder = isStory
@@ -724,7 +734,7 @@ function setMode(mode) {
     : mode === "assets"
       ? "搜索资产"
       : "搜索文件";
-  elements.saveButton.disabled = mode !== "data" && !isCharacters;
+  elements.saveButton.disabled = mode !== "data" && !isCharacters && !isItems;
   elements.formatButton.disabled = mode !== "data";
 
   if (mode === "home") {
@@ -738,11 +748,21 @@ function setMode(mode) {
     setTextEditorVisible(false);
     renderProblemCenterWorkspace();
   } else if (isCharacters) {
+    disposeEmbeddedCodeEditors(elements.formView);
+    elements.formView.replaceChildren();
     elements.formView.classList.add("hidden");
     elements.storyView.classList.add("hidden");
     setTextEditorVisible(false);
     elements.currentPath.textContent = "characters.json";
     renderCharacterWorkspaceView();
+  } else if (isItems) {
+    disposeEmbeddedCodeEditors(elements.formView);
+    elements.formView.replaceChildren();
+    elements.formView.classList.add("hidden");
+    elements.storyView.classList.add("hidden");
+    setTextEditorVisible(false);
+    elements.currentPath.textContent = "items.json";
+    renderItemWorkspaceView();
   } else if (isResources) {
     elements.formView.classList.add("hidden");
     elements.storyView.classList.add("hidden");
@@ -780,7 +800,7 @@ function setMode(mode) {
   updateMapFocusControl();
   updateStorySourceButton();
   renderShellContext();
-  if (!isOverview && !isCharacters && !isResources) {
+  if (!isOverview && !isCharacters && !isItems && !isResources) {
     renderFileList();
     renderCurrentFileInfo();
   }
@@ -813,12 +833,36 @@ async function requestWorkspaceChange(mode) {
     }
     return;
   }
+  const switchingItemSurface = isItemFile()
+    && ((state.mode === "items" && mode === "data") || (state.mode === "data" && mode === "items"));
+  if (switchingItemSurface) {
+    if (mode === "items") {
+      try {
+        const records = parseJsonText(getEditorValue());
+        if (!Array.isArray(records) || !records.every((record) => record && typeof record === "object" && !Array.isArray(record))) {
+          throw new Error("items.json 顶层必须是物品对象数组。");
+        }
+        state.formRecords = records;
+        state.selectedRecordIndex = Math.min(state.selectedRecordIndex, Math.max(0, records.length - 1));
+        state.viewMode = "form";
+        setMode("items");
+      } catch (error) {
+        showValidation(false, error instanceof SyntaxError ? formatJsonError(error) : error.message);
+      }
+    } else {
+      setMode("data");
+      setViewMode("json");
+    }
+    return;
+  }
   if (dirtyStateController.isDirty()) {
     if (!(await confirmDiscardChanges())) return;
     await reloadCurrentDataFile();
   }
   if (mode === "characters") {
     await openCharacterWorkspace();
+  } else if (mode === "items") {
+    await openItemWorkspace();
   } else if (mode === "data" || mode === "story" || mode === "assets") {
     await openWorkspaceMode(mode);
   } else {
@@ -1045,6 +1089,174 @@ function deleteCharacterRecord() {
   state.characterWorkspace.referencesOpen = false;
   syncFormToEditor();
   renderCharacterWorkspaceView();
+}
+
+async function openItemWorkspace() {
+  if (state.mode === "items" && isItemFile() && state.formRecords.length > 0) {
+    renderItemWorkspaceView();
+    return;
+  }
+  if (!state.dataFiles.some((file) => file.path === "items.json")) {
+    showValidation(false, "当前 MOD 缺少 items.json。");
+    return;
+  }
+  await openDataFile("items.json");
+  if (!isItemFile()) return;
+  state.viewMode = "form";
+  setMode("items");
+}
+
+function renderItemWorkspaceView() {
+  if (state.mode !== "items") return;
+  renderItemWorkspace(elements.itemWorkspaceView, {
+    state,
+    getIssues: getItemValidationIssues,
+    getPictureInfo: getItemPictureInfo,
+    getReferences: getItemReferences,
+    references: getItemReferenceOptions(),
+    onSelect: (index) => {
+      state.selectedRecordIndex = index;
+      renderItemWorkspaceView();
+      renderProblemIndicators();
+    },
+    onSearch: (value) => {
+      state.itemWorkspace.search = value;
+      renderItemWorkspaceView();
+      const search = elements.itemWorkspaceView.querySelector(".item-list-search");
+      search?.focus();
+      search?.setSelectionRange(value.length, value.length);
+    },
+    onFilter: (value) => {
+      state.itemWorkspace.filter = value;
+      renderItemWorkspaceView();
+    },
+    onTab: (value) => {
+      state.itemWorkspace.tab = value;
+      renderItemWorkspaceView();
+    },
+    onMutate: (record, key, value) => {
+      record[key] = value;
+      syncFormToEditor();
+      renderItemWorkspaceView();
+    },
+    onReplaceRecord: (record) => {
+      state.formRecords[state.selectedRecordIndex] = record;
+      syncFormToEditor();
+      renderItemWorkspaceView();
+    },
+    onCreate: createItemRecord,
+    onDuplicate: duplicateItemRecord,
+    onDelete: deleteItemRecord,
+    onPickPicture: () => openItemPicturePicker(getCurrentItemPictureAssetPath()),
+    onUploadPicture: uploadCurrentItemPicture,
+    onOpenAdvancedData: () => {
+      setMode("data");
+      state.viewMode = "json";
+      setViewMode("json");
+      const record = state.formRecords[state.selectedRecordIndex];
+      if (record?.id) {
+        const definition = (state.contentIndex.definitionsById.get(record.id) || [])
+          .find((candidate) => candidate.path === "items.json");
+        if (definition?.line) selectLine(definition.line);
+      }
+    },
+    onOpenProblems: () => requestWorkspaceChange("problems"),
+  });
+  renderItemPicturePicker();
+}
+
+function createItemRecord() {
+  const id = createUniqueId("新物品");
+  state.formRecords.push(createItemDefinition("consumable", id));
+  state.selectedRecordIndex = state.formRecords.length - 1;
+  state.itemWorkspace.search = "";
+  state.itemWorkspace.filter = "all";
+  state.itemWorkspace.tab = "overview";
+  syncFormToEditor();
+  renderItemWorkspaceView();
+}
+
+function duplicateItemRecord() {
+  const current = state.formRecords[state.selectedRecordIndex];
+  if (!current) return;
+  const copy = structuredCloneCompat(current);
+  copy.id = createUniqueId(`${String(current.id || "新物品")}_copy`);
+  copy.name = `${String(current.name || current.id || "新物品")} 副本`;
+  state.formRecords.splice(state.selectedRecordIndex + 1, 0, copy);
+  state.selectedRecordIndex += 1;
+  syncFormToEditor();
+  renderItemWorkspaceView();
+}
+
+function deleteItemRecord() {
+  const current = state.formRecords[state.selectedRecordIndex];
+  if (!current) return;
+  const references = getItemReferences(current);
+  const summary = references.length
+    ? `静态扫描找到 ${references.length} 处引用。\n\n${references.slice(0, 5).map((item) => `${item.path} · ${item.fieldPath}`).join("\n")}\n\n`
+    : "静态扫描未找到引用，但无法覆盖动态脚本或运行时引用。\n\n";
+  if (!confirmAction(`${summary}确认删除物品「${current.name || current.id}」？此操作会留在未保存状态。`)) return;
+  state.formRecords.splice(state.selectedRecordIndex, 1);
+  state.selectedRecordIndex = Math.max(0, Math.min(state.selectedRecordIndex, state.formRecords.length - 1));
+  syncFormToEditor();
+  renderItemWorkspaceView();
+}
+
+function getItemReferences(record) {
+  const values = new Set([record?.id, record?.name]
+    .filter((value) => typeof value === "string" && value.trim())
+    .map((value) => value.trim()));
+  const references = [];
+  for (const value of values) {
+    for (const reference of state.contentIndex.referencesByValue?.get(value) || []) {
+      if (reference.path === "items.json" && reference.ownerDefinitionId === record.id) continue;
+      references.push({ ...reference, value });
+    }
+  }
+  return Array.from(new Map(references.map((item) => [`${item.path}:${item.fieldPath}:${item.value}`, item])).values())
+    .sort((left, right) => left.path.localeCompare(right.path, "zh-Hans-CN") || left.fieldPath.localeCompare(right.fieldPath));
+}
+
+function getItemReferenceOptions() {
+  const definitionsOfType = (type, projector = createReferenceOption) => {
+    const options = [];
+    for (const definitions of state.contentIndex.definitionsById.values()) {
+      for (const definition of definitions) {
+        if (definition.type === type) options.push(projector(definition));
+      }
+    }
+    return Array.from(new Map(options.map((option) => [option.id, option])).values())
+      .sort((left, right) => left.name.localeCompare(right.name, "zh-Hans-CN") || left.id.localeCompare(right.id, "zh-Hans-CN"));
+  };
+  const externalSkills = definitionsOfType("external-skills", createExternalSkillReferenceOption);
+  const internalSkills = definitionsOfType("internal-skills", createInternalSkillReferenceOption);
+  const specialSkills = definitionsOfType("special-skills", createSpecialSkillReferenceOption);
+  return {
+    talents: definitionsOfType("talents", createTalentReferenceOption),
+    buffs: definitionsOfType("buffs"),
+    externalSkills,
+    internalSkills,
+    specialSkills,
+    allSkills: [...externalSkills, ...internalSkills, ...specialSkills],
+  };
+}
+
+async function uploadCurrentItemPicture(file) {
+  const record = getCurrentItemRecord();
+  if (!record) return;
+  try {
+    const result = await uploadItemImageAndBind(record, file, getBindableItemPictureId(record));
+    if (!result) return;
+    await loadAssetFiles();
+    await loadDataFiles();
+    await rebuildContentIndex();
+    record.picture = result.pictureId;
+    syncFormToEditor();
+    showValidation(result.validation.ok, `已上传并绑定：${result.pictureId} -> ${result.assetPath}`);
+    renderItemWorkspaceView();
+  } catch (error) {
+    showValidation(false, error instanceof Error ? error.message : String(error));
+  }
 }
 
 function getCharacterReferences(record) {
@@ -2190,7 +2402,7 @@ function previewAsset(path) {
 }
 
 async function saveCurrentFile() {
-  if (!state.currentPath || (state.mode !== "data" && state.mode !== "characters")) {
+  if (!state.currentPath || (state.mode !== "data" && state.mode !== "characters" && state.mode !== "items")) {
     showValidation(false, "请选择可保存的数据工作区。");
     return;
   }
@@ -2232,6 +2444,8 @@ async function saveCurrentFile() {
     renderFileList();
     if (state.mode === "characters") {
       renderCharacterWorkspaceView();
+    } else if (state.mode === "items") {
+      renderItemWorkspaceView();
     }
   } catch (error) {
     showValidation(false, error instanceof SyntaxError ? formatJsonError(error) : error.message);
@@ -3094,14 +3308,16 @@ function setViewModeButtons() {
 }
 
 function renderFormView() {
-  if (state.mode === "characters") {
+  if (state.mode === "characters" || state.mode === "items") {
     elements.formView.classList.add("hidden");
     setTextEditorVisible(false);
     renderPortraitPicker();
+    renderItemPicturePicker();
     return;
   }
 
   const scrollState = captureFormViewScrollState();
+  disposeEmbeddedCodeEditors(elements.formView);
   elements.formView.replaceChildren();
   if (state.viewMode !== "form") {
     renderCharacterCheckTool();
@@ -4853,25 +5069,7 @@ function createMapConditionRow(mapEvent, condition, index) {
 
 function createMapAdvancedJsonSection(record) {
   const section = createCharacterSection("高级 JSON", "Advanced");
-  const details = document.createElement("details");
-  details.className = "character-advanced-json";
-  const summary = document.createElement("summary");
-  summary.textContent = "展开原始地图 JSON";
-  const textarea = document.createElement("textarea");
-  textarea.value = JSON.stringify(record, null, 2);
-  textarea.addEventListener("change", () => {
-    try {
-      const parsed = JSON.parse(textarea.value);
-      state.formRecords[state.selectedRecordIndex] = parsed;
-      syncFormToEditor();
-      renderFormView();
-    } catch (error) {
-      textarea.setCustomValidity(error instanceof Error ? error.message : String(error));
-      textarea.reportValidity();
-    }
-  });
-  details.append(summary, textarea);
-  section.appendChild(details);
+  section.appendChild(createLegacyAdvancedJsonDetails("展开原始地图 JSON", record, "maps"));
   return section;
 }
 
@@ -5978,25 +6176,7 @@ function moveShopProduct(record, productIndex, delta) {
 
 function createShopAdvancedJsonSection(record) {
   const section = createCharacterSection("高级 JSON", "Advanced");
-  const details = document.createElement("details");
-  details.className = "character-advanced-json";
-  const summary = document.createElement("summary");
-  summary.textContent = "展开原始商店 JSON";
-  const textarea = document.createElement("textarea");
-  textarea.value = JSON.stringify(record, null, 2);
-  textarea.addEventListener("change", () => {
-    try {
-      const parsed = JSON.parse(textarea.value);
-      state.formRecords[state.selectedRecordIndex] = parsed;
-      syncFormToEditor();
-      renderFormView();
-    } catch (error) {
-      textarea.setCustomValidity(error instanceof Error ? error.message : String(error));
-      textarea.reportValidity();
-    }
-  });
-  details.append(summary, textarea);
-  section.appendChild(details);
+  section.appendChild(createLegacyAdvancedJsonDetails("展开原始商店 JSON", record, "shops"));
   return section;
 }
 
@@ -7730,25 +7910,7 @@ function formatItemAffixSummary(affix) {
 
 function createItemAdvancedJsonSection(record) {
   const section = createCharacterSection("高级 JSON", "Advanced");
-  const details = document.createElement("details");
-  details.className = "character-advanced-json";
-  const summary = document.createElement("summary");
-  summary.textContent = "展开原始物品 JSON";
-  const textarea = document.createElement("textarea");
-  textarea.value = JSON.stringify(record, null, 2);
-  textarea.addEventListener("change", () => {
-    try {
-      const parsed = JSON.parse(textarea.value);
-      state.formRecords[state.selectedRecordIndex] = parsed;
-      syncFormToEditor();
-      renderFormView();
-    } catch (error) {
-      textarea.setCustomValidity(error instanceof Error ? error.message : String(error));
-      textarea.reportValidity();
-    }
-  });
-  details.append(summary, textarea);
-  section.appendChild(details);
+  section.appendChild(createLegacyAdvancedJsonDetails("展开原始物品 JSON", record, "items"));
   return section;
 }
 
@@ -8620,26 +8782,29 @@ function createRowNumberInput(target, key, fallback, nullable = false) {
 
 function createCharacterAdvancedJsonSection(record) {
   const section = createCharacterSection("高级 JSON", "Advanced");
+  section.appendChild(createLegacyAdvancedJsonDetails("展开原始角色 JSON", record, "characters"));
+  return section;
+}
+
+function createLegacyAdvancedJsonDetails(label, record, modelPrefix) {
   const details = document.createElement("details");
   details.className = "character-advanced-json";
   const summary = document.createElement("summary");
-  summary.textContent = "展开原始角色 JSON";
-  const textarea = document.createElement("textarea");
-  textarea.value = JSON.stringify(record, null, 2);
-  textarea.addEventListener("change", () => {
-    try {
-      const parsed = JSON.parse(textarea.value);
+  summary.textContent = label;
+  const editor = createEmbeddedJsonEditor({
+    value: record,
+    modelPath: `${modelPrefix}/${record.id || "record"}`,
+    validate: (value) => {
+      if (!value || Array.isArray(value) || typeof value !== "object") throw new Error("记录 JSON 必须是对象");
+    },
+    onApply: (parsed) => {
       state.formRecords[state.selectedRecordIndex] = parsed;
       syncFormToEditor();
       renderFormView();
-    } catch (error) {
-      textarea.setCustomValidity(error instanceof Error ? error.message : String(error));
-      textarea.reportValidity();
-    }
+    },
   });
-  details.append(summary, textarea);
-  section.appendChild(details);
-  return section;
+  details.append(summary, editor);
+  return details;
 }
 
 function getEquipmentSlotLabel(id) {
@@ -8766,18 +8931,12 @@ function createFieldEditor(record, key, value) {
   }
 
   if (complex) {
-    const textarea = document.createElement("textarea");
-    textarea.value = JSON.stringify(value, null, 2);
-    textarea.addEventListener("change", () => {
-      try {
-        updateRecordField(record, key, JSON.parse(textarea.value));
-        textarea.setCustomValidity("");
-      } catch (error) {
-        textarea.setCustomValidity(error instanceof Error ? error.message : String(error));
-        textarea.reportValidity();
-      }
-    });
-    field.appendChild(textarea);
+    field.appendChild(createEmbeddedJsonEditor({
+      value,
+      modelPath: `${state.currentPath}/${record.id || state.selectedRecordIndex}/${key}`,
+      compact: true,
+      onApply: (parsed) => updateRecordField(record, key, parsed, { rerender: true }),
+    }));
     return field;
   }
 
@@ -8805,6 +8964,8 @@ function updateRecordField(record, key, value, options = {}) {
   if (options.rerender) {
     if (state.mode === "characters") {
       renderCharacterWorkspaceView();
+    } else if (state.mode === "items") {
+      renderItemWorkspaceView();
     } else {
       renderFormView();
     }
@@ -10943,7 +11104,7 @@ async function createAndUseItemPictureLibraryResource(record, pictureId, entry, 
     await rebuildContentIndex();
     closeItemPicturePicker();
     showValidation(result.validation.ok, result.validation.message);
-    renderFormView();
+    state.mode === "items" ? renderItemWorkspaceView() : renderFormView();
   } catch (error) {
     showValidation(false, error instanceof Error ? error.message : String(error));
   } finally {

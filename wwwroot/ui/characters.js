@@ -1,5 +1,6 @@
 import { createReferencePicker, createReferenceSummary } from "./reference-picker.js?v=20260711-core-17";
 import { bindImeSafeInput } from "../core/input-composition.js?v=20260711-core-17";
+import { createEmbeddedJsonEditor, disposeEmbeddedCodeEditors } from "./code-editor.js?v=20260711-stage6-1";
 
 const CHARACTER_FILTERS = Object.freeze([
   { value: "all", label: "全部" },
@@ -102,31 +103,6 @@ function compactReferencePicker(value, options, onSelect, placeholder, showSelec
     compact: true,
     showSelected,
   });
-}
-
-function jsonEditor(label, value, onApply, rows = 12) {
-  const wrapper = el("div", "character-json-editor");
-  wrapper.appendChild(el("div", "character-field-label", label));
-  const textarea = document.createElement("textarea");
-  textarea.className = "input character-json-textarea";
-  textarea.rows = rows;
-  textarea.spellcheck = false;
-  textarea.value = JSON.stringify(value, null, 2);
-  wrapper.appendChild(textarea);
-  const status = el("div", "character-json-status", "修改后点击应用；解析失败不会改动数据。 ");
-  wrapper.appendChild(status);
-  wrapper.appendChild(button("应用 JSON", "button secondary", () => {
-    try {
-      const parsed = JSON.parse(textarea.value);
-      onApply(parsed);
-      status.className = "character-json-status ok";
-      status.textContent = "已应用到当前内存数据，尚未保存。";
-    } catch (error) {
-      status.className = "character-json-status bad";
-      status.textContent = `JSON 解析失败：${error.message}`;
-    }
-  }));
-  return wrapper;
 }
 
 function matchesFilter(record, filter, issues, portraitInfo) {
@@ -398,10 +374,14 @@ function renderAdvanced(parent, context) {
   notice.appendChild(el("p", "", "未识别字段会保留。应用 JSON 后仍需点击顶部“保存”写入 characters.json。"));
   notice.appendChild(button("在高级数据中打开 characters.json", "button ghost", onOpenAdvancedData));
   parent.appendChild(notice);
-  parent.appendChild(jsonEditor("当前角色完整 JSON", record, (value) => {
-    if (!value || Array.isArray(value) || typeof value !== "object") throw new Error("角色 JSON 必须是对象");
-    replaceRecord(value);
-  }, 24));
+  parent.appendChild(createEmbeddedJsonEditor({
+    value: record,
+    modelPath: `characters/${record.id || "record"}`,
+    validate: (value) => {
+      if (!value || Array.isArray(value) || typeof value !== "object") throw new Error("角色 JSON 必须是对象");
+    },
+    onApply: replaceRecord,
+  }));
 }
 
 function renderReferences(container, references, onClose) {
@@ -488,6 +468,7 @@ function renderDetail(container, options) {
 
 export function renderCharacterWorkspace(container, options) {
   const { state } = options;
+  disposeEmbeddedCodeEditors(container);
   container.replaceChildren();
   const shell = el("div", "character-workspace-shell");
   const list = el("aside", "character-workspace-list");

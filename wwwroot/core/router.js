@@ -1,4 +1,4 @@
-const workspaceModes = new Set(["home", "problems", "characters", "data", "story", "assets"]);
+const workspaceModes = new Set(["home", "problems", "characters", "items", "data", "story", "assets"]);
 
 export function normalizeWorkspaceMode(mode) {
   return workspaceModes.has(mode) ? mode : "home";

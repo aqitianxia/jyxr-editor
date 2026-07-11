@@ -45,6 +45,11 @@ export function createEditorState() {
       referencesOpen: false,
       focusField: "",
     },
+    itemWorkspace: {
+      search: "",
+      filter: "all",
+      tab: "overview",
+    },
     resourceWorkspace: {
       tab: "resources",
       search: "",
