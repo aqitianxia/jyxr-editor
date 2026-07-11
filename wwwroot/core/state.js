@@ -53,6 +53,10 @@ export function createEditorState() {
       creatorOpen: false,
       creatorTemplate: "balanced",
     },
+    sectWorkspace: {
+      search: "",
+      tab: "overview",
+    },
     itemWorkspace: {
       search: "",
       filter: "all",

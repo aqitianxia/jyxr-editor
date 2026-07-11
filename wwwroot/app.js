@@ -21,6 +21,8 @@ import { renderCharacterWorkspace } from "./ui/characters.js?v=20260711-stage6-2
 import { createEmbeddedJsonEditor, disposeEmbeddedCodeEditors } from "./ui/code-editor.js?v=20260711-stage6-1";
 import { createGrowthTemplate, ensureGrowthTemplateShape } from "./domain/growth-templates.js?v=20260711-stage9-1";
 import { renderGrowthTemplateWorkspace } from "./workspaces/growth-templates.js?v=20260711-stage9-2";
+import { cloneJson as cloneSectJson, createSectDefinition, ensureSectShape, getSectIssues } from "./domain/sects.js?v=20260711-stage9-2";
+import { renderSectWorkspace } from "./workspaces/sects.js?v=20260711-stage9-2";
 import { createItemDefinition } from "./domain/items.js?v=20260711-stage6-1";
 import { renderItemWorkspace } from "./workspaces/items.js?v=20260711-stage6-2";
 import { createShopDefinition, createShopProduct, ensureShopShape as ensureShopWorkspaceShape, moveShopProduct as moveShopProductEntry } from "./domain/shops.js?v=20260711-stage7-1";
@@ -89,6 +91,7 @@ const elements = {
   problemsTab: document.getElementById("problemsTab"),
   charactersTab: document.getElementById("charactersTab"),
   growthTab: document.getElementById("growthTab"),
+  sectsTab: document.getElementById("sectsTab"),
   itemsTab: document.getElementById("itemsTab"),
   shopsTab: document.getElementById("shopsTab"),
   martialTab: document.getElementById("martialTab"),
@@ -98,6 +101,7 @@ const elements = {
   problemCenterView: document.getElementById("problemCenterView"),
   characterWorkspaceView: document.getElementById("characterWorkspaceView"),
   growthWorkspaceView: document.getElementById("growthWorkspaceView"),
+  sectWorkspaceView: document.getElementById("sectWorkspaceView"),
   itemWorkspaceView: document.getElementById("itemWorkspaceView"),
   shopWorkspaceView: document.getElementById("shopWorkspaceView"),
   martialWorkspaceView: document.getElementById("martialWorkspaceView"),
@@ -199,6 +203,7 @@ elements.homeTab.addEventListener("click", () => requestWorkspaceChange("home"))
 elements.problemsTab.addEventListener("click", () => requestWorkspaceChange("problems"));
 elements.charactersTab.addEventListener("click", () => requestWorkspaceChange("characters"));
 elements.growthTab.addEventListener("click", () => requestWorkspaceChange("growth"));
+elements.sectsTab.addEventListener("click", () => requestWorkspaceChange("sects"));
 elements.itemsTab.addEventListener("click", () => requestWorkspaceChange("items"));
 elements.shopsTab.addEventListener("click", () => requestWorkspaceChange("shops"));
 elements.martialTab.addEventListener("click", () => requestWorkspaceChange("martial"));
@@ -733,6 +738,7 @@ function setMode(mode) {
   const isStory = mode === "story";
   const isCharacters = mode === "characters";
   const isGrowth = mode === "growth";
+  const isSects = mode === "sects";
   const isItems = mode === "items";
   const isShops = mode === "shops";
   const isMartial = mode === "martial";
@@ -741,6 +747,7 @@ function setMode(mode) {
   document.body.classList.toggle("story-mode", isStory);
   document.body.classList.toggle("characters-mode", isCharacters);
   document.body.classList.toggle("growth-mode", isGrowth);
+  document.body.classList.toggle("sects-mode", isSects);
   document.body.classList.toggle("items-mode", isItems);
   document.body.classList.toggle("shops-mode", isShops);
   document.body.classList.toggle("martial-mode", isMartial);
@@ -751,6 +758,7 @@ function setMode(mode) {
   elements.problemsTab.classList.toggle("active", mode === "problems");
   elements.charactersTab.classList.toggle("active", isCharacters);
   elements.growthTab.classList.toggle("active", isGrowth);
+  elements.sectsTab.classList.toggle("active", isSects);
   elements.itemsTab.classList.toggle("active", isItems);
   elements.shopsTab.classList.toggle("active", isShops);
   elements.martialTab.classList.toggle("active", isMartial);
@@ -761,13 +769,14 @@ function setMode(mode) {
   elements.problemCenterView.classList.toggle("hidden", mode !== "problems");
   elements.characterWorkspaceView.classList.toggle("hidden", !isCharacters);
   elements.growthWorkspaceView.classList.toggle("hidden", !isGrowth);
+  elements.sectWorkspaceView.classList.toggle("hidden", !isSects);
   elements.itemWorkspaceView.classList.toggle("hidden", !isItems);
   elements.shopWorkspaceView.classList.toggle("hidden", !isShops);
   elements.martialWorkspaceView.classList.toggle("hidden", !isMartial);
   elements.resourceWorkspaceView.classList.toggle("hidden", !isResources);
-  elements.workspacePaneHeader.classList.toggle("hidden", isOverview || isCharacters || isGrowth || isItems || isShops || isMartial || isResources);
-  elements.editorTools.classList.toggle("hidden", isOverview || isStory || isCharacters || isGrowth || isItems || isShops || isMartial || isResources);
-  elements.editorStatusbar.classList.toggle("hidden", isOverview || isStory || isCharacters || isGrowth || isItems || isShops || isMartial || isResources);
+  elements.workspacePaneHeader.classList.toggle("hidden", isOverview || isCharacters || isGrowth || isSects || isItems || isShops || isMartial || isResources);
+  elements.editorTools.classList.toggle("hidden", isOverview || isStory || isCharacters || isGrowth || isSects || isItems || isShops || isMartial || isResources);
+  elements.editorStatusbar.classList.toggle("hidden", isOverview || isStory || isCharacters || isGrowth || isSects || isItems || isShops || isMartial || isResources);
 
   elements.fileSearch.value = "";
   elements.fileSearch.placeholder = isStory
@@ -775,7 +784,7 @@ function setMode(mode) {
     : mode === "assets"
       ? "搜索资产"
       : "搜索文件";
-  elements.saveButton.disabled = mode !== "data" && !isCharacters && !isGrowth && !isItems && !isShops && !isMartial;
+  elements.saveButton.disabled = mode !== "data" && !isCharacters && !isGrowth && !isSects && !isItems && !isShops && !isMartial;
   elements.formatButton.disabled = mode !== "data";
 
   if (mode === "home") {
@@ -804,6 +813,14 @@ function setMode(mode) {
     setTextEditorVisible(false);
     elements.currentPath.textContent = "grow-templates.json";
     renderGrowthWorkspaceView();
+  } else if (isSects) {
+    disposeEmbeddedCodeEditors(elements.formView);
+    elements.formView.replaceChildren();
+    elements.formView.classList.add("hidden");
+    elements.storyView.classList.add("hidden");
+    setTextEditorVisible(false);
+    elements.currentPath.textContent = "sects.json";
+    renderSectWorkspaceView();
   } else if (isItems) {
     disposeEmbeddedCodeEditors(elements.formView);
     elements.formView.replaceChildren();
@@ -926,6 +943,29 @@ async function requestWorkspaceChange(mode) {
     }
     return;
   }
+  const switchingSectSurface = isSectFile()
+    && ((state.mode === "sects" && mode === "data") || (state.mode === "data" && mode === "sects"));
+  if (switchingSectSurface) {
+    if (mode === "sects") {
+      try {
+        const records = parseJsonText(getEditorValue());
+        if (!Array.isArray(records) || !records.every((record) => record && typeof record === "object" && !Array.isArray(record))) {
+          throw new Error("sects.json 顶层必须是门派对象数组。");
+        }
+        state.formRecords = records;
+        state.formRecords.forEach(ensureSectShape);
+        state.selectedRecordIndex = Math.min(state.selectedRecordIndex, Math.max(0, records.length - 1));
+        state.viewMode = "form";
+        setMode("sects");
+      } catch (error) {
+        showValidation(false, error instanceof SyntaxError ? formatJsonError(error) : error.message);
+      }
+    } else {
+      setMode("data");
+      setViewMode("json");
+    }
+    return;
+  }
   const switchingItemSurface = isItemFile()
     && ((state.mode === "items" && mode === "data") || (state.mode === "data" && mode === "items"));
   if (switchingItemSurface) {
@@ -980,6 +1020,8 @@ async function requestWorkspaceChange(mode) {
     await openCharacterWorkspace();
   } else if (mode === "growth") {
     await openGrowthWorkspace();
+  } else if (mode === "sects") {
+    await openSectWorkspace();
   } else if (mode === "items") {
     await openItemWorkspace();
   } else if (mode === "shops") {
@@ -1001,7 +1043,7 @@ async function reloadCurrentDataFile() {
   const file = await requestJson(`/api/data/file?path=${encodeURIComponent(state.currentPath)}`);
   setEditorValue(file.content);
   dirtyStateController.markClean({ render: false });
-  refreshFormFromEditor({ preferForm: state.viewMode === "form" || state.mode === "characters" || state.mode === "growth" || state.mode === "items" || state.mode === "shops" });
+  refreshFormFromEditor({ preferForm: state.viewMode === "form" || state.mode === "characters" || state.mode === "growth" || state.mode === "sects" || state.mode === "items" || state.mode === "shops" });
   renderDirtyState();
 }
 
@@ -1506,6 +1548,121 @@ function deleteGrowthTemplateRecord() {
   state.selectedRecordIndex = Math.max(0, Math.min(state.selectedRecordIndex, state.formRecords.length - 1));
   syncFormToEditor();
   renderGrowthWorkspaceView();
+}
+
+async function openSectWorkspace() {
+  if (state.mode === "sects" && isSectFile() && state.formRecords.length > 0) {
+    renderSectWorkspaceView();
+    return;
+  }
+  if (!state.dataFiles.some((file) => file.path === "sects.json")) {
+    showValidation(false, "当前 MOD 缺少 sects.json。");
+    return;
+  }
+  await openDataFile("sects.json");
+  if (!isSectFile()) return;
+  state.formRecords.forEach(ensureSectShape);
+  state.viewMode = "form";
+  setMode("sects");
+}
+
+function getSectWorkspaceReferences() {
+  const stories = [];
+  const skills = [];
+  const characters = [];
+  const skillTypes = new Map([
+    ["external-skills", "外功"], ["internal-skills", "内功"], ["special-skills", "绝技"],
+    ["legend-skills", "奥义"], ["talents", "天赋"],
+  ]);
+  for (const definitions of state.contentIndex.definitionsById.values()) {
+    for (const definition of definitions) {
+      if (definition.type === "story") stories.push({ id: definition.id, name: definition.displayName || definition.id, typeLabel: "剧情", subtitle: definition.path });
+      if (definition.type === "characters") {
+        const name = String(definition.record?.name || definition.id);
+        characters.push({ id: name, name, typeLabel: "角色", subtitle: definition.id === name ? "" : definition.id, description: definition.record?.description || "" });
+      }
+      if (skillTypes.has(definition.type)) {
+        const record = definition.record || {};
+        skills.push({ id: record.name || definition.id, name: record.name || definition.id, typeLabel: skillTypes.get(definition.type), subtitle: definition.id === record.name ? "" : definition.id, description: record.description || "" });
+        for (const form of Array.isArray(record.formSkills) ? record.formSkills : []) {
+          if (form?.id) skills.push({ id: form.name || form.id, name: form.name || form.id, typeLabel: "招式", subtitle: `${record.name || definition.id} · ${form.id}`, description: form.description || "" });
+        }
+      }
+    }
+  }
+  const resourceOptions = (groups) => state.contentIndex.resourceRecords
+    .filter((resource) => groups.has(String(resource.group || "")))
+    .map((resource) => ({ id: resource.id, name: resource.id, typeLabel: resource.group || "资源", subtitle: resource.value || "", iconPath: resolveResourceAssetPath(resource) }))
+    .sort((left, right) => left.name.localeCompare(right.name, "zh-Hans-CN"));
+  return {
+    stories: stories.sort((a, b) => a.name.localeCompare(b.name, "zh-Hans-CN")),
+    skills: skills.sort((a, b) => a.name.localeCompare(b.name, "zh-Hans-CN")),
+    characters: characters.sort((a, b) => a.name.localeCompare(b.name, "zh-Hans-CN")),
+    portraits: resourceOptions(new Set(["头像"])),
+    backgrounds: resourceOptions(new Set(["地图", "背景", "场景"])),
+  };
+}
+
+function renderSectWorkspaceView() {
+  if (state.mode !== "sects") return;
+  state.formRecords.forEach(ensureSectShape);
+  const references = getSectWorkspaceReferences();
+  const idCounts = new Map();
+  state.formRecords.forEach((record) => { const id = String(record.id || "").trim(); if (id) idCounts.set(id, (idCounts.get(id) || 0) + 1); });
+  const issueContext = {
+    idCounts,
+    storyIds: new Set(references.stories.map((item) => item.id)),
+    resourceIds: new Set(state.contentIndex.resourceRecords.map((item) => item.id)),
+    skillNames: new Set(references.skills.flatMap((item) => [item.id, item.name, item.subtitle].filter(Boolean))),
+    characterNames: new Set(references.characters.flatMap((item) => [item.id, item.name, item.subtitle].filter(Boolean))),
+  };
+  renderSectWorkspace(elements.sectWorkspaceView, {
+    state, records: state.formRecords, references,
+    getIssues: (record) => getSectIssues(record, issueContext),
+    resolveResource: (id) => {
+      const resource = state.contentIndex.resourcesById.get(String(id || ""));
+      return { id: String(id || ""), assetPath: resource ? resolveResourceAssetPath(resource) : "" };
+    },
+    onSelect: (index) => { state.selectedRecordIndex = index; state.sectWorkspace.tab = "overview"; renderSectWorkspaceView(); },
+    onSearch: (value) => { state.sectWorkspace.search = value; renderSectWorkspaceView(); const search = elements.sectWorkspaceView.querySelector('input[type="search"]'); search?.focus(); search?.setSelectionRange(value.length, value.length); },
+    onTab: (value) => { state.sectWorkspace.tab = value; renderSectWorkspaceView(); },
+    onPatch: (key, value) => { const record = state.formRecords[state.selectedRecordIndex]; if (!record) return; record[key] = value; syncFormToEditor(); renderSectWorkspaceView(); },
+    onReplace: (next) => { state.formRecords[state.selectedRecordIndex] = ensureSectShape(next); syncFormToEditor(); renderSectWorkspaceView(); },
+    onCreate: createSectRecord,
+    onDuplicate: duplicateSectRecord,
+    onDelete: deleteSectRecord,
+  });
+  renderProblemIndicators();
+}
+
+function createSectRecord() {
+  const id = createUniqueId("新门派");
+  state.formRecords.push(createSectDefinition(id));
+  state.selectedRecordIndex = state.formRecords.length - 1;
+  state.sectWorkspace.search = "";
+  state.sectWorkspace.tab = "overview";
+  syncFormToEditor();
+  renderSectWorkspaceView();
+  showValidation(true, "已创建最小门派模板。Web 编辑器可配置文本与已有资源引用；新图片和 PCK 资源仍需在 Godot 资源流程中制作。 ");
+}
+
+function duplicateSectRecord() {
+  const current = state.formRecords[state.selectedRecordIndex];
+  if (!current) return;
+  const copy = cloneSectJson(current);
+  copy.id = createUniqueId(`${String(current.id || "门派")}_copy`);
+  copy.name = `${String(current.name || current.id || "门派")} 副本`;
+  state.formRecords.splice(state.selectedRecordIndex + 1, 0, copy);
+  state.selectedRecordIndex += 1;
+  syncFormToEditor(); renderSectWorkspaceView();
+}
+
+function deleteSectRecord() {
+  const current = state.formRecords[state.selectedRecordIndex];
+  if (!current || !confirmAction(`确认删除门派「${current.name || current.id}」？\n\n剧情或其他高级数据中的字符串引用不会自动修改。此操作会留在未保存状态。`)) return;
+  state.formRecords.splice(state.selectedRecordIndex, 1);
+  state.selectedRecordIndex = Math.max(0, Math.min(state.selectedRecordIndex, state.formRecords.length - 1));
+  syncFormToEditor(); renderSectWorkspaceView();
 }
 
 async function openShopWorkspace() {
@@ -3154,7 +3311,7 @@ async function saveCurrentFile() {
     await saveMartialWorkspace();
     return;
   }
-  if (!state.currentPath || (state.mode !== "data" && state.mode !== "characters" && state.mode !== "growth" && state.mode !== "items" && state.mode !== "shops")) {
+  if (!state.currentPath || (state.mode !== "data" && state.mode !== "characters" && state.mode !== "growth" && state.mode !== "sects" && state.mode !== "items" && state.mode !== "shops")) {
     showValidation(false, "请选择可保存的数据工作区。");
     return;
   }
@@ -3198,6 +3355,8 @@ async function saveCurrentFile() {
       renderCharacterWorkspaceView();
     } else if (state.mode === "growth") {
       renderGrowthWorkspaceView();
+    } else if (state.mode === "sects") {
+      renderSectWorkspaceView();
     } else if (state.mode === "items") {
       renderItemWorkspaceView();
     } else if (state.mode === "shops") {
@@ -4107,7 +4266,7 @@ function setViewModeButtons() {
 }
 
 function renderFormView() {
-  if (state.mode === "characters" || state.mode === "growth" || state.mode === "items" || state.mode === "shops") {
+  if (state.mode === "characters" || state.mode === "growth" || state.mode === "sects" || state.mode === "items" || state.mode === "shops") {
     elements.formView.classList.add("hidden");
     setTextEditorVisible(false);
     renderPortraitPicker();
@@ -6500,6 +6659,10 @@ function isShopFile() {
 
 function isGrowthFile() {
   return state.currentPath === "grow-templates.json";
+}
+
+function isSectFile() {
+  return state.currentPath === "sects.json";
 }
 
 function renderShopFormView() {
@@ -9770,6 +9933,8 @@ function updateRecordField(record, key, value, options = {}) {
       renderCharacterWorkspaceView();
     } else if (state.mode === "growth") {
       renderGrowthWorkspaceView();
+    } else if (state.mode === "sects") {
+      renderSectWorkspaceView();
     } else if (state.mode === "items") {
       renderItemWorkspaceView();
     } else if (state.mode === "shops") {
@@ -9922,6 +10087,10 @@ function createRecordTemplate() {
       background: null,
       products: [],
     };
+  }
+
+  if (state.currentPath === "sects.json") {
+    return createSectDefinition(createUniqueId("新门派"));
   }
 
   if (state.currentPath === "game-tips.json") {
