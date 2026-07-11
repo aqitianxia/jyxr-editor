@@ -1,8 +1,9 @@
-import { setDrawerOpen } from "./drawers.js?v=20260711-core-8";
+import { setDrawerOpen } from "./drawers.js?v=20260711-core-17";
 
 const shellContexts = Object.freeze({
   home: { eyebrow: "项目首页", browserTitle: "项目导航" },
   problems: { eyebrow: "质量检查 / 问题中心", browserTitle: "问题筛选" },
+  characters: { eyebrow: "内容创作 / 角色与伙伴", browserTitle: "角色" },
   data: { eyebrow: "高级数据", browserTitle: "数据文件" },
   story: { eyebrow: "剧情与任务 / 图谱", browserTitle: "剧情分组" },
   assets: { eyebrow: "资源管理 / 浏览", browserTitle: "资源文件" },
@@ -58,7 +59,7 @@ export function createShellController({
     elements.newStoryButton.classList.toggle("hidden", state.mode !== "story");
     elements.newSpeakerButton.classList.toggle("hidden", state.mode !== "story");
     elements.portraitCheckButton.classList.toggle("hidden", state.mode === "story");
-    elements.characterCheckButton.classList.toggle("hidden", state.mode !== "data");
+    elements.characterCheckButton.classList.toggle("hidden", state.mode !== "data" && state.mode !== "characters");
   }
 
   function renderInspectorStatus(ok, label) {

@@ -1,4 +1,4 @@
-import { summarizeProblems } from "../core/problems.js?v=20260711-core-8";
+import { summarizeProblems } from "../core/problems.js?v=20260711-core-17";
 
 export function renderProjectHome(container, model, actions = {}) {
   container.replaceChildren();

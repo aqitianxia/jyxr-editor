@@ -244,16 +244,38 @@ app.MapPost("/api/static/speaker", IResult (CreateSpeakerRequest request, string
         var speakerName = string.IsNullOrWhiteSpace(request.Name) ? speakerId : request.Name.Trim();
         var portraitId = string.IsNullOrWhiteSpace(request.PortraitId)
             ? $"头像.{speakerId}"
-            : request.PortraitId.Trim();
+            : NormalizePortraitResourceId(request.PortraitId);
         var assetValue = NormalizePortraitAssetValue(request.AssetValue, speakerId);
         var gender = NormalizeGender(request.Gender);
+        EnsurePortraitAssetReadable(modWorkspace, assetValue);
 
         var resourcesPath = modWorkspace.ResolveDataFile("resources.json");
         var charactersPath = modWorkspace.ResolveDataFile("characters.json");
         var backupPaths = new List<string>();
 
         var resources = ReadJsonArray(resourcesPath, "resources.json");
-        if (!JsonArrayContainsStringProperty(resources, "id", portraitId))
+        var existingResource = resources.OfType<JsonObject>()
+            .FirstOrDefault(record => string.Equals(TryGetStringProperty(record, "id"), portraitId, StringComparison.Ordinal));
+        if (existingResource is not null)
+        {
+            var existingGroup = TryGetStringProperty(existingResource, "group") ?? string.Empty;
+            var existingValue = TryGetStringProperty(existingResource, "value") ?? string.Empty;
+            if (!string.Equals(existingGroup, "头像", StringComparison.Ordinal)
+                || !string.Equals(existingValue, assetValue, StringComparison.Ordinal))
+            {
+                return Results.BadRequest(new ErrorResponse(
+                    $"Portrait resource conflict: {portraitId} already maps to group '{existingGroup}' and value '{existingValue}', not '{assetValue}'."));
+            }
+        }
+
+        var characters = ReadJsonArray(charactersPath, "characters.json");
+        if (JsonArrayContainsStringProperty(characters, "id", speakerId))
+        {
+            return Results.BadRequest(new ErrorResponse(
+                $"Speaker already exists: {speakerId}. Edit the existing character instead of creating it again."));
+        }
+
+        if (existingResource is null)
         {
             var backup = BackupFile(modWorkspace, resourcesPath);
             if (backup is not null)
@@ -270,18 +292,14 @@ app.MapPost("/api/static/speaker", IResult (CreateSpeakerRequest request, string
             WriteJson(resourcesPath, resources);
         }
 
-        var characters = ReadJsonArray(charactersPath, "characters.json");
-        if (!JsonArrayContainsStringProperty(characters, "id", speakerId))
+        var characterBackup = BackupFile(modWorkspace, charactersPath);
+        if (characterBackup is not null)
         {
-            var backup = BackupFile(modWorkspace, charactersPath);
-            if (backup is not null)
-            {
-                backupPaths.Add(backup);
-            }
-
-            characters.Add(CreateDialogueSpeakerCharacter(speakerId, speakerName, portraitId, gender));
-            WriteJson(charactersPath, characters);
+            backupPaths.Add(characterBackup);
         }
+
+        characters.Add(CreateDialogueSpeakerCharacter(speakerId, speakerName, portraitId, gender));
+        WriteJson(charactersPath, characters);
 
         var validation = ValidateContent(modWorkspace);
         return Results.Ok(new CreateSpeakerResponse(speakerId, speakerName, portraitId, assetValue, backupPaths, validation));
@@ -306,8 +324,9 @@ app.MapPost("/api/static/portrait-resource", IResult (CreatePortraitResourceRequ
             return Results.BadRequest(new ErrorResponse($"Data directory was not found: {modWorkspace.DataPath}"));
         }
 
-        var portraitId = NormalizeRequiredId(request.PortraitId, "Portrait id");
+        var portraitId = NormalizePortraitResourceId(request.PortraitId);
         var assetValue = NormalizePortraitAssetValue(request.AssetValue, portraitId.Replace("头像.", "", StringComparison.Ordinal));
+        EnsurePortraitAssetReadable(modWorkspace, assetValue);
 
         var resourcesPath = modWorkspace.ResolveDataFile("resources.json");
         var resources = ReadJsonArray(resourcesPath, "resources.json");
@@ -324,6 +343,64 @@ app.MapPost("/api/static/portrait-resource", IResult (CreatePortraitResourceRequ
             ["value"] = assetValue,
         });
         WriteJson(resourcesPath, resources);
+
+        var validation = ValidateContent(modWorkspace);
+        return Results.Ok(new CreatePortraitResourceResponse(portraitId, assetValue, backupPath, validation));
+    }
+    catch (JsonException ex)
+    {
+        return Results.BadRequest(new ErrorResponse($"JSON parse failed: {ex.Message}"));
+    }
+    catch (Exception ex)
+    {
+        return Results.BadRequest(new ErrorResponse(ex.Message));
+    }
+});
+
+app.MapPut("/api/static/portrait-resource", IResult (UpdatePortraitResourceRequest request, string? modId) =>
+{
+    try
+    {
+        var modWorkspace = workspace.ForMod(modId);
+        if (!Directory.Exists(modWorkspace.DataPath))
+        {
+            return Results.BadRequest(new ErrorResponse($"Data directory was not found: {modWorkspace.DataPath}"));
+        }
+
+        var portraitId = NormalizePortraitResourceId(request.PortraitId);
+        var assetValue = NormalizePortraitAssetValue(request.AssetValue, portraitId["头像.".Length..]);
+        EnsurePortraitAssetReadable(modWorkspace, assetValue);
+
+        var resourcesPath = modWorkspace.ResolveDataFile("resources.json");
+        var resources = ReadJsonArray(resourcesPath, "resources.json");
+        var resource = resources.OfType<JsonObject>()
+            .FirstOrDefault(record => string.Equals(TryGetStringProperty(record, "id"), portraitId, StringComparison.Ordinal));
+        if (resource is null)
+        {
+            return Results.NotFound(new ErrorResponse($"Portrait resource was not found: {portraitId}"));
+        }
+
+        var group = TryGetStringProperty(resource, "group") ?? string.Empty;
+        if (!string.Equals(group, "头像", StringComparison.Ordinal))
+        {
+            return Results.BadRequest(new ErrorResponse($"Resource is not a portrait: {portraitId} belongs to group '{group}'."));
+        }
+
+        var currentValue = TryGetStringProperty(resource, "value") ?? string.Empty;
+        var expectedValue = request.ExpectedAssetValue?.Trim() ?? string.Empty;
+        if (!string.Equals(currentValue, expectedValue, StringComparison.Ordinal))
+        {
+            return Results.Conflict(new ErrorResponse(
+                $"Portrait resource changed before update: {portraitId} now points to '{currentValue}', expected '{expectedValue}'."));
+        }
+
+        string? backupPath = null;
+        if (!string.Equals(currentValue, assetValue, StringComparison.Ordinal))
+        {
+            backupPath = BackupFile(modWorkspace, resourcesPath);
+            resource["value"] = assetValue;
+            WriteJson(resourcesPath, resources);
+        }
 
         var validation = ValidateContent(modWorkspace);
         return Results.Ok(new CreatePortraitResourceResponse(portraitId, assetValue, backupPath, validation));
@@ -393,6 +470,11 @@ app.MapPost("/api/static/resource", IResult (CreateResourceRequest request, stri
         var resourceId = NormalizeRequiredId(request.Id, "Resource id");
         var group = NormalizeResourceGroup(request.Group);
         var assetValue = NormalizeResourceAssetValue(request.Value, group);
+        if (group == "头像")
+        {
+            resourceId = NormalizePortraitResourceId(resourceId);
+            EnsurePortraitAssetReadable(modWorkspace, assetValue);
+        }
 
         var resourcesPath = modWorkspace.ResolveDataFile("resources.json");
         var resources = ReadJsonArray(resourcesPath, "resources.json");
@@ -878,9 +960,37 @@ static string NormalizeRequiredId(string value, string fieldName)
     return trimmed;
 }
 
+static string NormalizePortraitResourceId(string value)
+{
+    var resourceId = NormalizeRequiredId(value, "Portrait resource id");
+    if (!resourceId.StartsWith("头像.", StringComparison.Ordinal) || resourceId.Length <= "头像.".Length)
+    {
+        throw new InvalidOperationException("Portrait resource id must use the format '头像.中文名'.");
+    }
+
+    return resourceId;
+}
+
 static string NormalizePortraitAssetValue(string? value, string speakerId)
 {
     return NormalizeArtAssetValue(value, $"head/{speakerId}", "Portrait asset value is invalid.");
+}
+
+static void EnsurePortraitAssetReadable(WorkspacePaths workspace, string assetValue)
+{
+    var resolution = ResolveArtAsset(workspace, assetValue);
+    if (resolution.ExistingRelativePath is null)
+    {
+        throw new InvalidOperationException($"Portrait image was not found: {resolution.PreferredRelativePath}");
+    }
+
+    var fullPath = Path.Combine(
+        workspace.AssetsPath,
+        resolution.ExistingRelativePath.Replace('/', Path.DirectorySeparatorChar));
+    if (TryReadImageMetadata(fullPath) is null)
+    {
+        throw new InvalidOperationException($"Portrait image dimensions could not be read: {resolution.ExistingRelativePath}");
+    }
 }
 
 static string NormalizeItemAssetValue(string? value, string itemId)
@@ -2769,6 +2879,11 @@ sealed record CreateSpeakerResponse(
 sealed record CreatePortraitResourceRequest(
     string PortraitId,
     string AssetValue);
+
+sealed record UpdatePortraitResourceRequest(
+    string PortraitId,
+    string AssetValue,
+    string? ExpectedAssetValue);
 
 sealed record CreatePortraitResourceResponse(
     string PortraitId,

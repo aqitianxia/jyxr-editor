@@ -1,4 +1,5 @@
-import { filterProblems, getProblemFilterOptions, summarizeProblems } from "../core/problems.js?v=20260711-core-8";
+import { filterProblems, getProblemFilterOptions, summarizeProblems } from "../core/problems.js?v=20260711-core-17";
+import { bindImeSafeInput } from "../core/input-composition.js?v=20260711-core-17";
 
 const severityLabels = Object.freeze({ error: "错误", warning: "警告", suggestion: "建议" });
 
@@ -46,9 +47,9 @@ export function renderProblemCenter(container, model, actions = {}) {
   search.className = "problem-query";
   search.placeholder = "搜索问题、文件或对象 ID";
   search.value = model.filters.query || "";
-  search.addEventListener("input", () => {
-    const cursor = search.selectionStart ?? search.value.length;
-    actions.setFilter?.("query", search.value);
+  bindImeSafeInput(search, (value) => {
+    const cursor = search.selectionStart ?? value.length;
+    actions.setFilter?.("query", value);
     requestAnimationFrame(() => {
       const nextSearch = container.querySelector(".problem-query");
       nextSearch?.focus();

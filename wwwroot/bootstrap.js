@@ -1,5 +1,5 @@
 (() => {
-  const entryUrl = "/app.js?v=20260711-core-8";
+  const entryUrl = "/app.js?v=20260711-core-17";
   const status = document.getElementById("coreLoadState");
   const errorBox = document.getElementById("coreLoadError");
   const errorMessage = document.getElementById("coreLoadErrorMessage");

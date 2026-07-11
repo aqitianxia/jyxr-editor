@@ -1,21 +1,23 @@
-import { state } from "./core/state.js?v=20260711-core-8";
-import { editorVersion } from "./core/version.js?v=20260711-core-8";
-import { createEditorApi } from "./core/api.js?v=20260711-core-8";
-import { createCommandRegistry } from "./core/commands.js?v=20260711-core-8";
-import { createDirtyStateController } from "./core/dirty-state.js?v=20260711-core-8";
-import { createEventBus } from "./core/events.js?v=20260711-core-8";
-import { createPreferences, storageKeys } from "./core/preferences.js?v=20260711-core-8";
-import { normalizeWorkspaceMode } from "./core/router.js?v=20260711-core-8";
-import { createProblem, summarizeProblems } from "./core/problems.js?v=20260711-core-8";
-import { createRecentItemsStore } from "./core/recent-items.js?v=20260711-core-8";
-import { createButton } from "./ui/buttons.js?v=20260711-core-8";
-import { confirmAction, createDialogController } from "./ui/dialogs.js?v=20260711-core-8";
-import { createField, createTextInput } from "./ui/fields.js?v=20260711-core-8";
-import { createTextList } from "./ui/lists.js?v=20260711-core-8";
-import { createProblemSummary, renderStatusMessage } from "./ui/problem-list.js?v=20260711-core-8";
-import { createShellController } from "./ui/shell.js?v=20260711-core-8";
-import { renderProjectHome } from "./ui/home.js?v=20260711-core-8";
-import { renderProblemCenter } from "./ui/problem-center.js?v=20260711-core-8";
+import { state } from "./core/state.js?v=20260711-core-17";
+import { editorVersion } from "./core/version.js?v=20260711-core-17";
+import { createEditorApi } from "./core/api.js?v=20260711-core-17";
+import { createCommandRegistry } from "./core/commands.js?v=20260711-core-17";
+import { createDirtyStateController } from "./core/dirty-state.js?v=20260711-core-17";
+import { createEventBus } from "./core/events.js?v=20260711-core-17";
+import { createPreferences, storageKeys } from "./core/preferences.js?v=20260711-core-17";
+import { normalizeWorkspaceMode } from "./core/router.js?v=20260711-core-17";
+import { bindImeSafeInput } from "./core/input-composition.js?v=20260711-core-17";
+import { createProblem, summarizeProblems } from "./core/problems.js?v=20260711-core-17";
+import { createRecentItemsStore } from "./core/recent-items.js?v=20260711-core-17";
+import { createButton } from "./ui/buttons.js?v=20260711-core-17";
+import { confirmAction, createDialogController } from "./ui/dialogs.js?v=20260711-core-17";
+import { createField, createTextInput } from "./ui/fields.js?v=20260711-core-17";
+import { createTextList } from "./ui/lists.js?v=20260711-core-17";
+import { createProblemSummary, renderStatusMessage } from "./ui/problem-list.js?v=20260711-core-17";
+import { createShellController } from "./ui/shell.js?v=20260711-core-17";
+import { renderProjectHome } from "./ui/home.js?v=20260711-core-17";
+import { renderProblemCenter } from "./ui/problem-center.js?v=20260711-core-17";
+import { renderCharacterWorkspace } from "./ui/characters.js?v=20260711-core-17";
 
 const dataFileDisplayNames = new Map([
   ["battles.json", "战斗"],
@@ -54,10 +56,12 @@ const elements = {
   problemCountBadge: document.getElementById("problemCountBadge"),
   homeTab: document.getElementById("homeTab"),
   problemsTab: document.getElementById("problemsTab"),
+  charactersTab: document.getElementById("charactersTab"),
   sidebarBrowser: document.getElementById("sidebarBrowser"),
   editorPane: document.getElementById("editorPane"),
   homeView: document.getElementById("homeView"),
   problemCenterView: document.getElementById("problemCenterView"),
+  characterWorkspaceView: document.getElementById("characterWorkspaceView"),
   workspacePaneHeader: document.getElementById("workspacePaneHeader"),
   editorTools: document.getElementById("editorTools"),
   editorStatusbar: document.getElementById("editorStatusbar"),
@@ -150,13 +154,14 @@ elements.inspectorToggleButton.addEventListener("click", () => {
 });
 elements.inspectorCloseButton.addEventListener("click", () => setContextDrawerOpen(false));
 elements.contextDrawerBackdrop.addEventListener("click", () => setContextDrawerOpen(false));
-elements.problemCenterButton.addEventListener("click", () => setMode("problems"));
-elements.homeTab.addEventListener("click", () => setMode("home"));
-elements.problemsTab.addEventListener("click", () => setMode("problems"));
-elements.dataTab.addEventListener("click", () => openWorkspaceMode("data"));
-elements.storyTab.addEventListener("click", () => openWorkspaceMode("story"));
-elements.assetsTab.addEventListener("click", () => openWorkspaceMode("assets"));
-elements.fileSearch.addEventListener("input", renderFileList);
+elements.problemCenterButton.addEventListener("click", () => requestWorkspaceChange("problems"));
+elements.homeTab.addEventListener("click", () => requestWorkspaceChange("home"));
+elements.problemsTab.addEventListener("click", () => requestWorkspaceChange("problems"));
+elements.charactersTab.addEventListener("click", () => requestWorkspaceChange("characters"));
+elements.dataTab.addEventListener("click", () => requestWorkspaceChange("data"));
+elements.storyTab.addEventListener("click", () => requestWorkspaceChange("story"));
+elements.assetsTab.addEventListener("click", () => requestWorkspaceChange("assets"));
+bindImeSafeInput(elements.fileSearch, renderFileList);
 elements.formModeButton.addEventListener("click", () => setViewMode(isStoryDslEditingFile() ? "dsl" : "form"));
 elements.jsonModeButton.addEventListener("click", () => setViewMode("json"));
 elements.saveStorySourceButton.addEventListener("click", saveCurrentStoryJsonAsSource);
@@ -169,7 +174,7 @@ elements.newSpeakerButton.addEventListener("click", openSpeakerToolDialog);
 elements.portraitCheckButton.addEventListener("click", runPortraitCheckFromToolbar);
 elements.characterCheckButton.addEventListener("click", focusCheckResults);
 elements.modSelect.addEventListener("change", () => switchMod(elements.modSelect.value));
-elements.contentSearch.addEventListener("input", () => {
+bindImeSafeInput(elements.contentSearch, () => {
   if (state.mode === "story") {
     renderStoryView();
   } else {
@@ -680,20 +685,24 @@ function setMode(mode) {
   state.mode = mode;
   const isOverview = mode === "home" || mode === "problems";
   const isStory = mode === "story";
+  const isCharacters = mode === "characters";
 
   document.body.classList.toggle("story-mode", isStory);
+  document.body.classList.toggle("characters-mode", isCharacters);
   document.body.classList.toggle("overview-mode", isOverview);
   elements.editorPane.classList.toggle("overview-workspace", isOverview);
   elements.homeTab.classList.toggle("active", mode === "home");
   elements.problemsTab.classList.toggle("active", mode === "problems");
+  elements.charactersTab.classList.toggle("active", isCharacters);
   elements.dataTab.classList.toggle("active", mode === "data");
   elements.storyTab.classList.toggle("active", isStory);
   elements.assetsTab.classList.toggle("active", mode === "assets");
   elements.homeView.classList.toggle("hidden", mode !== "home");
   elements.problemCenterView.classList.toggle("hidden", mode !== "problems");
-  elements.workspacePaneHeader.classList.toggle("hidden", isOverview);
-  elements.editorTools.classList.toggle("hidden", isOverview || isStory);
-  elements.editorStatusbar.classList.toggle("hidden", isOverview || isStory);
+  elements.characterWorkspaceView.classList.toggle("hidden", !isCharacters);
+  elements.workspacePaneHeader.classList.toggle("hidden", isOverview || isCharacters);
+  elements.editorTools.classList.toggle("hidden", isOverview || isStory || isCharacters);
+  elements.editorStatusbar.classList.toggle("hidden", isOverview || isStory || isCharacters);
 
   elements.fileSearch.value = "";
   elements.fileSearch.placeholder = isStory
@@ -701,7 +710,7 @@ function setMode(mode) {
     : mode === "assets"
       ? "搜索资产"
       : "搜索文件";
-  elements.saveButton.disabled = mode !== "data";
+  elements.saveButton.disabled = mode !== "data" && !isCharacters;
   elements.formatButton.disabled = mode !== "data";
 
   if (mode === "home") {
@@ -714,6 +723,12 @@ function setMode(mode) {
     elements.storyView.classList.add("hidden");
     setTextEditorVisible(false);
     renderProblemCenterWorkspace();
+  } else if (isCharacters) {
+    elements.formView.classList.add("hidden");
+    elements.storyView.classList.add("hidden");
+    setTextEditorVisible(false);
+    elements.currentPath.textContent = "characters.json";
+    renderCharacterWorkspaceView();
   } else if (isStory) {
     elements.currentPath.textContent = "剧情图谱";
     elements.saveState.textContent = "";
@@ -746,12 +761,62 @@ function setMode(mode) {
   updateMapFocusControl();
   updateStorySourceButton();
   renderShellContext();
-  if (!isOverview) {
+  if (!isOverview && !isCharacters) {
     renderFileList();
     renderCurrentFileInfo();
   }
   renderProblemIndicators();
   scheduleEditorLayout();
+}
+
+
+async function requestWorkspaceChange(mode) {
+  if (mode === state.mode) return;
+  const switchingCharacterSurface = isCharacterFile()
+    && ((state.mode === "characters" && mode === "data") || (state.mode === "data" && mode === "characters"));
+  if (switchingCharacterSurface) {
+    if (mode === "characters") {
+      try {
+        const records = parseJsonText(getEditorValue());
+        if (!Array.isArray(records) || !records.every((record) => record && typeof record === "object" && !Array.isArray(record))) {
+          throw new Error("characters.json 顶层必须是角色对象数组。");
+        }
+        state.formRecords = records;
+        state.selectedRecordIndex = Math.min(state.selectedRecordIndex, Math.max(0, records.length - 1));
+        state.viewMode = "form";
+        setMode("characters");
+      } catch (error) {
+        showValidation(false, error instanceof SyntaxError ? formatJsonError(error) : error.message);
+      }
+    } else {
+      setMode("data");
+      setViewMode("json");
+    }
+    return;
+  }
+  if (dirtyStateController.isDirty()) {
+    if (!(await confirmDiscardChanges())) return;
+    await reloadCurrentDataFile();
+  }
+  if (mode === "characters") {
+    await openCharacterWorkspace();
+  } else if (mode === "data" || mode === "story" || mode === "assets") {
+    await openWorkspaceMode(mode);
+  } else {
+    setMode(mode);
+  }
+}
+
+async function reloadCurrentDataFile() {
+  if (!state.currentPath || !state.dataFiles.some((file) => file.path === state.currentPath)) {
+    dirtyStateController.markClean();
+    return;
+  }
+  const file = await requestJson(`/api/data/file?path=${encodeURIComponent(state.currentPath)}`);
+  setEditorValue(file.content);
+  dirtyStateController.markClean({ render: false });
+  refreshFormFromEditor({ preferForm: state.viewMode === "form" || state.mode === "characters" });
+  renderDirtyState();
 }
 
 async function openWorkspaceMode(mode) {
@@ -762,6 +827,308 @@ async function openWorkspaceMode(mode) {
       await openDataFile(state.dataFiles[0].path);
     }
   }
+}
+
+
+async function openCharacterWorkspace() {
+  if (state.mode === "characters" && isCharacterFile() && state.formRecords.length > 0) {
+    renderCharacterWorkspaceView();
+    return;
+  }
+  if (!state.dataFiles.some((file) => file.path === "characters.json")) {
+    showValidation(false, "当前 MOD 缺少 characters.json。");
+    return;
+  }
+  await openDataFile("characters.json");
+  if (!isCharacterFile()) {
+    return;
+  }
+  state.viewMode = "form";
+  setMode("characters");
+}
+
+function renderCharacterWorkspaceView() {
+  if (state.mode !== "characters") {
+    return;
+  }
+  renderCharacterWorkspace(elements.characterWorkspaceView, {
+    state,
+    getIssues: getCharacterValidationIssues,
+    getPortraitInfo: getCharacterPortraitInfo,
+    matchesRecordFilter: matchesCharacterFilter,
+    getReferences: getCharacterReferences,
+    referenceOptions: getCharacterReferenceOptions(),
+    onSelect: (index) => {
+      state.selectedRecordIndex = index;
+      state.characterWorkspace.referencesOpen = false;
+      renderCharacterWorkspaceView();
+      renderProblemIndicators();
+    },
+    onSearch: (value) => {
+      state.characterWorkspace.search = value;
+      renderCharacterWorkspaceView();
+      const search = elements.characterWorkspaceView.querySelector(".character-list-search");
+      if (search) {
+        search.focus();
+        search.setSelectionRange(value.length, value.length);
+      }
+    },
+    onFilter: (value) => {
+      state.characterWorkspace.filter = value;
+      renderCharacterWorkspaceView();
+    },
+    onTab: (value) => {
+      state.characterWorkspace.tab = value;
+      renderCharacterWorkspaceView();
+    },
+    onMutate: (record, key, value) => {
+      record[key] = value;
+      syncFormToEditor();
+      renderCharacterWorkspaceView();
+    },
+    onReplaceRecord: (record) => {
+      state.formRecords[state.selectedRecordIndex] = record;
+      syncFormToEditor();
+      renderCharacterWorkspaceView();
+    },
+    onPickPortrait: () => openPortraitPicker(getCurrentCharacterPortraitAssetPath()),
+    onCreate: createCharacterRecord,
+    onCreateSpeaker: openSpeakerToolDialog,
+    onDuplicate: duplicateCharacterRecord,
+    onDelete: deleteCharacterRecord,
+    onOpenReferences: () => {
+      state.characterWorkspace.referencesOpen = true;
+      renderCharacterWorkspaceView();
+    },
+    onCloseReferences: () => {
+      state.characterWorkspace.referencesOpen = false;
+      renderCharacterWorkspaceView();
+    },
+    onOpenAdvancedData: async () => {
+      setMode("data");
+      state.viewMode = "json";
+      setViewMode("json");
+      const record = state.formRecords[state.selectedRecordIndex];
+      if (record?.id) {
+        const definition = (state.contentIndex.definitionsById.get(record.id) || [])
+          .find((candidate) => candidate.path === "characters.json");
+        if (definition?.line) selectLine(definition.line);
+      }
+    },
+    onOpenProblems: () => requestWorkspaceChange("problems"),
+  });
+  renderPortraitPicker();
+}
+
+function createCharacterRecord() {
+  const id = createUniqueId("新角色");
+  const record = {
+    id,
+    name: "新角色",
+    level: 1,
+    portrait: null,
+    model: null,
+    gender: "neutral",
+    growTemplate: null,
+    arenaEnabled: false,
+    talentIds: [],
+    stats: {
+      bili: 10, dingli: 10, fuyuan: 10, gengu: 10,
+      jianfa: 10, daofa: 10, quanzhang: 10, qimen: 10,
+      shenfa: 10, wuxing: 10, wuxue: 10, max_hp: 100, max_mp: 100,
+    },
+    specialSkillIds: [],
+    internalSkills: [],
+    equipmentIds: [],
+    externalSkills: [],
+  };
+  state.formRecords.push(record);
+  state.selectedRecordIndex = state.formRecords.length - 1;
+  state.characterWorkspace.filter = "all";
+  state.characterWorkspace.search = "";
+  state.characterWorkspace.tab = "overview";
+  syncFormToEditor();
+  renderCharacterWorkspaceView();
+}
+
+function duplicateCharacterRecord() {
+  const current = state.formRecords[state.selectedRecordIndex];
+  if (!current) return;
+  const copy = structuredCloneCompat(current);
+  copy.id = createUniqueId(`${String(current.id || "新角色")}_copy`);
+  copy.name = `${String(current.name || current.id || "新角色")} 副本`;
+  state.formRecords.splice(state.selectedRecordIndex + 1, 0, copy);
+  state.selectedRecordIndex += 1;
+  syncFormToEditor();
+  renderCharacterWorkspaceView();
+}
+
+function deleteCharacterRecord() {
+  const current = state.formRecords[state.selectedRecordIndex];
+  if (!current) return;
+  const references = getCharacterReferences(current);
+  const referenceSummary = references.length > 0
+    ? `静态扫描找到 ${references.length} 处引用。\n\n${references.slice(0, 5).map((item) => `${item.path} · ${item.fieldPath}`).join("\n")}\n\n`
+    : "静态扫描未找到引用，但无法覆盖动态脚本或运行时引用。\n\n";
+  if (!confirmAction(`${referenceSummary}确认删除角色「${current.name || current.id}」？此操作会留在未保存状态。`)) {
+    return;
+  }
+  state.formRecords.splice(state.selectedRecordIndex, 1);
+  state.selectedRecordIndex = Math.max(0, Math.min(state.selectedRecordIndex, state.formRecords.length - 1));
+  state.characterWorkspace.referencesOpen = false;
+  syncFormToEditor();
+  renderCharacterWorkspaceView();
+}
+
+function getCharacterReferences(record) {
+  const values = new Set([record?.id, record?.name].filter((value) => typeof value === "string" && value.trim()).map((value) => value.trim()));
+  const references = [];
+  for (const value of values) {
+    for (const reference of state.contentIndex.referencesByValue?.get(value) || []) {
+      if (reference.path === "characters.json" && reference.ownerDefinitionId === record.id) {
+        continue;
+      }
+      references.push({ ...reference, value });
+    }
+  }
+  return Array.from(new Map(references.map((item) => [`${item.path}:${item.fieldPath}:${item.value}`, item])).values())
+    .sort((left, right) => left.path.localeCompare(right.path, "zh-Hans-CN") || left.fieldPath.localeCompare(right.fieldPath));
+}
+
+function getCharacterReferenceOptions() {
+  function definitionsOfType(type, predicate = () => true, projector = createReferenceOption) {
+    const options = [];
+    for (const definitions of state.contentIndex.definitionsById.values()) {
+      for (const definition of definitions) {
+        if (definition.type === type && predicate(definition.id)) {
+          options.push(projector(definition));
+        }
+      }
+    }
+    return Array.from(new Map(options.map((option) => [option.id, option])).values())
+      .sort((left, right) => left.name.localeCompare(right.name, "zh-Hans-CN") || left.id.localeCompare(right.id, "zh-Hans-CN"));
+  }
+
+  const modelIds = new Set(
+    state.formRecords
+      .map((record) => typeof record?.model === "string" ? record.model.trim() : "")
+      .filter(Boolean)
+  );
+  for (const [value, references] of state.contentIndex.referencesByValue || []) {
+    if (references.some((reference) => /\.model$/.test(reference.fieldPath))) {
+      modelIds.add(value);
+    }
+  }
+
+  return {
+    models: Array.from(modelIds).sort((left, right) => left.localeCompare(right, "zh-Hans-CN"))
+      .map((id) => createReferenceOption({ id, displayName: id, type: "model", record: { id, name: id } })),
+    growTemplates: definitionsOfType("grow-templates", () => true, createGrowTemplateReferenceOption),
+    externalSkills: definitionsOfType("external-skills", () => true, createExternalSkillReferenceOption),
+    internalSkills: definitionsOfType("internal-skills", () => true, createInternalSkillReferenceOption),
+    specialSkills: definitionsOfType("special-skills", () => true, createSpecialSkillReferenceOption),
+    talents: definitionsOfType("talents", () => true, createTalentReferenceOption),
+    equipment: definitionsOfType("items", isEquipmentId, createEquipmentReferenceOption),
+  };
+}
+
+function createReferenceOption(definition, details = {}) {
+  const record = definition.record || {};
+  const iconId = details.iconId || record.icon || record.picture || "";
+  const resource = iconId ? state.contentIndex.resourcesById.get(iconId) : null;
+  const iconPath = resource
+    ? resolveResourceAssetPath(resource)
+    : iconId ? (findAssetPath(iconId, { art: true }) || findAssetPath(`icon/${iconId}`, { art: true })) : "";
+  const option = {
+    id: definition.id,
+    name: definition.displayName || record.name || definition.id,
+    type: definition.type,
+    typeLabel: details.typeLabel || definition.type,
+    iconId,
+    iconPath,
+    subtitle: details.subtitle || "",
+    description: typeof record.description === "string" ? record.description : "",
+    metadata: [
+      ...(details.metadata || []),
+      iconId ? (iconPath ? "图标已解析" : `图标未解析 ${iconId}`) : "未配置图标",
+    ].filter(Boolean),
+  };
+  option.searchText = [option.name, option.id, option.typeLabel, option.subtitle, option.description, ...option.metadata].join(" ");
+  return option;
+}
+
+function createGrowTemplateReferenceOption(definition) {
+  const growth = definition.record?.statGrowth || {};
+  const highlights = ["bili", "gengu", "shenfa", "wuxing", "max_hp", "max_mp"]
+    .filter((key) => Number.isFinite(growth[key]) && growth[key] !== 0)
+    .slice(0, 4)
+    .map((key) => `${key} +${growth[key]}`);
+  return createReferenceOption(definition, {
+    typeLabel: "成长模板",
+    subtitle: highlights.length > 0 ? highlights.join(" · ") : "未配置成长属性",
+    metadata: Object.entries(growth).filter(([, value]) => Number.isFinite(value) && value !== 0).map(([key, value]) => `${key} +${value}`),
+  });
+}
+
+function createExternalSkillReferenceOption(definition) {
+  const record = definition.record || {};
+  const typeLabels = { quanzhang: "拳掌", jianfa: "剑法", daofa: "刀法", qimen: "奇门", internal_skill: "内功" };
+  return createReferenceOption(definition, {
+    typeLabel: "外功",
+    subtitle: [typeLabels[record.type] || record.type, Number.isFinite(record.powerBase) ? `基础威力 ${record.powerBase}` : "", Number.isFinite(record.cooldown) ? `冷却 ${record.cooldown}` : ""].filter(Boolean).join(" · "),
+    metadata: [Number.isFinite(record.powerStep) ? `成长 ${record.powerStep}` : "", Number.isFinite(record.hard) ? `难度 ${record.hard}` : "", `${record.formSkills?.length || 0} 个招式`],
+  });
+}
+
+function createInternalSkillReferenceOption(definition) {
+  const record = definition.record || {};
+  return createReferenceOption(definition, {
+    typeLabel: "内功",
+    subtitle: [`阴 ${record.yin ?? 0}`, `阳 ${record.yang ?? 0}`, Number.isFinite(record.hard) ? `难度 ${record.hard}` : ""].filter(Boolean).join(" · "),
+    metadata: [Number.isFinite(record.attackScale) ? `攻击 ${record.attackScale}` : "", Number.isFinite(record.defenceScale) ? `防御 ${record.defenceScale}` : "", Number.isFinite(record.criticalScale) ? `暴击 ${record.criticalScale}` : ""],
+  });
+}
+
+function createSpecialSkillReferenceOption(definition) {
+  const record = definition.record || {};
+  const costs = Object.entries(record.cost || {}).filter(([, value]) => Number(value) !== 0).map(([key, value]) => `${key} ${value}`);
+  return createReferenceOption(definition, {
+    typeLabel: "绝技",
+    subtitle: [Number.isFinite(record.cooldown) ? `冷却 ${record.cooldown}` : "", costs.length > 0 ? `消耗 ${costs.join(" / ")}` : "无消耗"].filter(Boolean).join(" · "),
+    metadata: [record.targeting?.impactType ? `范围 ${record.targeting.impactType}` : "", `${record.buffs?.length || 0} 个 Buff`],
+  });
+}
+
+function createTalentReferenceOption(definition) {
+  const record = definition.record || {};
+  return createReferenceOption(definition, {
+    typeLabel: "天赋",
+    subtitle: Number.isFinite(record.point) ? `天赋点 ${record.point}` : "",
+    metadata: [`${record.affixes?.length || 0} 个效果`],
+  });
+}
+
+function createEquipmentReferenceOption(definition) {
+  const record = definition.record || {};
+  const slots = { weapon: "武器", armor: "防具", accessory: "饰品" };
+  const allAffixes = (record.affixes || []).map(formatReferenceAffix).filter(Boolean);
+  const affixes = allAffixes.slice(0, 5);
+  if (allAffixes.length > affixes.length) affixes.push(`另 ${allAffixes.length - affixes.length} 个效果`);
+  return createReferenceOption(definition, {
+    typeLabel: "装备",
+    subtitle: [slots[record.slotType] || record.slotType, Number.isFinite(record.level) ? `等级 ${record.level}` : "", Number.isFinite(record.price) ? `价格 ${record.price}` : ""].filter(Boolean).join(" · "),
+    metadata: affixes,
+  });
+}
+
+function formatReferenceAffix(affix) {
+  if (!affix || typeof affix !== "object") return "";
+  if (affix.type === "stat_modifier") {
+    const delta = affix.value?.delta;
+    return `${affix.stat || "属性"} ${Number(delta) >= 0 ? "+" : ""}${delta ?? 0}`;
+  }
+  if (affix.type === "grant_talent") return `天赋 ${affix.talentId || "未填写"}`;
+  return affix.type || "未知效果";
 }
 
 function renderProjectHomeWorkspace() {
@@ -776,7 +1143,7 @@ function renderProjectHomeWorkspace() {
     problems: collectProjectProblems(),
     recentEntries: state.recentEntries,
     quickStarts: [
-      { label: "角色与伙伴", detail: "编辑角色、头像、成长与武学", icon: "人", mode: "data", path: "characters.json", available: false },
+      { label: "角色与伙伴", detail: "编辑角色、头像、成长与武学", icon: "人", mode: "characters", path: "characters.json", available: true },
       { label: "地图与事件", detail: "编辑地图、点位和交互事件", icon: "图", mode: "data", path: "maps.json", available: false },
       { label: "剧情与任务", detail: "查看剧情图谱与静态诊断", icon: "文", mode: "story", available: true },
       { label: "物品与装备", detail: "编辑物品、装备和效果", icon: "物", mode: "data", path: "items.json", available: false },
@@ -960,10 +1327,10 @@ function appendCurrentRecordProblems(problems, contentType, contentTypeLabel, ge
         contentTypeLabel,
         message: issue.message,
         location: {
-          workspace: "data",
+          workspace: contentType === "character" ? "characters" : "data",
           path: state.currentPath,
-          definitionId: issue.definitionId || recordId,
-          definitionTypes: issue.types || [],
+          definitionId: contentType === "character" ? recordId : (issue.definitionId || recordId),
+          definitionTypes: contentType === "character" ? ["characters"] : (issue.types || []),
         },
       }));
     }
@@ -1014,6 +1381,10 @@ async function openQuickStart(item) {
     setMode("problems");
     return;
   }
+  if (item.mode === "characters") {
+    await openCharacterWorkspace();
+    return;
+  }
   if (item.mode === "story" || item.mode === "assets") {
     await openWorkspaceMode(item.mode);
     return;
@@ -1052,6 +1423,15 @@ async function locateProblem(problem) {
       await revealDefinition(definition);
       return;
     }
+  }
+  if (location.workspace === "characters" || location.path === "characters.json") {
+    await openCharacterWorkspace();
+    const index = state.formRecords.findIndex((record) => record?.id === location.definitionId || record?.name === location.definitionId);
+    if (index >= 0) {
+      state.selectedRecordIndex = index;
+      renderCharacterWorkspaceView();
+    }
+    return;
   }
   if (location.workspace === "assets") {
     if (location.path && state.assetFilePathSet.has(location.path)) {
@@ -1361,8 +1741,8 @@ function renderStorySummary(graph, selectedGroup) {
   search.type = "search";
   search.placeholder = "搜索当前剧情线";
   search.value = elements.contentSearch.value;
-  search.addEventListener("input", () => {
-    elements.contentSearch.value = search.value;
+  bindImeSafeInput(search, (value) => {
+    elements.contentSearch.value = value;
     renderStoryView();
   });
 
@@ -1743,8 +2123,8 @@ function previewAsset(path) {
 }
 
 async function saveCurrentFile() {
-  if (!state.currentPath || state.mode !== "data") {
-    showValidation(false, "请选择 data 文件。");
+  if (!state.currentPath || (state.mode !== "data" && state.mode !== "characters")) {
+    showValidation(false, "请选择可保存的数据工作区。");
     return;
   }
 
@@ -1783,6 +2163,9 @@ async function saveCurrentFile() {
     await rebuildContentIndex();
     await loadStoryGraph();
     renderFileList();
+    if (state.mode === "characters") {
+      renderCharacterWorkspaceView();
+    }
   } catch (error) {
     showValidation(false, error instanceof SyntaxError ? formatJsonError(error) : error.message);
   } finally {
@@ -2644,6 +3027,13 @@ function setViewModeButtons() {
 }
 
 function renderFormView() {
+  if (state.mode === "characters") {
+    elements.formView.classList.add("hidden");
+    setTextEditorVisible(false);
+    renderPortraitPicker();
+    return;
+  }
+
   const scrollState = captureFormViewScrollState();
   elements.formView.replaceChildren();
   if (state.viewMode !== "form") {
@@ -2769,8 +3159,8 @@ function renderGenericFormView() {
   recordSearch.type = "search";
   recordSearch.placeholder = "搜索 id、名称、类型";
   recordSearch.value = state.formSearch;
-  recordSearch.addEventListener("input", () => {
-    state.formSearch = recordSearch.value;
+  bindImeSafeInput(recordSearch, (value) => {
+    state.formSearch = value;
     renderGenericRecordCards(recordList);
   });
 
@@ -2809,8 +3199,8 @@ function renderCharacterFormView() {
   recordSearch.type = "search";
   recordSearch.placeholder = "搜索 id、姓名、头像、门派、标签";
   recordSearch.value = state.formSearch;
-  recordSearch.addEventListener("input", () => {
-    state.formSearch = recordSearch.value;
+  bindImeSafeInput(recordSearch, (value) => {
+    state.formSearch = value;
     renderCharacterRecordCards(recordList, headerSubtitle);
   });
 
@@ -3310,8 +3700,8 @@ function renderMapFormView() {
   recordSearch.type = "search";
   recordSearch.placeholder = "搜索地图、点位、剧情、目标";
   recordSearch.value = state.formSearch;
-  recordSearch.addEventListener("input", () => {
-    state.formSearch = recordSearch.value;
+  bindImeSafeInput(recordSearch, (value) => {
+    state.formSearch = value;
     renderMapRecordCards(recordList, headerSubtitle);
   });
 
@@ -3868,8 +4258,8 @@ function createMapLocationPanel(record) {
     }
   };
 
-  search.addEventListener("input", () => {
-    state.mapEditor.locationSearch = search.value;
+  bindImeSafeInput(search, (value) => {
+    state.mapEditor.locationSearch = value;
     refreshList();
   });
   refreshList();
@@ -5065,8 +5455,8 @@ function renderShopFormView() {
   recordSearch.type = "search";
   recordSearch.placeholder = "搜索商店 id、名称、商品";
   recordSearch.value = state.formSearch;
-  recordSearch.addEventListener("input", () => {
-    state.formSearch = recordSearch.value;
+  bindImeSafeInput(recordSearch, (value) => {
+    state.formSearch = value;
     renderShopRecordCards(recordList, headerSubtitle);
   });
 
@@ -5809,8 +6199,8 @@ function renderItemFormView() {
   recordSearch.type = "search";
   recordSearch.placeholder = "搜索 id、名称、图片、类型、分类";
   recordSearch.value = state.formSearch;
-  recordSearch.addEventListener("input", () => {
-    state.formSearch = recordSearch.value;
+  bindImeSafeInput(recordSearch, (value) => {
+    state.formSearch = value;
     renderItemRecordCards(recordList, headerSubtitle);
   });
 
@@ -8345,7 +8735,11 @@ function updateRecordField(record, key, value, options = {}) {
   record[key] = value;
   syncFormToEditor();
   if (options.rerender) {
-    renderFormView();
+    if (state.mode === "characters") {
+      renderCharacterWorkspaceView();
+    } else {
+      renderFormView();
+    }
   }
 }
 
@@ -8787,6 +9181,7 @@ async function rebuildContentIndex() {
   const charactersByIdOrName = new Map();
   const itemsById = new Map();
   const storySpeakers = new Map();
+  const referencesByValue = new Map();
 
   for (const file of state.dataFiles) {
     if (isStorySourceFile(file.path)) {
@@ -8800,6 +9195,7 @@ async function rebuildContentIndex() {
     try {
       const response = await requestJson(`/api/data/file?path=${encodeURIComponent(file.path)}`);
       const json = parseJsonText(response.content);
+      indexStaticStringReferences(referencesByValue, file.path, json);
       if (file.path === "resources.json" && Array.isArray(json)) {
         for (const resource of json) {
           if (typeof resource?.id === "string" && typeof resource?.value === "string") {
@@ -8872,6 +9268,7 @@ async function rebuildContentIndex() {
     charactersByIdOrName,
     itemsById,
     storySpeakers,
+    referencesByValue,
   };
   state.resourceValues = resourceValues;
 
@@ -8882,6 +9279,40 @@ async function rebuildContentIndex() {
   renderCharacterCheckTool();
   renderCurrentFileInfo();
   renderProblemIndicators();
+}
+
+
+function indexStaticStringReferences(index, path, root) {
+  function add(value, fieldPath, ownerDefinitionId) {
+    const normalized = value.trim();
+    if (!normalized) return;
+    const entries = index.get(normalized) || [];
+    entries.push({ path, fieldPath, ownerDefinitionId });
+    index.set(normalized, entries);
+  }
+
+  function visit(node, fieldPath, ownerDefinitionId) {
+    if (typeof node === "string") {
+      add(node, fieldPath, ownerDefinitionId);
+      return;
+    }
+    if (Array.isArray(node)) {
+      node.forEach((child, index) => {
+        const childOwner = fieldPath === "$" && child && typeof child === "object" && typeof child.id === "string"
+          ? child.id
+          : ownerDefinitionId;
+        visit(child, `${fieldPath}[${index}]`, childOwner);
+      });
+      return;
+    }
+    if (!node || typeof node !== "object") return;
+    const nextOwner = ownerDefinitionId || (typeof node.id === "string" ? node.id : "");
+    for (const [key, value] of Object.entries(node)) {
+      visit(value, `${fieldPath}.${key}`, nextOwner);
+    }
+  }
+
+  visit(root, "$", "");
 }
 
 function extractDefinitions(path, content, json) {
@@ -8907,6 +9338,7 @@ function extractDefinitions(path, content, json) {
       type: getDefinitionType(path),
       path,
       line: findJsonPropertyLine(content, "id", record.id),
+      record,
     }));
 }
 
@@ -9076,7 +9508,7 @@ function renderSpeakerTool(target = null) {
 
   const description = document.createElement("div");
   description.className = "static-tool-note";
-  description.textContent = "创建可用于 dialogue speaker 的角色定义，并补头像资源。头像路径可填 head/qingbing 或 art/head/qingbing.png。";
+  description.textContent = "直接注册可用于 dialogue speaker 的最小对白角色，并按需补头像资源。它不同于创建完整伙伴。头像路径可填 head/qingbing 或 art/head/qingbing.png。";
 
   const idInput = createToolInput("speakerId", "说话人 id", "清兵");
   const nameInput = createToolInput("speakerName", "显示名", "清兵");
@@ -9145,7 +9577,7 @@ function renderSpeakerTool(target = null) {
   const createButton = document.createElement("button");
   createButton.type = "button";
   createButton.className = "primary";
-  createButton.textContent = "创建说话人";
+  createButton.textContent = "注册对白角色与头像";
 
   const status = document.createElement("div");
   status.className = "static-tool-status muted";
@@ -9154,6 +9586,37 @@ function renderSpeakerTool(target = null) {
     if (state.dirty && (state.currentPath === "characters.json" || state.currentPath === "resources.json")) {
       status.className = "static-tool-status bad";
       status.textContent = "当前 characters/resources 有未保存改动，请先保存或切换文件后再创建。";
+      return;
+    }
+
+    const speakerId = idInput.value.trim();
+    if (!speakerId) {
+      status.className = "static-tool-status bad";
+      status.textContent = "请先填写对白角色 ID。";
+      return;
+    }
+    const portraitId = portraitInput.value.trim() || `头像.${speakerId}`;
+    const assetValue = assetInput.value.trim();
+    if (!portraitId.startsWith("头像.") || portraitId.length <= "头像.".length) {
+      status.className = "static-tool-status bad";
+      status.textContent = "头像资源 ID 必须使用“头像.中文名”格式。";
+      return;
+    }
+    const existingCharacter = (state.contentIndex.definitionsById.get(speakerId) || [])
+      .some((definition) => definition.type === "characters");
+    if (existingCharacter) {
+      status.className = "static-tool-status bad";
+      status.textContent = `角色 ID 已存在：${speakerId}。请编辑已有角色，不要重复注册。`;
+      return;
+    }
+    const existingResource = state.contentIndex.resourcesById.get(portraitId);
+    if (existingResource && (existingResource.group !== "头像" || existingResource.value !== assetValue)) {
+      status.className = "static-tool-status bad";
+      status.textContent = `头像资源冲突：${portraitId} 已指向 ${existingResource.value || "空 value"}，不能改绑到 ${assetValue || "空 value"}。`;
+      return;
+    }
+    const resourceAction = existingResource ? "复用已存在且路径一致的头像资源" : "创建新的头像资源";
+    if (!confirmAction(`确认直接注册对白角色？\n\n角色 ID：${speakerId}\n显示名：${nameInput.value.trim() || speakerId}\n性别：${genderSelect.value}\n头像资源：${portraitId}\n头像 value：${assetValue}\n资源操作：${resourceAction}\n\n该操作会立即写入 characters.json${existingResource ? "" : " 和 resources.json"}。`)) {
       return;
     }
 
@@ -9183,6 +9646,11 @@ function renderSpeakerTool(target = null) {
 
       if (state.currentPath === "characters.json" || state.currentPath === "resources.json") {
         await openDataFile(state.currentPath);
+        if (state.mode === "characters" && state.currentPath === "characters.json") {
+          const index = state.formRecords.findIndex((record) => record?.id === result.id);
+          if (index >= 0) state.selectedRecordIndex = index;
+          renderCharacterWorkspaceView();
+        }
       }
     } catch (error) {
       status.className = "static-tool-status bad";
@@ -9246,7 +9714,7 @@ function openSpeakerToolDialog() {
   const toolBox = document.createElement("div");
   toolBox.className = "static-tool";
   content.appendChild(toolBox);
-  openToolDialog("新建说话人", "创建可用于 dialogue speaker 的最小角色，并按需补头像资源。", content);
+  openToolDialog("注册对白角色", "直接写入最小对白角色和头像资源；不会创建完整伙伴配置。", content);
   renderSpeakerTool(toolBox);
 }
 
@@ -9892,6 +10360,18 @@ function createPortraitResource(portraitId, assetValue) {
   });
 }
 
+function updatePortraitResource(portraitId, assetValue, expectedAssetValue) {
+  return requestJson("/api/static/portrait-resource", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      portraitId,
+      assetValue,
+      expectedAssetValue,
+    }),
+  });
+}
+
 function createItemResource(pictureId, assetValue) {
   return requestJson("/api/static/item-resource", {
     method: "POST",
@@ -10317,7 +10797,10 @@ function getSuggestedPortraitId(record, entry) {
     return currentPortraitId;
   }
 
-  return `头像.${entry.basename || "新头像"}`;
+  const displayName = [record?.name, record?.id, entry.basename, "新头像"]
+    .find((value) => typeof value === "string" && value.trim());
+  const normalizedName = String(displayName || "新头像").trim();
+  return normalizedName.startsWith("头像.") ? normalizedName : `头像.${normalizedName}`;
 }
 
 async function usePortraitLibraryResource(record, portraitId) {
@@ -10411,6 +10894,18 @@ async function createAndUsePortraitLibraryResource(record, portraitId, entry, bu
     showValidation(false, "请先填写头像资源 id。");
     return;
   }
+  if (!value.startsWith("头像.") || value.length <= "头像.".length) {
+    showValidation(false, "头像资源 ID 必须使用“头像.中文名”格式。");
+    return;
+  }
+  const existing = state.contentIndex.resourcesById.get(value);
+  if (existing) {
+    showValidation(false, `头像资源 ID 已存在：${value}。请直接使用已有资源，或更换新的 ID。`);
+    return;
+  }
+  if (!confirmAction(`确认注册头像资源？\n\n资源 ID：${value}\n资源组：头像\n资源 value：${entry.assetValue}\n图片：${entry.assetPath}\n\n资源 ID 是稳定引用，创建后不建议直接改名。`)) {
+    return;
+  }
 
   button.disabled = true;
   try {
@@ -10419,14 +10914,48 @@ async function createAndUsePortraitLibraryResource(record, portraitId, entry, bu
     syncFormToEditor();
     await loadDataFiles();
     await rebuildContentIndex();
-    closePortraitPicker();
     showValidation(result.validation.ok, result.validation.message);
-    renderFormView();
+    state.mode === "characters" ? renderCharacterWorkspaceView() : renderFormView();
   } catch (error) {
     showValidation(false, error instanceof Error ? error.message : String(error));
   } finally {
     button.disabled = false;
   }
+}
+
+async function updateAndUsePortraitLibraryResource(record, portraitId, entry, existingResource, button) {
+  if (!confirmAction(`确认修正头像资源路径？\n\n资源 ID：${portraitId}\n当前 value：${existingResource.value || "空"}\n修正为：${entry.assetValue}\n图片：${entry.assetPath}\n\n资源 ID保持不变，所有引用该 ID的角色会改用新图片。`)) {
+    return;
+  }
+  button.disabled = true;
+  try {
+    const result = await updatePortraitResource(portraitId, entry.assetValue, existingResource.value || "");
+    record.portrait = portraitId;
+    syncFormToEditor();
+    await loadDataFiles();
+    await rebuildContentIndex();
+    showValidation(result.validation.ok, result.validation.message);
+    state.mode === "characters" ? renderCharacterWorkspaceView() : renderFormView();
+  } catch (error) {
+    showValidation(false, error instanceof Error ? error.message : String(error));
+  } finally {
+    button.disabled = false;
+  }
+}
+
+async function openPortraitResourceDefinition(resourceId) {
+  if (dirtyStateController.isDirty()) {
+    showValidation(false, "请先保存当前角色，再打开 resources.json 编辑头像资源，避免丢失当前角色修改。");
+    return;
+  }
+  const definition = (state.contentIndex.definitionsById.get(resourceId) || [])
+    .find((candidate) => candidate.type === "resources");
+  if (!definition) {
+    showValidation(false, `未找到头像资源定义：${resourceId}`);
+    return;
+  }
+  closePortraitPicker();
+  await revealDefinition(definition);
 }
 
 async function createAndUseItemPictureLibraryResource(record, pictureId, entry, button) {
@@ -10527,8 +11056,8 @@ function renderPortraitPicker() {
   search.className = "portrait-picker-search";
   search.placeholder = "搜索资源 id、文件名、路径";
   search.value = state.portraitPicker.search;
-  search.addEventListener("input", () => {
-    state.portraitPicker.search = search.value;
+  bindImeSafeInput(search, (value) => {
+    state.portraitPicker.search = value;
     renderPortraitPicker();
   });
 
@@ -10612,35 +11141,156 @@ function renderPortraitPicker() {
 
     const actionBlock = document.createElement("div");
     actionBlock.className = "portrait-picker-detail-actions";
+    const dimensionBlock = document.createElement("div");
+    dimensionBlock.className = "portrait-picker-dimension-check";
+    const dimensionStatus = document.createElement("div");
+    dimensionStatus.className = "static-tool-status muted";
+    dimensionStatus.textContent = "正在读取头像尺寸...";
+    const normalizeButton = document.createElement("button");
+    normalizeButton.type = "button";
+    normalizeButton.textContent = "备份并规范化为 512×512";
+    normalizeButton.className = "secondary hidden";
+    const portraitCommitButtons = [];
+    let portraitImageReadable = false;
+    const refreshPortraitCommitButtons = () => {
+      for (const button of portraitCommitButtons) {
+        button.disabled = !portraitImageReadable || button.dataset.resourceAllowed === "false";
+      }
+    };
+    const applyPortraitDimensions = () => {
+      const width = preview.naturalWidth;
+      const height = preview.naturalHeight;
+      const dimensionsStandard = width === 512 && height === 512;
+      portraitImageReadable = width > 0 && height > 0;
+      dimensionStatus.className = `static-tool-status ${dimensionsStandard ? "ok" : "warn"}`;
+      dimensionStatus.textContent = dimensionsStandard
+        ? "头像尺寸 512×512，符合对白显示规范。"
+        : `头像尺寸 ${width}×${height}。建议规范化为 512×512，也可以保留原图并继续使用${selectedEntry.assetPath.toLowerCase().endsWith(".png") ? "。" : "（当前自动规范化仅支持 PNG）。"}`;
+      normalizeButton.classList.toggle("hidden", dimensionsStandard || !selectedEntry.assetPath.toLowerCase().endsWith(".png"));
+      refreshPortraitCommitButtons();
+    };
+    normalizeButton.addEventListener("click", async () => {
+      if (!confirmAction(`将把 ${selectedEntry.assetPath} 等比缩放并透明居中到 512×512。\n\n原文件会先备份。确认继续？`)) {
+        return;
+      }
+      normalizeButton.disabled = true;
+      dimensionStatus.className = "static-tool-status muted";
+      dimensionStatus.textContent = "正在规范化头像...";
+      try {
+        const result = await normalizePortraitAsset(selectedEntry.assetPath);
+        state.assetImageInfo.delete(selectedEntry.assetPath);
+        dimensionStatus.className = "static-tool-status ok";
+        dimensionStatus.textContent = `已规范化为 512×512，备份：${result.backupPath || "无"}`;
+        preview.src = `/api/assets/file?path=${encodeURIComponent(selectedEntry.assetPath)}&v=${Date.now()}`;
+      } catch (error) {
+        dimensionStatus.className = "static-tool-status bad";
+        dimensionStatus.textContent = formatNormalizePortraitError(error);
+      } finally {
+        normalizeButton.disabled = false;
+      }
+    });
+    dimensionBlock.append(dimensionStatus, normalizeButton);
 
     if (selectedEntry.resourceIds.length > 0) {
       for (const resourceId of selectedEntry.resourceIds) {
-        const button = document.createElement("button");
-        button.type = "button";
-        button.className = "primary";
-        button.textContent = `使用 ${resourceId}`;
-        button.addEventListener("click", async () => {
+        const resourceActions = document.createElement("div");
+        resourceActions.className = "portrait-picker-resource-actions";
+        const useButton = document.createElement("button");
+        useButton.type = "button";
+        useButton.className = "primary";
+        useButton.dataset.resourceAllowed = "true";
+        useButton.disabled = true;
+        portraitCommitButtons.push(useButton);
+        useButton.textContent = `使用 ${resourceId}`;
+        useButton.addEventListener("click", async () => {
           await usePortraitLibraryResource(record, resourceId);
         });
-        actionBlock.appendChild(button);
+        const editButton = document.createElement("button");
+        editButton.type = "button";
+        editButton.textContent = "编辑资源定义";
+        editButton.title = state.dirty ? "请先保存当前角色，再打开 resources.json" : "在高级数据中打开该 resources.json 定义";
+        editButton.addEventListener("click", () => openPortraitResourceDefinition(resourceId));
+        resourceActions.append(useButton, editButton);
+        actionBlock.appendChild(resourceActions);
       }
     } else {
       const helper = document.createElement("div");
       helper.className = "static-tool-note";
-      helper.textContent = "这张图还没有头像资源。创建资源后会自动写回当前角色的 portrait。";
+      helper.textContent = "这张图还没有头像资源。请核对稳定资源 ID 和图片路径，确认后才会注册并写回当前角色。";
       const portraitIdInput = document.createElement("input");
       portraitIdInput.type = "text";
       portraitIdInput.className = "portrait-picker-resource-input";
       portraitIdInput.value = getSuggestedPortraitId(record, selectedEntry);
+      const valuePreview = createCharacterMetaRow("将写入 value", selectedEntry.assetValue);
+      const createStatus = document.createElement("div");
+      createStatus.className = "static-tool-status muted";
       const createButton = document.createElement("button");
       createButton.type = "button";
       createButton.className = "primary";
-      createButton.textContent = "创建资源并使用";
+      createButton.dataset.resourceAllowed = "true";
+      createButton.disabled = true;
+      portraitCommitButtons.push(createButton);
+      createButton.textContent = "检查并确认注册";
+      let matchedExistingResource = null;
       createButton.addEventListener("click", async () => {
-        await createAndUsePortraitLibraryResource(record, portraitIdInput.value, selectedEntry, createButton);
+        const resourceId = portraitIdInput.value.trim();
+        if (createButton.dataset.resourceAction === "reuse" && matchedExistingResource) {
+          await usePortraitLibraryResource(record, resourceId);
+        } else if (createButton.dataset.resourceAction === "repair" && matchedExistingResource) {
+          await updateAndUsePortraitLibraryResource(record, resourceId, selectedEntry, matchedExistingResource, createButton);
+        } else {
+          await createAndUsePortraitLibraryResource(record, resourceId, selectedEntry, createButton);
+        }
       });
-      actionBlock.append(helper, portraitIdInput, createButton);
+      const refreshCreateState = () => {
+        const resourceId = portraitIdInput.value.trim();
+        const existing = resourceId ? state.contentIndex.resourcesById.get(resourceId) : null;
+        matchedExistingResource = existing || null;
+        const validFormat = resourceId.startsWith("头像.") && resourceId.length > "头像.".length;
+        const existingIsPortrait = existing?.group === "头像";
+        const existingMatches = existingIsPortrait
+          && normalizeToolAssetValue(existing.value || "") === selectedEntry.assetValue;
+        const action = !existing
+          ? "create"
+          : existingMatches
+            ? "reuse"
+            : existingIsPortrait
+              ? "repair"
+              : "blocked";
+        createButton.dataset.resourceAction = action;
+        createButton.dataset.resourceAllowed = String(Boolean(resourceId) && validFormat && action !== "blocked");
+        createButton.textContent = action === "reuse"
+          ? "使用已有资源"
+          : action === "repair"
+            ? "修正资源路径并使用"
+            : "检查并确认注册";
+        refreshPortraitCommitButtons();
+        createStatus.className = `static-tool-status ${action === "repair" || action === "blocked" || (resourceId && !validFormat) ? "bad" : resourceId ? "ok" : "muted"}`;
+        createStatus.textContent = action === "reuse"
+          ? `资源 ID 已存在且指向当前图片：${resourceId} → ${existing.value}。可以直接使用。`
+          : action === "repair"
+            ? `资源 ID 已存在，但当前 value 是 ${existing.value || "空"}；所选图片应写为 ${selectedEntry.assetValue}。可保留 ID并修正路径。`
+          : action === "blocked"
+            ? `资源 ID 已存在，但资源组是 ${existing.group || "空"}，不能作为头像修正。`
+          : resourceId && !validFormat
+            ? "头像资源 ID 必须使用“头像.中文名”格式。"
+          : resourceId
+            ? `待创建：${resourceId} · 头像 · ${selectedEntry.assetValue}`
+            : "请填写资源 ID。";
+      };
+      portraitIdInput.addEventListener("input", refreshCreateState);
+      refreshCreateState();
+      actionBlock.append(helper, portraitIdInput, valuePreview, createStatus, createButton);
     }
+    preview.addEventListener("load", applyPortraitDimensions);
+    preview.addEventListener("error", () => {
+      portraitImageReadable = false;
+      dimensionStatus.className = "static-tool-status bad";
+      dimensionStatus.textContent = "头像图片读取失败，不能注册或用于对白。";
+      normalizeButton.classList.add("hidden");
+      refreshPortraitCommitButtons();
+    });
+    if (preview.complete && preview.naturalWidth > 0) applyPortraitDimensions();
 
     const footerActions = document.createElement("div");
     footerActions.className = "portrait-picker-footer-actions";
@@ -10654,7 +11304,7 @@ function renderPortraitPicker() {
     });
     footerActions.appendChild(previewButton);
 
-    detail.append(preview, info, actionBlock, footerActions);
+    detail.append(preview, info, dimensionBlock, actionBlock, footerActions);
   }
 
   body.append(gallery, detail);
@@ -10714,8 +11364,8 @@ function renderItemPicturePicker() {
   search.className = "portrait-picker-search";
   search.placeholder = "搜索资源 id、文件名、路径";
   search.value = state.itemPicturePicker.search;
-  search.addEventListener("input", () => {
-    state.itemPicturePicker.search = search.value;
+  bindImeSafeInput(search, (value) => {
+    state.itemPicturePicker.search = value;
     renderItemPicturePicker();
   });
 
@@ -10905,8 +11555,8 @@ function renderShopResourcePicker() {
   search.className = "portrait-picker-search";
   search.placeholder = "搜索资源 id、文件名、路径";
   search.value = state.shopResourcePicker.search;
-  search.addEventListener("input", () => {
-    state.shopResourcePicker.search = search.value;
+  bindImeSafeInput(search, (value) => {
+    state.shopResourcePicker.search = value;
     renderShopResourcePicker();
   });
 
@@ -11108,8 +11758,8 @@ function renderMapResourcePicker() {
   search.className = "portrait-picker-search";
   search.placeholder = "搜索资源 id、资源组、文件路径";
   search.value = picker.search;
-  search.addEventListener("input", () => {
-    picker.search = search.value;
+  bindImeSafeInput(search, (value) => {
+    picker.search = value;
     renderMapResourcePicker();
   });
   const filter = document.createElement("select");
@@ -11339,6 +11989,16 @@ function getSelectedLookupText() {
 }
 
 async function revealDefinition(definition) {
+  if (definition.path === "characters.json" || definition.type === "characters") {
+    await openCharacterWorkspace();
+    const index = state.formRecords.findIndex((record) => record?.id === definition.id);
+    if (index >= 0) {
+      state.selectedRecordIndex = index;
+      state.characterWorkspace.tab = "overview";
+      renderCharacterWorkspaceView();
+    }
+    return;
+  }
   setMode("data");
   await openDataFile(definition.path);
   setViewMode("json");

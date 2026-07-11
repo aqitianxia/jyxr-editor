@@ -38,6 +38,13 @@ export function createEditorState() {
       kind: "",
     },
     characterTab: "talents",
+    characterWorkspace: {
+      search: "",
+      filter: "all",
+      tab: "overview",
+      referencesOpen: false,
+      focusField: "",
+    },
     itemTab: "requirements",
     portraitPicker: {
       open: false,
@@ -93,6 +100,7 @@ export function createEditorState() {
       charactersByIdOrName: new Map(),
       itemsById: new Map(),
       storySpeakers: new Map(),
+      referencesByValue: new Map(),
     },
   };
 }
