@@ -25,6 +25,8 @@ It is not a Godot scene editor, PCK builder, external mod manager, or general fi
 
 Resource and asset semantics shared by workspaces live in `wwwroot/domain/resource-catalog.js`. Keep that module free of DOM and global editor state so its path resolution, group contracts, and conflict summaries remain testable with `npm test`.
 
+Resource picker search, selection fallback, draft confirmation/cancellation, and directional navigation live in `wwwroot/domain/resource-picker.js`. Domain-specific pickers may keep different layouts, previews, and actions; they should reuse this kernel instead of duplicating search state rules.
+
 ## Architecture
 
 ### Backend

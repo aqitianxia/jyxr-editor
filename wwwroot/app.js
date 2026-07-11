@@ -1,5 +1,5 @@
 import { state } from "./core/state.js?v=20260711-stage5b-1";
-import { editorVersion } from "./core/version.js?v=20260711-stage5b-1";
+import { editorVersion } from "./core/version.js?v=20260711-stage5c-1";
 import { createEditorApi } from "./core/api.js?v=20260711-core-17";
 import { createCommandRegistry } from "./core/commands.js?v=20260711-core-17";
 import { createDirtyStateController } from "./core/dirty-state.js?v=20260711-core-17";
@@ -26,6 +26,8 @@ import {
   normalizeArtAssetValue,
 } from "./domain/resource-catalog.js?v=20260711-stage5b-1";
 import { renderResourcesWorkspace } from "./workspaces/resources.js?v=20260711-stage5b-1";
+import { createResourcePickerModel } from "./domain/resource-picker.js?v=20260711-stage5c-1";
+import { bindResourcePickerKeyboard, restoreResourcePickerKeyboardFocus } from "./ui/resource-picker-keyboard.js?v=20260711-stage5c-1";
 
 const dataFileDisplayNames = new Map([
   ["battles.json", "战斗"],
@@ -10749,64 +10751,14 @@ function getShopResourceLibraryEntries(field) {
     });
 }
 
-function getSelectedPortraitLibraryEntry(entries) {
-  if (entries.length === 0) {
-    return null;
-  }
-
-  if (state.portraitPicker.selectedAssetPath) {
-    const selected = entries.find((entry) => entry.assetPath === state.portraitPicker.selectedAssetPath);
-    if (selected) {
-      return selected;
-    }
-  }
-
-  return entries[0];
-}
-
-function getSelectedShopResourceLibraryEntry(entries) {
-  if (entries.length === 0) {
-    return null;
-  }
-
-  if (state.shopResourcePicker.selectedAssetPath) {
-    const selected = entries.find((entry) => entry.assetPath === state.shopResourcePicker.selectedAssetPath);
-    if (selected) {
-      return selected;
-    }
-  }
-
-  return entries[0];
-}
-
-function matchesPortraitPickerSearch(entry, query) {
-  if (!query) {
-    return true;
-  }
-
-  const haystack = [
-    entry.basename,
-    entry.assetPath,
-    entry.assetValue,
-    ...entry.resourceIds,
-  ].join(" ").toLowerCase();
-
-  return haystack.includes(query);
-}
-
-function matchesShopResourcePickerSearch(entry, query) {
-  if (!query) {
-    return true;
-  }
-
-  const haystack = [
-    entry.basename,
-    entry.assetPath,
-    entry.assetValue,
-    ...entry.resourceIds,
-  ].join(" ").toLowerCase();
-
-  return haystack.includes(query);
+function createAssetLibraryPickerModel(entries, query, selectedAssetPath) {
+  return createResourcePickerModel({
+    entries,
+    query,
+    selectedValue: selectedAssetPath,
+    getValue: (entry) => entry.assetPath,
+    getSearchText: (entry) => [entry.basename, entry.assetPath, entry.assetValue, ...entry.resourceIds],
+  });
 }
 
 function getSuggestedPortraitId(record, entry) {
@@ -10824,36 +10776,6 @@ function getSuggestedPortraitId(record, entry) {
 async function usePortraitLibraryResource(record, portraitId) {
   closePortraitPicker();
   updateRecordField(record, "portrait", portraitId, { rerender: true });
-}
-
-function getSelectedItemPictureLibraryEntry(entries) {
-  if (entries.length === 0) {
-    return null;
-  }
-
-  if (state.itemPicturePicker.selectedAssetPath) {
-    const selected = entries.find((entry) => entry.assetPath === state.itemPicturePicker.selectedAssetPath);
-    if (selected) {
-      return selected;
-    }
-  }
-
-  return entries[0];
-}
-
-function matchesItemPicturePickerSearch(entry, query) {
-  if (!query) {
-    return true;
-  }
-
-  const haystack = [
-    entry.basename,
-    entry.assetPath,
-    entry.assetValue,
-    ...entry.resourceIds,
-  ].join(" ").toLowerCase();
-
-  return haystack.includes(query);
 }
 
 function getSuggestedItemPictureId(record, entry) {
@@ -11081,8 +11003,9 @@ function renderPortraitPicker() {
 
   const allEntries = getHeadPortraitLibraryEntries();
   const query = state.portraitPicker.search.trim().toLowerCase();
-  const entries = allEntries.filter((entry) => matchesPortraitPickerSearch(entry, query));
-  const selectedEntry = getSelectedPortraitLibraryEntry(entries);
+  const pickerModel = createAssetLibraryPickerModel(allEntries, query, state.portraitPicker.selectedAssetPath);
+  const entries = pickerModel.visibleEntries;
+  const selectedEntry = pickerModel.selectedEntry;
   if (selectedEntry) {
     state.portraitPicker.selectedAssetPath = selectedEntry.assetPath;
   }
@@ -11102,6 +11025,7 @@ function renderPortraitPicker() {
       const card = document.createElement("button");
       card.type = "button";
       card.className = "portrait-picker-card";
+      card.dataset.resourcePickerValue = entry.assetPath;
       card.classList.toggle("active", entry.assetPath === state.portraitPicker.selectedAssetPath);
       card.addEventListener("click", () => {
         state.portraitPicker.selectedAssetPath = entry.assetPath;
@@ -11326,6 +11250,16 @@ function renderPortraitPicker() {
   }
 
   body.append(gallery, detail);
+  bindResourcePickerKeyboard(dialog, {
+    model: pickerModel,
+    getValue: (entry) => entry.assetPath,
+    onCancel: closePortraitPicker,
+    onSelect: (assetPath, options = {}) => {
+      state.portraitPicker.selectedAssetPath = assetPath;
+      renderPortraitPicker();
+      if (options.restoreKeyboardFocus) restoreResourcePickerKeyboardFocus("portraitPickerOverlay", assetPath);
+    },
+  });
   dialog.append(header, search, body);
   overlay.appendChild(dialog);
   document.body.appendChild(overlay);
@@ -11389,8 +11323,9 @@ function renderItemPicturePicker() {
 
   const allEntries = getItemPictureLibraryEntries();
   const query = state.itemPicturePicker.search.trim().toLowerCase();
-  const entries = allEntries.filter((entry) => matchesItemPicturePickerSearch(entry, query));
-  const selectedEntry = getSelectedItemPictureLibraryEntry(entries);
+  const pickerModel = createAssetLibraryPickerModel(allEntries, query, state.itemPicturePicker.selectedAssetPath);
+  const entries = pickerModel.visibleEntries;
+  const selectedEntry = pickerModel.selectedEntry;
   if (selectedEntry) {
     state.itemPicturePicker.selectedAssetPath = selectedEntry.assetPath;
   }
@@ -11580,8 +11515,9 @@ function renderShopResourcePicker() {
 
   const allEntries = getShopResourceLibraryEntries(field);
   const query = state.shopResourcePicker.search.trim().toLowerCase();
-  const entries = allEntries.filter((entry) => matchesShopResourcePickerSearch(entry, query));
-  const selectedEntry = getSelectedShopResourceLibraryEntry(entries);
+  const pickerModel = createAssetLibraryPickerModel(allEntries, query, state.shopResourcePicker.selectedAssetPath);
+  const entries = pickerModel.visibleEntries;
+  const selectedEntry = pickerModel.selectedEntry;
   if (selectedEntry) {
     state.shopResourcePicker.selectedAssetPath = selectedEntry.assetPath;
   }
@@ -11802,22 +11738,17 @@ function renderMapResourcePicker() {
   controls.append(search, filter);
 
   const query = picker.search.trim().toLowerCase();
-  const resources = getMapIconResources().filter((resource) => {
-    if (!matchesMapResourcePickerFilter(resource, picker.filter)) {
-      return false;
-    }
-    if (!query) {
-      return true;
-    }
-    return [resource.id, resource.group, resource.value]
-      .filter((value) => typeof value === "string")
-      .join(" ")
-      .toLowerCase()
-      .includes(query);
+  const availableResources = getMapIconResources().filter((resource) => matchesMapResourcePickerFilter(resource, picker.filter));
+  const pickerModel = createResourcePickerModel({
+    entries: availableResources,
+    query,
+    selectedValue: picker.selectedResourceId,
+    getValue: (resource) => resource.id,
+    getSearchText: (resource) => [resource.id, resource.group, resource.value].filter((value) => typeof value === "string"),
   });
-  let selectedResource = resources.find((resource) => resource.id === picker.selectedResourceId) || null;
-  if (!selectedResource && resources.length > 0) {
-    selectedResource = resources[0];
+  const resources = pickerModel.visibleEntries;
+  const selectedResource = pickerModel.selectedEntry;
+  if (selectedResource) {
     picker.selectedResourceId = selectedResource.id;
   }
 
