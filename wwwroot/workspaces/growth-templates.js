@@ -8,7 +8,7 @@ import {
   growthStats,
   matchesGrowthSearch,
 } from "../domain/growth-templates.js?v=20260711-stage9-1";
-import { bindScrollMemory } from "../ui/scroll-memory.js?v=20260711-scroll-1";
+import { bindScrollMemory } from "../ui/scroll-memory.js?v=20260712-search-1";
 
 const tabs = Object.freeze([["overview", "成长设计"], ["usage", "使用角色"], ["advanced", "高级 JSON"]]);
 

@@ -1,3 +1,41 @@
+export const mapConditionTypes = Object.freeze([
+  "always", "silver_at_least", "gold_at_least", "friendCount", "current_map",
+  "event_completed", "event_finished", "event_not_completed", "event_not_finished",
+  "time_slot", "in_time", "not_in_time", "key_in_team", "key_not_in_team", "in_team", "not_in_team",
+  "have_item", "not_have_item", "level_greater_than", "level_less_than", "shenfa_greater_than",
+  "skill_less_than", "skill_more_than", "should_finish", "follow_story", "should_not_finish",
+  "has_time_key", "not_has_time_key", "exceed_day", "not_exceed_day", "in_round", "not_in_round",
+  "zhoumu_greater_than", "game_mode", "in_menpai", "in_sect", "not_in_menpai", "not_in_sect",
+  "in_newbie_task",
+]);
+
+export function getMapConditionValueIssue(condition) {
+  const type = String(condition?.type || "");
+  const value = String(condition?.value ?? "").trim();
+  if (type === "always" || type === "in_newbie_task") return "";
+  if (!value) return "缺少值。";
+
+  const parts = value.split("#").map((part) => part.trim()).filter(Boolean);
+  const nonNegativeIntegerTypes = new Set([
+    "silver_at_least", "gold_at_least", "friendCount", "exceed_day", "not_exceed_day",
+    "in_round", "not_in_round", "zhoumu_greater_than",
+  ]);
+  if (nonNegativeIntegerTypes.has(type) && !isNonNegativeInteger(value)) return "必须填写非负整数。";
+  if (["have_item", "not_have_item"].includes(type)
+    && (parts.length > 2 || (parts.length === 2 && !isNonNegativeInteger(parts[1])))) {
+    return "格式应为“物品id”或“物品id#非负数量”。";
+  }
+  if (["level_greater_than", "level_less_than", "shenfa_greater_than"].includes(type)
+    && (parts.length !== 2 || !isNonNegativeInteger(parts[1]))) {
+    return "格式应为“角色#非负数值”。";
+  }
+  if (["skill_more_than", "skill_less_than"].includes(type)
+    && (parts.length !== 3 || !isNonNegativeInteger(parts[2]))) {
+    return "格式应为“角色#技能#非负等级”。";
+  }
+  return "";
+}
+
 export function createMapDefinition(id = "新地图") {
   return {
     id,
@@ -109,4 +147,8 @@ function createConditionDefinition() {
 
 function isObject(value) {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function isNonNegativeInteger(value) {
+  return /^\d+$/.test(String(value || "").trim());
 }

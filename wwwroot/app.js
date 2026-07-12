@@ -6,7 +6,8 @@ import { createDirtyStateController } from "./core/dirty-state.js?v=20260711-cor
 import { createEventBus } from "./core/events.js?v=20260711-core-17";
 import { createPreferences, storageKeys } from "./core/preferences.js?v=20260712-navigation-1";
 import { normalizeWorkspaceMode } from "./core/router.js?v=20260712-stage11-1";
-import { bindImeSafeInput } from "./core/input-composition.js?v=20260711-core-17";
+import { createJsonPropertyLineIndex } from "./domain/json-source-index.js?v=20260712-performance-1";
+import { bindImeSafeInput, rerenderPreservingInput } from "./core/input-composition.js?v=20260712-search-1";
 import { createProblem, summarizeProblems } from "./core/problems.js?v=20260711-core-17";
 import { createRecentItemsStore } from "./core/recent-items.js?v=20260711-core-17";
 import { createButton } from "./ui/buttons.js?v=20260711-core-17";
@@ -23,7 +24,7 @@ import { createGrowthTemplate, ensureGrowthTemplateShape } from "./domain/growth
 import { renderGrowthTemplateWorkspace } from "./workspaces/growth-templates.js?v=20260711-stage9-2";
 import { cloneJson as cloneSectJson, createSectDefinition, ensureSectShape, getSectIssues } from "./domain/sects.js?v=20260711-stage9-2";
 import { renderSectWorkspace } from "./workspaces/sects.js?v=20260711-stage9-2";
-import { createMapDefinition, ensureMapEventShape, ensureMapLocationShape, ensureMapShape, matchesMapSearch, moveMapLocation as moveMapLocationEntry } from "./domain/maps.js?v=20260712-stage11-1";
+import { createMapDefinition, ensureMapEventShape, ensureMapLocationShape, ensureMapShape, getMapConditionValueIssue, mapConditionTypes, matchesMapSearch, moveMapLocation as moveMapLocationEntry } from "./domain/maps.js?v=20260712-performance-1";
 import { characterStatFields } from "./domain/characters.js?v=20260712-navigation-2";
 import { createItemDefinition, effectTypes, statChoices, weaponTypes } from "./domain/items.js?v=20260711-stage6-1";
 import { renderItemWorkspace } from "./workspaces/items.js?v=20260711-stage6-2";
@@ -52,7 +53,7 @@ import {
 import { renderResourcesWorkspace } from "./workspaces/resources.js?v=20260711-stage5b-2";
 import { createResourcePickerModel } from "./domain/resource-picker.js?v=20260711-stage5c-1";
 import { bindResourcePickerKeyboard, restoreResourcePickerKeyboardFocus } from "./ui/resource-picker-keyboard.js?v=20260711-stage5c-1";
-import { bindScrollMemory } from "./ui/scroll-memory.js?v=20260711-scroll-1";
+import { bindScrollMemory, resetScrollMemory } from "./ui/scroll-memory.js?v=20260712-search-1";
 import {
   buildDraftStoryGraph,
   buildStoryDocuments,
@@ -183,7 +184,31 @@ const monacoState = {
   language: "json",
   suppressChange: false,
 };
+let monacoInitializationPromise = null;
+let storyGraphLoadingPromise = null;
+let assetFilesLoadingPromise = null;
+let assetFilesLoaded = false;
 let storyGraphRenderVersion = 0;
+let contentAnalysisRevision = 0;
+let projectProblemsCache = null;
+let problemIndicatorTimer = 0;
+const characterPortraitCache = new WeakMap();
+const characterIssueCache = new WeakMap();
+const itemPictureCache = new WeakMap();
+const itemIssueCache = new WeakMap();
+
+function invalidateContentAnalysis() {
+  contentAnalysisRevision += 1;
+  projectProblemsCache = null;
+}
+
+function scheduleProblemIndicators() {
+  window.clearTimeout(problemIndicatorTimer);
+  problemIndicatorTimer = window.setTimeout(() => {
+    problemIndicatorTimer = 0;
+    renderProblemIndicators();
+  }, 180);
+}
 
 const preferences = createPreferences();
 const recentItemsStore = createRecentItemsStore({
@@ -236,7 +261,12 @@ elements.martialTab.addEventListener("click", () => requestWorkspaceChange("mart
 elements.dataTab.addEventListener("click", () => requestWorkspaceChange("data"));
 elements.storyTab.addEventListener("click", () => requestWorkspaceChange("story"));
 elements.assetsTab.addEventListener("click", () => requestWorkspaceChange("assets"));
-bindImeSafeInput(elements.fileSearch, renderFileList);
+bindImeSafeInput(elements.fileSearch, () => {
+  resetScrollMemory(state.workspaceScrollPositions, "sidebar:story");
+  resetScrollMemory(state.workspaceScrollPositions, "sidebar:data");
+  resetScrollMemory(state.workspaceScrollPositions, "sidebar:assets");
+  renderFileList();
+});
 elements.sourceModeButton.addEventListener("click", () => setViewMode("dsl"));
 elements.jsonModeButton.addEventListener("click", () => setViewMode("json"));
 elements.saveStorySourceButton.addEventListener("click", saveCurrentStoryJsonAsSource);
@@ -307,12 +337,14 @@ function renderInspectorStatus(ok, label) {
 }
 
 function initializeMonacoEditor() {
+  if (monacoState.ready) return Promise.resolve(true);
+  if (monacoInitializationPromise) return monacoInitializationPromise;
   if (!elements.monacoHost || !window.require) {
     useLegacyTextEditor();
     return Promise.resolve(false);
   }
 
-  return new Promise((resolve) => {
+  monacoInitializationPromise = new Promise((resolve) => {
     window.require.config({ paths: { vs: "/vendor/monaco/vs" } });
     window.require(["vs/editor/editor.main"], () => {
       registerStoryDslMonacoLanguage();
@@ -349,6 +381,7 @@ function initializeMonacoEditor() {
       resolve(false);
     });
   });
+  return monacoInitializationPromise;
 }
 
 function useLegacyTextEditor() {
@@ -813,13 +846,10 @@ function setMonacoDiagnostics(diagnostics) {
 }
 
 async function boot() {
-  await initializeMonacoEditor();
   await loadWorkspace();
-  await Promise.all([loadDataFiles(), loadAssetFiles()]);
+  await loadDataFiles();
   state.recentEntries = recentItemsStore.read(state.activeModId);
   await rebuildContentIndex();
-  await loadStoryGraph();
-  await validateContent();
   setMode("home");
 }
 
@@ -881,12 +911,14 @@ async function switchMod(modId) {
     elements.modSelect.value = state.activeModId;
     return;
   }
+  if (storyGraphLoadingPromise) await storyGraphLoadingPromise;
 
   state.activeModId = modId;
   preferences.set(storageKeys.activeModId, modId);
   state.currentPath = "";
   dirtyStateController.markClean({ render: false });
   state.records = [];
+  invalidateContentAnalysis();
   state.selectedRecordIndex = 0;
   state.workspaceScrollPositions = {};
   resetMartialWorkspaceState();
@@ -908,19 +940,18 @@ async function switchMod(modId) {
   };
   state.selectedStoryGroupId = "";
   state.selectedStoryNodeId = "";
+  state.storyGraph = null;
   setEditorValue("");
   setEditorReadOnly(false);
   setEditorLanguage("json");
   elements.currentPath.textContent = "未选择文件";
   elements.saveState.textContent = "";
   renderWorkspacePath();
-  await Promise.all([loadDataFiles(), loadAssetFiles()]);
+  await loadDataFiles();
   await rebuildContentIndex();
-  await loadStoryGraph();
   state.recentEntries = recentItemsStore.read(state.activeModId);
   renderDirtyState();
   renderCursorState();
-  await validateContent();
   setMode("home");
 }
 
@@ -964,26 +995,76 @@ async function openRawJsonFile(path) {
 }
 
 async function loadAssetFiles() {
-  state.assetFiles = await requestJson("/api/assets/files");
-  state.assetFilePathSet = new Set(state.assetFiles.map((file) => file.path));
+  if (assetFilesLoadingPromise) return assetFilesLoadingPromise;
+  assetFilesLoadingPromise = (async () => {
+    state.assetFiles = await requestJson("/api/assets/files");
+    state.assetFilePathSet = new Set(state.assetFiles.map((file) => file.path));
+    state.assetBasenameIndexes = buildAssetBasenameIndexes(state.assetFiles);
+    assetFilesLoaded = true;
+    invalidateContentAnalysis();
+  })();
+  try {
+    await assetFilesLoadingPromise;
+  } finally {
+    assetFilesLoadingPromise = null;
+  }
+}
+
+async function ensureAssetFilesLoaded() {
+  if (assetFilesLoaded) return;
+  await loadAssetFiles();
+}
+
+function buildAssetBasenameIndexes(files) {
+  const indexes = new Map([
+    ["head", new Map()],
+    ["item", new Map()],
+  ]);
+  for (const file of files) {
+    const lower = String(file?.path || "").toLowerCase();
+    if (!isImage(lower)) continue;
+    const kind = lower.startsWith("art/head/") ? "head" : lower.startsWith("art/item/") ? "item" : "";
+    if (!kind) continue;
+    const basename = normalizeToolSearchValue((file.name || file.path.split("/").pop() || "").replace(/\.[^.]+$/i, ""));
+    if (basename && !indexes.get(kind).has(basename)) indexes.get(kind).set(basename, file.path);
+  }
+  return indexes;
+}
+
+function findAssetByBasename(kind, candidates) {
+  const index = state.assetBasenameIndexes.get(kind);
+  if (!index) return "";
+  for (const candidate of candidates) {
+    const basename = normalizeToolSearchValue(candidate.split("/").pop() || "");
+    const path = index.get(basename);
+    if (path) return path;
+  }
+  return "";
 }
 
 async function loadStoryGraph() {
-  try {
-    state.storyGraph = await requestJson("/api/story/graph");
-    if (!state.selectedStoryGroupId && state.storyGraph.groups.length > 0) {
-      state.selectedStoryGroupId = state.storyGraph.groups[0].id;
+  if (storyGraphLoadingPromise) return storyGraphLoadingPromise;
+  storyGraphLoadingPromise = (async () => {
+    try {
+      state.storyGraph = await requestJson("/api/story/graph");
+      projectProblemsCache = null;
+      if (!state.selectedStoryGroupId && state.storyGraph.groups.length > 0) {
+        state.selectedStoryGroupId = state.storyGraph.groups[0].id;
+      }
+    } catch (error) {
+      state.storyGraph = null;
+      showValidation(false, error.message);
+    } finally {
+      storyGraphLoadingPromise = null;
+      renderProblemIndicators();
     }
-  } catch (error) {
-    state.storyGraph = null;
-    showValidation(false, error.message);
-  } finally {
-    renderProblemIndicators();
-  }
+  })();
+  return storyGraphLoadingPromise;
 }
 
 function setMode(mode) {
   mode = normalizeWorkspaceMode(mode);
+  if (mode !== state.mode) projectProblemsCache = null;
   state.mode = mode;
   const isOverview = mode === "home" || mode === "problems";
   const isStory = mode === "story";
@@ -1305,6 +1386,7 @@ async function reloadCurrentDataFile() {
 }
 
 async function openWorkspaceMode(mode) {
+  if (mode === "assets") await ensureAssetFilesLoaded();
   setMode(mode);
   if (mode === "data" && !state.dataFiles.some((file) => file.path === state.currentPath)) {
     await openLastDataFile();
@@ -1315,6 +1397,7 @@ async function openWorkspaceMode(mode) {
 }
 
 async function openStoryWorkspace() {
+  if (!state.storyGraph) await loadStoryGraph();
   const documents = buildStoryDocuments(state.dataFiles, state.storyGraph);
   if (documents.length === 0) {
     setMode("story");
@@ -1334,7 +1417,12 @@ async function openStoryWorkspace() {
   setMode("story");
 }
 
-function renderResourceWorkspaceView(options = {}) {
+function rerenderSearchResults(input, render, findReplacement, scrollKey = "") {
+  resetScrollMemory(state.workspaceScrollPositions, scrollKey);
+  return rerenderPreservingInput(input, render, findReplacement);
+}
+
+function renderResourceWorkspaceView() {
   if (state.mode !== "assets") return;
   const catalog = buildResourceCatalog(state.contentIndex.resourceRecords, state.assetFilePathSet, state.contentIndex.referencesByValue);
   const resourceIdsByAssetPath = new Map();
@@ -1358,18 +1446,13 @@ function renderResourceWorkspaceView(options = {}) {
     state,
     catalog,
     assets,
-    onChange: (key, value, changeOptions = {}) => {
+    onChange: (key, value) => {
       state.resourceWorkspace[key] = value;
       if (key === "tab") {
         state.resourceWorkspace.selectedKey = "";
         state.resourceWorkspace.search = "";
       }
-      renderResourceWorkspaceView(changeOptions);
-      if (changeOptions.restoreFocus) {
-        const search = elements.resourceWorkspaceView.querySelector(".resource-workspace-search");
-        search?.focus();
-        search?.setSelectionRange(value.length, value.length);
-      }
+      renderResourceWorkspaceView();
     },
     onOpenDefinition: (id) => revealDefinitionById(id, ["resources"]),
   });
@@ -1392,14 +1475,14 @@ async function openCharacterWorkspace() {
     showValidation(false, "当前 MOD 缺少 characters.json。");
     return;
   }
-  await openDataFile("characters.json");
+  await openDataFile("characters.json", { initializeEditor: false });
   if (!isCharacterFile()) {
     return;
   }
   setMode("characters");
 }
 
-function renderCharacterWorkspaceView() {
+function renderCharacterWorkspaceView(renderOptions = {}) {
   if (state.mode !== "characters") {
     return;
   }
@@ -1413,17 +1496,13 @@ function renderCharacterWorkspaceView() {
     onSelect: (index) => {
       state.selectedRecordIndex = index;
       state.characterWorkspace.referencesOpen = false;
-      renderCharacterWorkspaceView();
-      renderProblemIndicators();
+      renderCharacterWorkspaceView({ list: false });
     },
     onSearch: (value) => {
+      const input = elements.characterWorkspaceView.querySelector(".character-list-search");
       state.characterWorkspace.search = value;
-      renderCharacterWorkspaceView();
-      const search = elements.characterWorkspaceView.querySelector(".character-list-search");
-      if (search) {
-        search.focus();
-        search.setSelectionRange(value.length, value.length);
-      }
+      rerenderSearchResults(input, renderCharacterWorkspaceView,
+        () => elements.characterWorkspaceView.querySelector(".character-list-search"), "characters:list");
     },
     onFilter: (value) => {
       state.characterWorkspace.filter = value;
@@ -1431,7 +1510,7 @@ function renderCharacterWorkspaceView() {
     },
     onTab: (value) => {
       state.characterWorkspace.tab = value;
-      renderCharacterWorkspaceView();
+      renderCharacterWorkspaceView({ list: false });
     },
     onMutate: (record, key, value) => {
       record[key] = value;
@@ -1450,13 +1529,14 @@ function renderCharacterWorkspaceView() {
     onDelete: deleteCharacterRecord,
     onOpenReferences: () => {
       state.characterWorkspace.referencesOpen = true;
-      renderCharacterWorkspaceView();
+      renderCharacterWorkspaceView({ list: false });
     },
     onCloseReferences: () => {
       state.characterWorkspace.referencesOpen = false;
-      renderCharacterWorkspaceView();
+      renderCharacterWorkspaceView({ list: false });
     },
     onOpenAdvancedData: async () => {
+      await initializeMonacoEditor();
       setMode("data");
       state.viewMode = "json";
       setViewMode("json");
@@ -1468,7 +1548,7 @@ function renderCharacterWorkspaceView() {
       }
     },
     onOpenProblems: () => requestWorkspaceChange("problems"),
-  });
+  }, renderOptions);
   renderPortraitPicker();
 }
 
@@ -1541,12 +1621,12 @@ async function openItemWorkspace() {
     showValidation(false, "当前 MOD 缺少 items.json。");
     return;
   }
-  await openDataFile("items.json");
+  await openDataFile("items.json", { initializeEditor: false });
   if (!isItemFile()) return;
   setMode("items");
 }
 
-function renderItemWorkspaceView() {
+function renderItemWorkspaceView(renderOptions = {}) {
   if (state.mode !== "items") return;
   renderItemWorkspace(elements.itemWorkspaceView, {
     state,
@@ -1556,15 +1636,13 @@ function renderItemWorkspaceView() {
     references: getItemReferenceOptions(),
     onSelect: (index) => {
       state.selectedRecordIndex = index;
-      renderItemWorkspaceView();
-      renderProblemIndicators();
+      renderItemWorkspaceView({ list: false });
     },
     onSearch: (value) => {
+      const input = elements.itemWorkspaceView.querySelector(".item-list-search");
       state.itemWorkspace.search = value;
-      renderItemWorkspaceView();
-      const search = elements.itemWorkspaceView.querySelector(".item-list-search");
-      search?.focus();
-      search?.setSelectionRange(value.length, value.length);
+      rerenderSearchResults(input, renderItemWorkspaceView,
+        () => elements.itemWorkspaceView.querySelector(".item-list-search"), "items:list");
     },
     onFilter: (value) => {
       state.itemWorkspace.filter = value;
@@ -1572,7 +1650,7 @@ function renderItemWorkspaceView() {
     },
     onTab: (value) => {
       state.itemWorkspace.tab = value;
-      renderItemWorkspaceView();
+      renderItemWorkspaceView({ list: false });
     },
     onMutate: (record, key, value) => {
       record[key] = value;
@@ -1589,7 +1667,8 @@ function renderItemWorkspaceView() {
     onDelete: deleteItemRecord,
     onPickPicture: () => openItemPicturePicker(getCurrentItemPictureAssetPath()),
     onUploadPicture: uploadCurrentItemPicture,
-    onOpenAdvancedData: () => {
+    onOpenAdvancedData: async () => {
+      await initializeMonacoEditor();
       setMode("data");
       state.viewMode = "json";
       setViewMode("json");
@@ -1601,7 +1680,7 @@ function renderItemWorkspaceView() {
       }
     },
     onOpenProblems: () => requestWorkspaceChange("problems"),
-  });
+  }, renderOptions);
   renderItemPicturePicker();
 }
 
@@ -1708,7 +1787,7 @@ async function openGrowthWorkspace() {
     showValidation(false, "当前 MOD 缺少 grow-templates.json。");
     return;
   }
-  await openDataFile("grow-templates.json");
+  await openDataFile("grow-templates.json", { initializeEditor: false });
   if (!isGrowthFile()) return;
   state.records.forEach(ensureGrowthTemplateShape);
   setMode("growth");
@@ -1750,11 +1829,10 @@ function renderGrowthWorkspaceView() {
       renderGrowthWorkspaceView();
     },
     onSearch: (value) => {
+      const input = elements.growthWorkspaceView.querySelector('.growth-catalog-tools input[type="search"]');
       state.growthWorkspace.search = value;
-      renderGrowthWorkspaceView();
-      const search = elements.growthWorkspaceView.querySelector('.growth-catalog-tools input[type="search"]');
-      search?.focus();
-      search?.setSelectionRange(value.length, value.length);
+      rerenderSearchResults(input, renderGrowthWorkspaceView,
+        () => elements.growthWorkspaceView.querySelector('.growth-catalog-tools input[type="search"]'), "growth:list");
     },
     onFilter: (value) => { state.growthWorkspace.filter = value; renderGrowthWorkspaceView(); },
     onTab: (value) => { state.growthWorkspace.tab = value; renderGrowthWorkspaceView(); },
@@ -1833,7 +1911,7 @@ async function openSectWorkspace() {
     showValidation(false, "当前 MOD 缺少 sects.json。");
     return;
   }
-  await openDataFile("sects.json");
+  await openDataFile("sects.json", { initializeEditor: false });
   if (!isSectFile()) return;
   state.records.forEach(ensureSectShape);
   setMode("sects");
@@ -1897,7 +1975,12 @@ function renderSectWorkspaceView() {
       return { id: String(id || ""), assetPath: resource ? resolveResourceAssetPath(resource) : "" };
     },
     onSelect: (index) => { state.selectedRecordIndex = index; state.sectWorkspace.tab = "overview"; renderSectWorkspaceView(); },
-    onSearch: (value) => { state.sectWorkspace.search = value; renderSectWorkspaceView(); const search = elements.sectWorkspaceView.querySelector('input[type="search"]'); search?.focus(); search?.setSelectionRange(value.length, value.length); },
+    onSearch: (value) => {
+      const input = elements.sectWorkspaceView.querySelector('input[type="search"]');
+      state.sectWorkspace.search = value;
+      rerenderSearchResults(input, renderSectWorkspaceView,
+        () => elements.sectWorkspaceView.querySelector('input[type="search"]'), "sects:list");
+    },
     onTab: (value) => { state.sectWorkspace.tab = value; renderSectWorkspaceView(); },
     onPatch: (key, value) => { const record = state.records[state.selectedRecordIndex]; if (!record) return; record[key] = value; syncRecordsToEditor(); renderSectWorkspaceView(); },
     onReplace: (next) => { state.records[state.selectedRecordIndex] = ensureSectShape(next); syncRecordsToEditor(); renderSectWorkspaceView(); },
@@ -1947,7 +2030,7 @@ async function openShopWorkspace() {
     showValidation(false, "当前 MOD 缺少 shops.json。");
     return;
   }
-  await openDataFile("shops.json");
+  await openDataFile("shops.json", { initializeEditor: false });
   if (!isShopFile()) return;
   state.records.forEach(ensureShopWorkspaceShape);
   setMode("shops");
@@ -1971,11 +2054,10 @@ function renderShopWorkspaceView() {
       renderProblemIndicators();
     },
     onSearch: (value) => {
+      const input = elements.shopWorkspaceView.querySelector('.shop-workspace-shops input[type="search"]');
       state.shopWorkspace.search = value;
-      renderShopWorkspaceView();
-      const search = elements.shopWorkspaceView.querySelector('.shop-workspace-shops input[type="search"]');
-      search?.focus();
-      search?.setSelectionRange(value.length, value.length);
+      rerenderSearchResults(input, renderShopWorkspaceView,
+        () => elements.shopWorkspaceView.querySelector('.shop-workspace-shops input[type="search"]'), "shops:list");
     },
     onFilter: (value) => {
       state.shopWorkspace.filter = value;
@@ -2239,7 +2321,12 @@ function renderMartialWorkspaceView() {
       workspace.activeKind = kind; workspace.selectedIndex = 0; workspace.selectedFormIndex = -1; workspace.tab = "overview"; workspace.creatorOpen = false; workspace.creatorTemplate = ""; workspace.resourcePicker.open = false; state.currentPath = getMartialPath(kind); renderMartialWorkspaceView();
     },
     onSelect: (index) => { workspace.selectedIndex = index; workspace.selectedFormIndex = -1; renderMartialWorkspaceView(); },
-    onSearch: (value) => { workspace.search = value; renderMartialWorkspaceView(); const search = elements.martialWorkspaceView.querySelector('.martial-catalog-tools input[type="search"]'); search?.focus(); search?.setSelectionRange(value.length, value.length); },
+    onSearch: (value) => {
+      const input = elements.martialWorkspaceView.querySelector('.martial-catalog-tools input[type="search"]');
+      workspace.search = value;
+      rerenderSearchResults(input, renderMartialWorkspaceView,
+        () => elements.martialWorkspaceView.querySelector('.martial-catalog-tools input[type="search"]'), `martial:list:${workspace.activeKind}`);
+    },
     onTab: (tab) => { workspace.tab = tab; renderMartialWorkspaceView(); },
     onMutate: markMartialChanged,
     onReplace: (next) => {
@@ -2253,17 +2340,17 @@ function renderMartialWorkspaceView() {
     onOpenResourcePicker: ({ type, target, field, clearValue, selectedId }) => {
       workspace.resourcePicker = { open: true, type, search: "", selectedId: selectedId || "", target, field, clearValue };
       renderMartialWorkspaceView();
+      elements.martialWorkspaceView.querySelector(".martial-resource-picker-search")?.focus({ preventScroll: true });
     },
     onCloseResourcePicker: () => {
       workspace.resourcePicker = { open: false, type: "", search: "", selectedId: "", target: null, field: "", clearValue: null };
       renderMartialWorkspaceView();
     },
     onResourcePickerSearch: (value) => {
+      const input = elements.martialWorkspaceView.querySelector(".martial-resource-picker-search");
       workspace.resourcePicker.search = value;
-      renderMartialWorkspaceView();
-      const search = elements.martialWorkspaceView.querySelector(".martial-resource-picker-search");
-      search?.focus();
-      search?.setSelectionRange(value.length, value.length);
+      rerenderSearchResults(input, renderMartialWorkspaceView,
+        () => elements.martialWorkspaceView.querySelector(".martial-resource-picker-search"));
     },
     onSelectResourcePicker: (id) => { workspace.resourcePicker.selectedId = id; renderMartialWorkspaceView(); },
     onApplyResourcePicker: () => {
@@ -2647,6 +2734,7 @@ function renderProblemIndicators() {
 }
 
 function collectProjectProblems() {
+  if (projectProblemsCache) return projectProblemsCache;
   const problems = [];
   const validation = state.problemCenter.validation;
   if (validation && !validation.ok) {
@@ -2780,7 +2868,8 @@ function collectProjectProblems() {
     appendCurrentRecordProblems(problems, "item", "物品", getItemValidationIssues);
   }
 
-  return Array.from(new Map(problems.map((problem) => [problem.id, problem])).values());
+  projectProblemsCache = Array.from(new Map(problems.map((problem) => [problem.id, problem])).values());
+  return projectProblemsCache;
 }
 
 function appendCurrentRecordProblems(problems, contentType, contentTypeLabel, getIssues) {
@@ -2831,12 +2920,14 @@ async function runProjectChecks() {
     await validateContent();
     try {
       state.portraitCheck = await requestJson("/api/static/portraits/check");
+      projectProblemsCache = null;
     } catch (error) {
       state.portraitCheck = {
         ok: false,
         summary: { characterCount: 0, portraitResourceCount: 0, storySpeakerCount: 0, checkedPortraitCount: 0, errors: 1, warnings: 0, infos: 0 },
         issues: [{ severity: "error", area: "resources", message: error.message, dataPath: null, line: null, definitionId: null, assetPath: null, assetExists: false }],
       };
+      projectProblemsCache = null;
     }
     renderPortraitCheckTool();
     state.problemCenter.lastCheckedAt = new Date().toISOString();
@@ -3209,7 +3300,8 @@ function renderStorySummary(graph, selectedGroup) {
   search.value = elements.contentSearch.value;
   bindImeSafeInput(search, (value) => {
     elements.contentSearch.value = value;
-    renderStoryView();
+    rerenderSearchResults(search, renderStoryView,
+      () => elements.storyView.querySelector(".story-search"));
   });
 
   const metrics = document.createElement("div");
@@ -3596,10 +3688,8 @@ function createStorySegmentCatalog(documentModel, segments, documents) {
   search.value = state.storyWorkspace.search;
   bindImeSafeInput(search, (value) => {
     state.storyWorkspace.search = value;
-    renderStoryView();
-    const nextSearch = elements.storyView.querySelector(".story-catalog-search");
-    nextSearch?.focus();
-    nextSearch?.setSelectionRange(value.length, value.length);
+    rerenderSearchResults(search, renderStoryView,
+      () => elements.storyView.querySelector(".story-catalog-search"), `story:segments:${documentModel.path}`);
   });
 
   const normalized = state.storyWorkspace.search.trim().toLowerCase();
@@ -3975,12 +4065,16 @@ async function openStoryGraphNode(node) {
   selectStorySegment(node.id);
 }
 
-async function openDataFile(path) {
+async function openDataFile(path, options = {}) {
   if (!(await confirmDiscardChanges())) {
     return;
   }
 
-  const file = await requestJson(`/api/data/file?path=${encodeURIComponent(path)}`);
+  const [file] = await Promise.all([
+    requestJson(`/api/data/file?path=${encodeURIComponent(path)}`),
+    options.initializeEditor === false ? Promise.resolve(false) : initializeMonacoEditor(),
+    ensureAssetFilesLoaded(),
+  ]);
   state.currentPath = file.path;
   recordRecentEntry("data", file.path);
   dirtyStateController.markClean({ render: false });
@@ -4150,7 +4244,6 @@ async function saveCurrentFile() {
     showValidation(result.validation.ok, result.validation.message);
     await loadDataFiles();
     await rebuildContentIndex();
-    await loadStoryGraph();
     renderFileList();
     if (state.mode === "story") renderStoryView();
     if (state.mode === "characters") {
@@ -4626,9 +4719,11 @@ async function validateContent() {
   try {
     const result = await requestJson("/api/validate");
     state.problemCenter.validation = result;
+    projectProblemsCache = null;
     showValidation(result.ok, result.message);
   } catch (error) {
     state.problemCenter.validation = { ok: false, message: error.message };
+    projectProblemsCache = null;
     showValidation(false, error.message);
   } finally {
     renderProblemIndicators();
@@ -4858,9 +4953,10 @@ function updateStoryDslAnalysis({ showSuccess }) {
   };
   state.storySource.diagnostics = diagnostics;
   state.storySource.jsonText = analysis.jsonText || "";
+  projectProblemsCache = null;
   setMonacoDiagnostics(state.viewMode === "dsl" ? diagnostics : []);
   renderStoryDslStatus();
-  renderProblemIndicators();
+  scheduleProblemIndicators();
 
   const errors = diagnostics.filter((item) => item.severity === "error");
   const warnings = diagnostics.filter((item) => item.severity === "warning");
@@ -5130,14 +5226,17 @@ function refreshRecordsFromEditor() {
     const json = parseJsonText(getEditorValue());
     if (!Array.isArray(json) || !json.every((record) => record && typeof record === "object" && !Array.isArray(record))) {
       state.records = [];
+      invalidateContentAnalysis();
       return false;
     }
 
     state.records = json;
+    invalidateContentAnalysis();
     state.selectedRecordIndex = Math.min(state.selectedRecordIndex, Math.max(0, state.records.length - 1));
     return true;
   } catch {
     state.records = [];
+    invalidateContentAnalysis();
     return false;
   }
 }
@@ -5159,34 +5258,47 @@ async function openMapWorkspace() {
     showValidation(false, "当前 MOD 缺少 maps.json。");
     return;
   }
-  await openDataFile("maps.json");
+  await openDataFile("maps.json", { initializeEditor: false });
   if (!isMapFile()) return;
   state.records.forEach(ensureMapShape);
   state.mapEditor.tab = "locations";
   setMode("maps");
 }
 
-function renderMapWorkspaceView() {
+function renderMapWorkspaceView(renderOptions = {}) {
   if (state.mode !== "maps") return;
-  disposeEmbeddedCodeEditors(elements.mapWorkspaceView);
-  elements.mapWorkspaceView.replaceChildren();
-  state.records.forEach(ensureMapShape);
+  let shell = elements.mapWorkspaceView.firstElementChild;
+  const createShell = !shell?.classList.contains("map-workspace-shell");
+  if (createShell) {
+    disposeEmbeddedCodeEditors(elements.mapWorkspaceView);
+    elements.mapWorkspaceView.replaceChildren();
+    shell = document.createElement("div");
+    shell.className = "map-workspace-shell";
+    for (const [tag, className] of [["aside", "map-workspace-catalog"], ["main", "map-workspace-stage"], ["aside", "map-workspace-inspector"]]) {
+      const panel = document.createElement(tag);
+      panel.className = className;
+      shell.appendChild(panel);
+    }
+    elements.mapWorkspaceView.appendChild(shell);
+  }
+
+  if (createShell || renderOptions.catalog !== false) state.records.forEach(ensureMapShape);
   clampMapSelection();
-
-  const shell = document.createElement("div");
-  shell.className = "map-workspace-shell";
-  const catalog = document.createElement("aside");
-  catalog.className = "map-workspace-catalog";
-  const stage = document.createElement("main");
-  stage.className = "map-workspace-stage";
-  const inspector = document.createElement("aside");
-  inspector.className = "map-workspace-inspector";
-  shell.append(catalog, stage, inspector);
-  elements.mapWorkspaceView.appendChild(shell);
-
-  renderMapWorkspaceCatalog(catalog);
+  const catalog = shell.querySelector(".map-workspace-catalog");
+  const stage = shell.querySelector(".map-workspace-stage");
+  const inspector = shell.querySelector(".map-workspace-inspector");
+  if (createShell || renderOptions.catalog !== false) {
+    catalog.replaceChildren();
+    renderMapWorkspaceCatalog(catalog);
+  } else {
+    for (const row of catalog.querySelectorAll(".map-workspace-map-row")) {
+      row.classList.toggle("active", Number(row.dataset.recordIndex) === state.selectedRecordIndex);
+    }
+  }
   const record = state.records[state.selectedRecordIndex];
   if (!record) {
+    stage.replaceChildren();
+    inspector.replaceChildren();
     const empty = document.createElement("div");
     empty.className = "map-workspace-empty";
     empty.innerHTML = "<strong>还没有地图</strong><span>新建第一张地图后即可布置点位与事件。</span>";
@@ -5197,10 +5309,17 @@ function renderMapWorkspaceView() {
     return;
   }
 
-  renderMapWorkspaceStage(stage, record);
-  renderMapWorkspaceInspector(inspector, record);
+  ensureMapShape(record);
+  if (createShell || renderOptions.stage !== false) {
+    stage.replaceChildren();
+    renderMapWorkspaceStage(stage, record);
+  }
+  if (createShell || renderOptions.inspector !== false) {
+    disposeEmbeddedCodeEditors(inspector);
+    inspector.replaceChildren();
+    renderMapWorkspaceInspector(inspector, record);
+  }
   renderMapResourcePicker();
-  renderProblemIndicators();
 }
 
 function renderMapWorkspaceCatalog(parent) {
@@ -5217,10 +5336,8 @@ function renderMapWorkspaceCatalog(parent) {
   search.value = state.mapEditor.search;
   bindImeSafeInput(search, (value) => {
     state.mapEditor.search = value;
-    renderMapWorkspaceView();
-    const next = elements.mapWorkspaceView.querySelector(".map-workspace-search");
-    next?.focus();
-    next?.setSelectionRange(value.length, value.length);
+    rerenderSearchResults(search, renderMapWorkspaceView,
+      () => elements.mapWorkspaceView.querySelector(".map-workspace-search"), "maps:list");
   });
 
   const filter = document.createElement("select");
@@ -5248,6 +5365,7 @@ function renderMapWorkspaceCatalog(parent) {
     const row = document.createElement("button");
     row.type = "button";
     row.className = "map-workspace-map-row";
+    row.dataset.recordIndex = String(index);
     row.classList.toggle("active", index === state.selectedRecordIndex);
     row.addEventListener("click", () => {
       state.selectedRecordIndex = index;
@@ -5255,7 +5373,7 @@ function renderMapWorkspaceCatalog(parent) {
       state.mapEditor.locationSearch = "";
       state.mapEditor.canvasMode = "select";
       state.mapEditor.tab = "locations";
-      renderMapWorkspaceView();
+      renderMapWorkspaceView({ catalog: false });
     });
     const thumb = createRecordThumb(record);
     thumb.classList.add("map-workspace-map-thumb");
@@ -5335,7 +5453,7 @@ function createMapWorkspaceLocationRail(record) {
       state.mapEditor.selectedLocationIndex = index;
       state.mapEditor.tab = "locations";
       state.mapEditor.canvasMode = "select";
-      renderMapWorkspaceView();
+      renderMapWorkspaceView({ catalog: false });
     });
     rail.appendChild(button);
   });
@@ -5365,7 +5483,7 @@ function renderMapWorkspaceInspector(parent, record) {
     button.textContent = label;
     button.addEventListener("click", () => {
       state.mapEditor.tab = id;
-      renderMapWorkspaceView();
+      renderMapWorkspaceView({ catalog: false, stage: false });
     });
     nav.appendChild(button);
   }
@@ -5404,6 +5522,14 @@ const MAP_EVENT_TYPE_CHOICES = [
 
 const MAP_CONDITION_CHOICES = [
   { value: "always", label: "总是" },
+  { value: "silver_at_least", label: "银两至少" },
+  { value: "gold_at_least", label: "元宝至少" },
+  { value: "friendCount", label: "队伍人数至少" },
+  { value: "current_map", label: "当前地图是" },
+  { value: "event_completed", label: "地图事件已完成" },
+  { value: "event_finished", label: "地图事件已完成（别名）" },
+  { value: "event_not_completed", label: "地图事件未完成" },
+  { value: "event_not_finished", label: "地图事件未完成（别名）" },
   { value: "should_finish", label: "已完成剧情" },
   { value: "should_not_finish", label: "未完成剧情" },
   { value: "follow_story", label: "上一个剧情是" },
@@ -5414,11 +5540,14 @@ const MAP_CONDITION_CHOICES = [
   { value: "have_item", label: "拥有物品" },
   { value: "not_have_item", label: "没有物品" },
   { value: "in_time", label: "当前时辰是" },
+  { value: "time_slot", label: "当前时辰是（别名）" },
   { value: "not_in_time", label: "当前时辰不是" },
   { value: "has_time_key", label: "有限时 key" },
   { value: "not_has_time_key", label: "没有限时 key" },
   { value: "in_menpai", label: "门派是" },
+  { value: "in_sect", label: "门派是（别名）" },
   { value: "not_in_menpai", label: "门派不是" },
+  { value: "not_in_sect", label: "门派不是（别名）" },
   { value: "in_round", label: "周目是" },
   { value: "not_in_round", label: "周目不是" },
   { value: "game_mode", label: "难度是" },
@@ -5597,7 +5726,7 @@ function createLargeMapCanvas(record) {
     button.textContent = choice.label;
     button.addEventListener("click", () => {
       state.mapEditor.canvasMode = choice.value;
-      renderMapWorkspaceView();
+      renderMapWorkspaceView({ catalog: false });
     });
     modeActions.appendChild(button);
   }
@@ -5636,7 +5765,7 @@ function createLargeMapCanvas(record) {
       event.stopPropagation();
       state.mapEditor.selectedLocationIndex = index;
       state.mapEditor.canvasMode = "select";
-      renderMapWorkspaceView();
+      renderMapWorkspaceView({ catalog: false });
     });
     pin.addEventListener("pointerdown", (event) => {
       if (state.mapEditor.canvasMode !== "select") {
@@ -5644,13 +5773,13 @@ function createLargeMapCanvas(record) {
       }
       event.preventDefault();
       state.mapEditor.selectedLocationIndex = index;
-      moveMapLocationFromPointer(record, location, canvas, event);
-      const move = (moveEvent) => moveMapLocationFromPointer(record, location, canvas, moveEvent);
+      moveMapLocationFromPointer(location, canvas, pin, event);
+      const move = (moveEvent) => moveMapLocationFromPointer(location, canvas, pin, moveEvent);
       const up = () => {
         window.removeEventListener("pointermove", move);
         window.removeEventListener("pointerup", up);
         syncRecordsToEditor();
-        renderMapWorkspaceView();
+        renderMapWorkspaceView({ catalog: false });
       };
       window.addEventListener("pointermove", move);
       window.addEventListener("pointerup", up);
@@ -5671,7 +5800,7 @@ function createLargeMapCanvas(record) {
     state.mapEditor.selectedLocationIndex = record.locations.length - 1;
     state.mapEditor.canvasMode = "select";
     syncRecordsToEditor();
-    renderMapWorkspaceView();
+    renderMapWorkspaceView({ catalog: false });
   });
 
   const hint = document.createElement("div");
@@ -5707,7 +5836,7 @@ function createMapIconVisual(iconInfo, badgeText = "", className = "") {
   return visual;
 }
 
-function moveMapLocationFromPointer(record, location, canvas, event) {
+function moveMapLocationFromPointer(location, canvas, pin, event) {
   const rect = canvas.getBoundingClientRect();
   const x = Math.round((event.clientX - rect.left) / rect.width * 800);
   const y = Math.round((event.clientY - rect.top) / rect.height * 600);
@@ -5715,7 +5844,8 @@ function moveMapLocationFromPointer(record, location, canvas, event) {
     x: Math.max(0, Math.min(800, x)),
     y: Math.max(0, Math.min(600, y)),
   };
-  syncRecordsToEditor();
+  pin.style.left = `${location.position.x / 800 * 100}%`;
+  pin.style.top = `${location.position.y / 600 * 100}%`;
 }
 
 function createSmallMapPreview(record) {
@@ -5820,6 +5950,7 @@ function createMapLocationPanel(record) {
 
   bindImeSafeInput(search, (value) => {
     state.mapEditor.locationSearch = value;
+    list.scrollTop = 0;
     refreshList();
   });
   refreshList();
@@ -6346,7 +6477,25 @@ function createMapConditionRow(mapEvent, condition, index) {
 
 function createMapAdvancedJsonSection(record) {
   const section = createCharacterSection("高级 JSON", "Advanced");
-  section.appendChild(createLegacyAdvancedJsonDetails("展开原始地图 JSON", record, "maps"));
+  const note = document.createElement("p");
+  note.className = "static-tool-note";
+  note.textContent = "用于编辑结构化控件尚未覆盖的字段。应用后会替换当前地图，未知字段会保留，仍需点击顶部“保存”写入 maps.json。";
+  section.append(note, createEmbeddedJsonEditor({
+    value: record,
+    modelPath: `maps/${record.id || state.selectedRecordIndex}`,
+    minHeight: 420,
+    validate: (value) => {
+      if (!value || Array.isArray(value) || typeof value !== "object") throw new Error("地图 JSON 必须是对象");
+      if (!Array.isArray(value.locations)) throw new Error("locations 必须是数组");
+    },
+    onApply: (value) => {
+      state.records[state.selectedRecordIndex] = ensureMapShape(value);
+      clampMapSelection();
+      syncRecordsToEditor();
+      renderMapWorkspaceView();
+    },
+    onError: (error) => showValidation(false, error instanceof Error ? error.message : String(error)),
+  }));
   return section;
 }
 
@@ -6359,9 +6508,13 @@ function addMapLocation(record) {
 }
 
 function addMapReturnLocation(record) {
-  const targetId = record.id === "大地图" ? "" : "大地图";
+  if (record.id === "大地图") {
+    showValidation(false, "大地图没有默认返回目标，请使用“新增点位”并明确选择目标地图。");
+    return;
+  }
+  const targetId = "大地图";
   const location = createMapLocationTemplate(record, "返回");
-  location.description = targetId ? "返回大地图" : "返回上一处";
+  location.description = "返回大地图";
   location.events = [
     {
       type: "map",
@@ -6642,10 +6795,11 @@ function getMapStats(record) {
         issues.push(`点位「${locationName}」事件图标不可用：${mapEvent.image}`);
       }
       for (const condition of mapEvent.conditions || []) {
-        if (!MAP_CONDITION_CHOICES.some((choice) => choice.value === condition.type)) {
+        if (!mapConditionTypes.includes(condition.type)) {
           issues.push(`点位「${locationName}」使用了未支持条件：${condition.type}`);
-        } else if (condition.type !== "always" && condition.type !== "in_newbie_task" && !String(condition.value || "").trim()) {
-          issues.push(`点位「${locationName}」条件「${condition.type}」缺少值。`);
+        } else {
+          const conditionIssue = getMapConditionValueIssue(condition);
+          if (conditionIssue) issues.push(`点位「${locationName}」条件「${condition.type}」${conditionIssue}`);
         }
       }
       if (mapEvent.repeatMode !== "once" &&
@@ -6784,6 +6938,7 @@ function getMapEventTargetPlaceholder(type) {
 
 function ensureMapConditionValueDatalist(type) {
   const datalistTypes = {
+    current_map: "maps",
     should_finish: "story",
     should_not_finish: "story",
     follow_story: "story",
@@ -6798,6 +6953,10 @@ function ensureMapConditionValueDatalist(type) {
     shenfa_greater_than: "characters",
     skill_more_than: "characters",
     skill_less_than: "characters",
+    in_menpai: "sects",
+    not_in_menpai: "sects",
+    in_sect: "sects",
+    not_in_sect: "sects",
   };
   const targetType = datalistTypes[type];
   if (!targetType) {
@@ -6810,11 +6969,7 @@ function ensureMapConditionValueDatalist(type) {
   }
   const datalist = document.createElement("datalist");
   datalist.id = id;
-  const definitions = targetType === "characters"
-    ? getDefinitionsByType("characters")
-    : targetType === "items"
-      ? getDefinitionsByType("items")
-      : getDefinitionsByType("story");
+  const definitions = getDefinitionsByType(targetType);
   for (const definition of definitions) {
     const option = document.createElement("option");
     option.value = type === "in_team" || type === "not_in_team"
@@ -6830,6 +6985,14 @@ function ensureMapConditionValueDatalist(type) {
 function getMapConditionValuePlaceholder(type) {
   return {
     always: "无需填写",
+    silver_at_least: "非负整数",
+    gold_at_least: "非负整数",
+    friendCount: "队伍人数",
+    current_map: "地图 id",
+    event_completed: "地图id|点位id|事件序号",
+    event_finished: "地图id|点位id|事件序号",
+    event_not_completed: "地图id|点位id|事件序号",
+    event_not_finished: "地图id|点位id|事件序号",
     should_finish: "剧情 id",
     should_not_finish: "剧情 id",
     follow_story: "剧情 id",
@@ -6840,11 +7003,14 @@ function getMapConditionValuePlaceholder(type) {
     have_item: "物品id 或 物品id#数量",
     not_have_item: "物品id 或 物品id#数量",
     in_time: "子#丑#寅 或 Zi#Chou",
+    time_slot: "子#丑#寅 或 Zi#Chou",
     not_in_time: "子#丑#寅 或 Zi#Chou",
     has_time_key: "限时 key",
     not_has_time_key: "限时 key",
     in_menpai: "门派 id",
+    in_sect: "门派 id",
     not_in_menpai: "门派 id",
+    not_in_sect: "门派 id",
     in_round: "周目数字",
     not_in_round: "周目数字",
     game_mode: "normal / hard / crazy",
@@ -6947,7 +7113,9 @@ function getShopResourceInfo(record, key, group) {
   return state.currentPath === "items.json";
 }
 
- function getItemPictureInfo(record) {
+function getItemPictureInfo(record) {
+  const cached = itemPictureCache.get(record);
+  if (cached?.revision === contentAnalysisRevision) return cached.value;
   const pictureId = typeof record.picture === "string" ? record.picture.trim() : "";
   const resource = pictureId ? state.contentIndex.resourcesById.get(pictureId) : null;
   const resourceExists = Boolean(resource);
@@ -6957,7 +7125,7 @@ function getShopResourceInfo(record, key, group) {
   const detectedAssetPath = detectedAssetValue ? findAssetPath(detectedAssetValue, { art: true }) : "";
   const previewPath = assetPath || detectedAssetPath || "";
 
-  return {
+  const value = {
     pictureId,
     resource,
     resourceExists,
@@ -6968,6 +7136,8 @@ function getShopResourceInfo(record, key, group) {
     detectedAssetPath,
     previewPath,
   };
+  itemPictureCache.set(record, { revision: contentAnalysisRevision, value });
+  return value;
 }
 
 function detectItemPictureAssetValue(id, name, pictureId = "") {
@@ -6989,22 +7159,13 @@ function detectItemPictureAssetValue(id, name, pictureId = "") {
     }
   }
 
-  const wanted = new Set(candidates.map((candidate) => normalizeToolSearchValue(candidate.split("/").pop() || "")));
-  for (const file of state.assetFiles) {
-    if (!file.path.toLowerCase().startsWith("art/item/") || !isImage(file.path.toLowerCase())) {
-      continue;
-    }
-
-    const basename = normalizeToolSearchValue((file.name || file.path.split("/").pop() || "").replace(/\.[^.]+$/i, ""));
-    if (wanted.has(basename)) {
-      return normalizeToolAssetValue(file.path);
-    }
-  }
-
-  return "";
+  const fallback = findAssetByBasename("item", candidates);
+  return fallback ? normalizeToolAssetValue(fallback) : "";
 }
 
 function getItemValidationIssues(record) {
+  const cached = itemIssueCache.get(record);
+  if (cached?.revision === contentAnalysisRevision) return cached.value;
   const issues = [];
   const pictureInfo = getItemPictureInfo(record);
 
@@ -7042,6 +7203,7 @@ function getItemValidationIssues(record) {
     appendItemAffixIssues(issues, record.affixes);
   }
 
+  itemIssueCache.set(record, { revision: contentAnalysisRevision, value: issues });
   return issues;
 }
 
@@ -7206,10 +7368,8 @@ function isKnownCharacterStatId(statId) {
   return characterStatFields.some(([key]) => key === statId);
 }
 
-  function matchesCharacterFilter(record, filter) {
+function matchesCharacterFilter(record, filter, analysis = {}) {
   const classification = getCharacterUiClassification(record);
-  const issues = getCharacterValidationIssues(record);
-  const portraitInfo = getCharacterPortraitInfo(record);
 
   switch (filter) {
     case "dialogue":
@@ -7219,9 +7379,9 @@ function isKnownCharacterStatId(statId) {
     case "battle":
       return record.arenaEnabled === true;
     case "missingPortrait":
-      return !portraitInfo.resourceExists || !portraitInfo.assetExists;
+      return !analysis.portraitInfo?.resourceExists || !analysis.portraitInfo?.assetExists;
     case "incomplete":
-      return issues.length > 0;
+      return (analysis.issues?.length || 0) > 0;
     case "all":
     default:
       return true;
@@ -7339,6 +7499,8 @@ function parseNumberInputValue(value, fallback) {
 }
 
 function getCharacterPortraitInfo(record) {
+  const cached = characterPortraitCache.get(record);
+  if (cached?.revision === contentAnalysisRevision) return cached.value;
   const portraitId = typeof record.portrait === "string" ? record.portrait.trim() : "";
   const resource = portraitId ? state.contentIndex.resourcesById.get(portraitId) : null;
   const resourceExists = Boolean(resource);
@@ -7348,7 +7510,7 @@ function getCharacterPortraitInfo(record) {
   const detectedAssetPath = detectedAssetValue ? findAssetPath(detectedAssetValue, { art: true }) : "";
   const previewPath = assetPath || detectedAssetPath || "";
 
-  return {
+  const value = {
     portraitId,
     resource,
     resourceExists,
@@ -7359,9 +7521,13 @@ function getCharacterPortraitInfo(record) {
     detectedAssetPath,
     previewPath,
   };
+  characterPortraitCache.set(record, { revision: contentAnalysisRevision, value });
+  return value;
 }
 
 function getCharacterValidationIssues(record) {
+  const cached = characterIssueCache.get(record);
+  if (cached?.revision === contentAnalysisRevision) return cached.value;
   const issues = [];
   const portraitInfo = getCharacterPortraitInfo(record);
   const classification = getCharacterUiClassification(record);
@@ -7411,6 +7577,7 @@ function getCharacterValidationIssues(record) {
     issues.push(createCharacterIssue("warn", "剧情对白同时使用了角色 id 和 name 作为 speaker，建议统一命名。"));
   }
 
+  characterIssueCache.set(record, { revision: contentAnalysisRevision, value: issues });
   return issues;
 }
 
@@ -7568,16 +7735,19 @@ function structuredCloneCompat(value) {
 }
 
 function syncRecordsToEditor() {
+  invalidateContentAnalysis();
   setEditorValue(`${JSON.stringify(state.records, null, 2)}\n`);
   dirtyStateController.markDirty({ render: false });
   elements.saveState.textContent = "结构化内容已修改，尚未保存";
-  updateSearchMatches();
-  renderEditorOutline();
+  if (state.mode === "data" || state.mode === "story") {
+    updateSearchMatches();
+    renderEditorOutline();
+    renderCursorState();
+    renderIndexPanel();
+    renderCharacterCheckTool();
+  }
   renderDirtyState();
-  renderCursorState();
-  renderIndexPanel();
-  renderCharacterCheckTool();
-  renderProblemIndicators();
+  scheduleProblemIndicators();
 }
 
 function getRecordTitle(record, index) {
@@ -7722,6 +7892,7 @@ async function rebuildContentIndex() {
     try {
       const response = await requestJson(`/api/data/file?path=${encodeURIComponent(file.path)}`);
       const json = parseJsonText(response.content);
+      const lineIndex = createJsonPropertyLineIndex(response.content);
       indexStaticStringReferences(referencesByValue, file.path, json);
       if (file.path === "resources.json" && Array.isArray(json)) {
         for (const resource of json) {
@@ -7761,12 +7932,12 @@ async function rebuildContentIndex() {
       }
 
       if (file.path.endsWith(".story.json")) {
-        for (const speaker of ExtractStorySpeakers(file.path, response.content, json)) {
+        for (const speaker of ExtractStorySpeakers(file.path, response.content, json, lineIndex)) {
           storySpeakers.set(speaker.Name, (storySpeakers.get(speaker.Name) || 0) + 1);
         }
       }
 
-      const definitions = extractDefinitions(file.path, response.content, json);
+      const definitions = extractDefinitions(file.path, response.content, json, lineIndex);
       fileSummaries.set(file.path, {
         definitions: definitions.length,
         type: getDefinitionType(file.path),
@@ -7799,6 +7970,7 @@ async function rebuildContentIndex() {
     storySpeakers,
     referencesByValue,
   };
+  invalidateContentAnalysis();
   state.resourceValues = resourceValues;
 
   renderIndexPanel();
@@ -7844,7 +8016,7 @@ function indexStaticStringReferences(index, path, root) {
   visit(root, "$", "");
 }
 
-function extractDefinitions(path, content, json) {
+function extractDefinitions(path, content, json, lineIndex = createJsonPropertyLineIndex(content)) {
   if (path.endsWith(".story.json")) {
     const segments = Array.isArray(json?.segments) ? json.segments : [];
     return segments
@@ -7854,7 +8026,7 @@ function extractDefinitions(path, content, json) {
         displayName: segment.name,
         type: "story",
         path,
-        line: findJsonPropertyLine(content, "name", segment.name),
+        line: lineIndex.find("name", segment.name),
       }));
   }
 
@@ -7866,12 +8038,12 @@ function extractDefinitions(path, content, json) {
       displayName: typeof record.name === "string" && record.name.length > 0 ? record.name : record.id,
       type: getDefinitionType(path),
       path,
-      line: findJsonPropertyLine(content, "id", record.id),
+      line: lineIndex.find("id", record.id),
       record,
     }));
 }
 
-function ExtractStorySpeakers(path, content, root) {
+function ExtractStorySpeakers(path, content, root, lineIndex = createJsonPropertyLineIndex(content)) {
   const speakers = [];
 
   function visit(node) {
@@ -7890,7 +8062,7 @@ function ExtractStorySpeakers(path, content, root) {
       speakers.push({
         Name: node.speaker,
         Path: path,
-        Line: findJsonPropertyLine(content, "speaker", node.speaker),
+        Line: lineIndex.find("speaker", node.speaker),
       });
     }
 
@@ -7909,17 +8081,6 @@ function getDefinitionType(path) {
   }
 
   return path.replace(/\.json$/i, "");
-}
-
-function findJsonPropertyLine(content, propertyName, value) {
-  const escapedValue = escapeRegExp(JSON.stringify(value).slice(1, -1));
-  const pattern = new RegExp(`"${escapeRegExp(propertyName)}"\\s*:\\s*"${escapedValue}"`);
-  const match = pattern.exec(content);
-  if (!match) {
-    return 1;
-  }
-
-  return content.slice(0, match.index).split("\n").length;
 }
 
 function findDuplicateDefinitions(definitionsById) {
@@ -8385,19 +8546,8 @@ function detectSpeakerPortraitAssetValue(id, name) {
     }
   }
 
-  const wanted = new Set(candidates.map((candidate) => normalizeToolSearchValue(candidate.split("/").pop() || "")));
-  for (const file of state.assetFiles) {
-    if (!file.path.toLowerCase().startsWith("art/head/") || !isImage(file.path.toLowerCase())) {
-      continue;
-    }
-
-    const basename = normalizeToolSearchValue((file.name || file.path.split("/").pop() || "").replace(/\.[^.]+$/i, ""));
-    if (wanted.has(basename)) {
-      return normalizeToolAssetValue(file.path);
-    }
-  }
-
-  return "";
+  const fallback = findAssetByBasename("head", candidates);
+  return fallback ? normalizeToolAssetValue(fallback) : "";
 }
 
 function renderSpeakerAssetStatus(value, statusNode) {
@@ -8593,6 +8743,7 @@ function renderPortraitCheckTool() {
 
     try {
       state.portraitCheck = await requestJson("/api/static/portraits/check");
+      projectProblemsCache = null;
       status.className = `static-tool-status ${state.portraitCheck.ok ? "ok" : "bad"}`;
       status.textContent = state.portraitCheck.ok ? "检查完成，没有阻断问题。" : "检查完成，发现需要处理的问题。";
       renderPortraitCheckResult(resultBox, state.portraitCheck);
@@ -8600,6 +8751,7 @@ function renderPortraitCheckTool() {
       renderProblemIndicators();
     } catch (error) {
       state.portraitCheck = null;
+      projectProblemsCache = null;
       renderProblemIndicators();
       status.className = "static-tool-status bad";
       status.textContent = error.message;
@@ -9470,8 +9622,8 @@ async function createAndUseShopResource(record, field, resourceId, entry, button
   }
 }
 
-function renderPortraitPicker() {
-  const scrollState = capturePortraitPickerScrollState();
+function renderPortraitPicker(options = {}) {
+  const scrollState = options.resetResults ? null : capturePortraitPickerScrollState();
   const existing = document.getElementById("portraitPickerOverlay");
   if (existing) {
     existing.remove();
@@ -9522,7 +9674,8 @@ function renderPortraitPicker() {
   search.value = state.portraitPicker.search;
   bindImeSafeInput(search, (value) => {
     state.portraitPicker.search = value;
-    renderPortraitPicker();
+    rerenderSearchResults(search, () => renderPortraitPicker({ resetResults: true }),
+      () => document.querySelector("#portraitPickerOverlay .portrait-picker-search"));
   });
 
   const allEntries = getHeadPortraitLibraryEntries();
@@ -9530,7 +9683,7 @@ function renderPortraitPicker() {
   const pickerModel = createAssetLibraryPickerModel(allEntries, query, state.portraitPicker.selectedAssetPath);
   const entries = pickerModel.visibleEntries;
   const selectedEntry = pickerModel.selectedEntry;
-  if (selectedEntry) {
+  if (selectedEntry && !state.portraitPicker.selectedAssetPath) {
     state.portraitPicker.selectedAssetPath = selectedEntry.assetPath;
   }
 
@@ -9789,8 +9942,8 @@ function renderPortraitPicker() {
   restorePortraitPickerScrollState(scrollState);
 }
 
-function renderItemPicturePicker() {
-  const scrollState = captureItemPicturePickerScrollState();
+function renderItemPicturePicker(options = {}) {
+  const scrollState = options.resetResults ? null : captureItemPicturePickerScrollState();
   const existing = document.getElementById("itemPicturePickerOverlay");
   if (existing) {
     existing.remove();
@@ -9841,7 +9994,8 @@ function renderItemPicturePicker() {
   search.value = state.itemPicturePicker.search;
   bindImeSafeInput(search, (value) => {
     state.itemPicturePicker.search = value;
-    renderItemPicturePicker();
+    rerenderSearchResults(search, () => renderItemPicturePicker({ resetResults: true }),
+      () => document.querySelector("#itemPicturePickerOverlay .portrait-picker-search"));
   });
 
   const allEntries = getItemPictureLibraryEntries();
@@ -9849,7 +10003,7 @@ function renderItemPicturePicker() {
   const pickerModel = createAssetLibraryPickerModel(allEntries, query, state.itemPicturePicker.selectedAssetPath);
   const entries = pickerModel.visibleEntries;
   const selectedEntry = pickerModel.selectedEntry;
-  if (selectedEntry) {
+  if (selectedEntry && !state.itemPicturePicker.selectedAssetPath) {
     state.itemPicturePicker.selectedAssetPath = selectedEntry.assetPath;
   }
 
@@ -9987,8 +10141,8 @@ function renderItemPicturePicker() {
   restoreItemPicturePickerScrollState(scrollState);
 }
 
-function renderShopResourcePicker() {
-  const scrollState = captureShopResourcePickerScrollState();
+function renderShopResourcePicker(options = {}) {
+  const scrollState = options.resetResults ? null : captureShopResourcePickerScrollState();
   const existing = document.getElementById("shopResourcePickerOverlay");
   if (existing) {
     existing.remove();
@@ -10043,7 +10197,8 @@ function renderShopResourcePicker() {
   search.value = state.shopResourcePicker.search;
   bindImeSafeInput(search, (value) => {
     state.shopResourcePicker.search = value;
-    renderShopResourcePicker();
+    rerenderSearchResults(search, () => renderShopResourcePicker({ resetResults: true }),
+      () => document.querySelector("#shopResourcePickerOverlay .portrait-picker-search"));
   });
 
   const allEntries = getShopResourceLibraryEntries(field);
@@ -10051,7 +10206,7 @@ function renderShopResourcePicker() {
   const pickerModel = createAssetLibraryPickerModel(allEntries, query, state.shopResourcePicker.selectedAssetPath);
   const entries = pickerModel.visibleEntries;
   const selectedEntry = pickerModel.selectedEntry;
-  if (selectedEntry) {
+  if (selectedEntry && !state.shopResourcePicker.selectedAssetPath) {
     state.shopResourcePicker.selectedAssetPath = selectedEntry.assetPath;
   }
 
@@ -10257,7 +10412,8 @@ function renderMapResourcePicker() {
   search.value = picker.search;
   bindImeSafeInput(search, (value) => {
     picker.search = value;
-    renderMapResourcePicker();
+    rerenderSearchResults(search, renderMapResourcePicker,
+      () => document.querySelector("#mapResourcePickerOverlay .portrait-picker-search"));
   });
   const filter = document.createElement("select");
   filter.className = "map-resource-picker-filter";
@@ -10291,7 +10447,7 @@ function renderMapResourcePicker() {
   });
   const resources = pickerModel.visibleEntries;
   const selectedResource = pickerModel.selectedEntry;
-  if (selectedResource) {
+  if (selectedResource && !picker.selectedResourceId) {
     picker.selectedResourceId = selectedResource.id;
   }
 

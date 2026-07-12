@@ -1,5 +1,5 @@
 import { filterProblems, getProblemFilterOptions, summarizeProblems } from "../core/problems.js?v=20260711-core-17";
-import { bindImeSafeInput } from "../core/input-composition.js?v=20260711-core-17";
+import { bindImeSafeInput, rerenderPreservingInput } from "../core/input-composition.js?v=20260712-search-1";
 
 const severityLabels = Object.freeze({ error: "错误", warning: "警告", suggestion: "建议" });
 
@@ -48,13 +48,8 @@ export function renderProblemCenter(container, model, actions = {}) {
   search.placeholder = "搜索问题、文件或对象 ID";
   search.value = model.filters.query || "";
   bindImeSafeInput(search, (value) => {
-    const cursor = search.selectionStart ?? value.length;
-    actions.setFilter?.("query", value);
-    requestAnimationFrame(() => {
-      const nextSearch = container.querySelector(".problem-query");
-      nextSearch?.focus();
-      nextSearch?.setSelectionRange(cursor, cursor);
-    });
+    rerenderPreservingInput(search, () => actions.setFilter?.("query", value),
+      () => container.querySelector(".problem-query"));
   });
   const typeSelect = createSelect("内容类型", model.filters.contentType, options.contentTypes);
   typeSelect.addEventListener("change", () => actions.setFilter?.("contentType", typeSelect.value));

@@ -10,3 +10,8 @@ export function bindScrollMemory(element, memory, key) {
     element.scrollLeft = Number(saved?.left) || 0;
   });
 }
+
+export function resetScrollMemory(memory, key) {
+  if (!memory || !key) return;
+  delete memory[key];
+}

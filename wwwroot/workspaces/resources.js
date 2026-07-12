@@ -1,6 +1,6 @@
-import { bindImeSafeInput } from "../core/input-composition.js?v=20260711-core-17";
+import { bindImeSafeInput, rerenderPreservingInput } from "../core/input-composition.js?v=20260712-search-1";
 import { isAudioAsset, isImageAsset, resourceKinds } from "../domain/resource-catalog.js?v=20260711-stage5b-1";
-import { bindScrollMemory } from "../ui/scroll-memory.js?v=20260711-scroll-1";
+import { bindScrollMemory, resetScrollMemory } from "../ui/scroll-memory.js?v=20260712-search-1";
 
 const el = (tag, className = "", text = "") => {
   const node = document.createElement(tag);
@@ -88,7 +88,11 @@ export function renderResourcesWorkspace(container, { state, catalog, assets, on
   header.append(heading, tabs); container.appendChild(header);
   const tools = el("div", "resource-workspace-tools");
   const search = el("input", "search resource-workspace-search"); search.type = "search"; search.value = ws.search; search.placeholder = ws.tab === "resources" ? "搜索资源 ID、组、value 或引用位置" : "搜索资产文件名或路径";
-  bindImeSafeInput(search, (value) => onChange("search", value, { restoreFocus: true })); tools.appendChild(search);
+  bindImeSafeInput(search, (value) => {
+    resetScrollMemory(state.workspaceScrollPositions, `resources:list:${ws.tab}`);
+    rerenderPreservingInput(search, () => onChange("search", value),
+      () => container.querySelector(".resource-workspace-search"));
+  }); tools.appendChild(search);
   if (ws.tab === "resources") {
     const group = el("select", "input"); group.append(new Option("全部资源组", "all"));
     for (const name of [...new Set(catalog.map((item) => item.group))].sort((a, b) => a.localeCompare(b, "zh-CN"))) group.append(new Option(name || "未分组", name));

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { bindScrollMemory } from "../wwwroot/ui/scroll-memory.js";
+import { bindScrollMemory, resetScrollMemory } from "../wwwroot/ui/scroll-memory.js";
 
 test("统一滚动记忆在重绘后恢复位置并持续记录", async () => {
   const listeners = new Map();
@@ -20,4 +20,10 @@ test("统一滚动记忆在重绘后恢复位置并持续记录", async () => {
   element.scrollLeft = 0;
   listeners.get("scroll")();
   assert.deepEqual(memory["items:list"], { top: 515, left: 0 });
+});
+
+test("搜索条件变化会清除旧结果列表的滚动位置", () => {
+  const memory = { "items:list": { top: 515, left: 0 } };
+  resetScrollMemory(memory, "items:list");
+  assert.equal(memory["items:list"], undefined);
 });

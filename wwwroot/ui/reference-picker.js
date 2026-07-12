@@ -1,4 +1,4 @@
-import { bindImeSafeInput } from "../core/input-composition.js?v=20260711-core-17";
+import { bindImeSafeInput } from "../core/input-composition.js?v=20260712-search-1";
 
 function element(tag, className = "", text = "") {
   const node = document.createElement(tag);

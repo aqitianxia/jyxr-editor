@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { createMapDefinition, ensureMapShape, matchesMapSearch, moveMapLocation } from "../wwwroot/domain/maps.js";
+import { createMapDefinition, ensureMapShape, getMapConditionValueIssue, mapConditionTypes, matchesMapSearch, moveMapLocation } from "../wwwroot/domain/maps.js";
 
 test("新建地图只使用运行时支持的字段", () => {
   assert.deepEqual(createMapDefinition("测试地图"), {
@@ -69,4 +69,27 @@ test("点位排序保留对象和未知字段", () => {
   assert.equal(moveMapLocation(record, 0, 1), 1);
   assert.equal(record.locations[1], first);
   assert.equal(record.locations[1].custom, 1);
+});
+
+test("地图条件清单与运行时解析器保持一致", () => {
+  assert.deepEqual(mapConditionTypes, [
+    "always", "silver_at_least", "gold_at_least", "friendCount", "current_map",
+    "event_completed", "event_finished", "event_not_completed", "event_not_finished",
+    "time_slot", "in_time", "not_in_time", "key_in_team", "key_not_in_team", "in_team", "not_in_team",
+    "have_item", "not_have_item", "level_greater_than", "level_less_than", "shenfa_greater_than",
+    "skill_less_than", "skill_more_than", "should_finish", "follow_story", "should_not_finish",
+    "has_time_key", "not_has_time_key", "exceed_day", "not_exceed_day", "in_round", "not_in_round",
+    "zhoumu_greater_than", "game_mode", "in_menpai", "in_sect", "not_in_menpai", "not_in_sect",
+    "in_newbie_task",
+  ]);
+});
+
+test("地图条件参数按运行时分隔与非负整数规则检查", () => {
+  assert.equal(getMapConditionValueIssue({ type: "always", value: "" }), "");
+  assert.equal(getMapConditionValueIssue({ type: "silver_at_least", value: "100" }), "");
+  assert.equal(getMapConditionValueIssue({ type: "silver_at_least", value: "-1" }), "必须填写非负整数。");
+  assert.equal(getMapConditionValueIssue({ type: "have_item", value: "小还丹#2" }), "");
+  assert.equal(getMapConditionValueIssue({ type: "level_greater_than", value: "主角#10" }), "");
+  assert.equal(getMapConditionValueIssue({ type: "skill_more_than", value: "主角#太极拳#5" }), "");
+  assert.match(getMapConditionValueIssue({ type: "skill_more_than", value: "主角#太极拳" }), /角色#技能/);
 });

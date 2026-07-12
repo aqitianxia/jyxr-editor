@@ -126,6 +126,7 @@ export function createEditorState() {
     },
     assetImageInfo: new Map(),
     assetFilePathSet: new Set(),
+    assetBasenameIndexes: new Map(),
     resourceValues: new Map(),
     portraitCheck: null,
     storyGraph: null,

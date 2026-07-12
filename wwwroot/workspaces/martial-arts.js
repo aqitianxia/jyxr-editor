@@ -1,6 +1,6 @@
-import { bindImeSafeInput } from "../core/input-composition.js?v=20260711-core-17";
+import { bindImeSafeInput } from "../core/input-composition.js?v=20260712-search-1";
 import { createEmbeddedJsonEditor, disposeEmbeddedCodeEditors } from "../ui/code-editor.js?v=20260711-stage6-1";
-import { bindScrollMemory } from "../ui/scroll-memory.js?v=20260711-scroll-1";
+import { bindScrollMemory } from "../ui/scroll-memory.js?v=20260712-search-1";
 import {
   createFormSkill,
   createLegendCondition,
@@ -628,7 +628,6 @@ function renderResourcePicker(root, context) {
   dialog.append(header, search, body, footer);
   overlay.appendChild(dialog);
   root.appendChild(overlay);
-  queueMicrotask(() => search.focus());
 }
 
 function renderSpeech(parent, context, record) {

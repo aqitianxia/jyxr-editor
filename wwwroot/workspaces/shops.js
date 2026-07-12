@@ -1,4 +1,4 @@
-import { bindImeSafeInput } from "../core/input-composition.js?v=20260711-core-17";
+import { bindImeSafeInput } from "../core/input-composition.js?v=20260712-search-1";
 import {
   createShopProductInfo,
   getShopProductPriceMode,
@@ -9,7 +9,7 @@ import {
 } from "../domain/shops.js?v=20260711-stage7-1";
 import { createEmbeddedJsonEditor, disposeEmbeddedCodeEditors } from "../ui/code-editor.js?v=20260711-stage6-1";
 import { createReferencePicker, createReferenceSummary } from "../ui/reference-picker.js?v=20260711-core-17";
-import { bindScrollMemory } from "../ui/scroll-memory.js?v=20260711-scroll-1";
+import { bindScrollMemory } from "../ui/scroll-memory.js?v=20260712-search-1";
 
 const tabs = Object.freeze([
   ["products", "商品"],

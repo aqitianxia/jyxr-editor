@@ -1,4 +1,4 @@
-import { bindImeSafeInput } from "../core/input-composition.js?v=20260711-core-17";
+import { bindImeSafeInput } from "../core/input-composition.js?v=20260712-search-1";
 import {
   affixTypes,
   applyItemType,
@@ -21,7 +21,7 @@ import {
   weaponTypes,
 } from "../domain/items.js?v=20260711-stage6-1";
 import { createEmbeddedJsonEditor, disposeEmbeddedCodeEditors } from "../ui/code-editor.js?v=20260711-stage6-1";
-import { bindScrollMemory } from "../ui/scroll-memory.js?v=20260711-scroll-1";
+import { bindScrollMemory } from "../ui/scroll-memory.js?v=20260712-search-1";
 import { createReferencePicker, createReferenceSummary } from "../ui/reference-picker.js?v=20260711-core-17";
 
 const tabs = Object.freeze([
@@ -154,6 +154,7 @@ function renderList(parent, options) {
   const list = el("div", "item-record-list");
   for (const entry of matches) {
     const card = button("", "item-record-card", () => onSelect(entry.index));
+    card.dataset.recordIndex = String(entry.index);
     card.classList.toggle("active", entry.index === state.selectedRecordIndex);
     const thumb = el("span", "item-record-thumb");
     if (entry.picture?.previewPath) {
@@ -601,14 +602,31 @@ function renderDetail(parent, options) {
   parent.appendChild(body);
 }
 
-export function renderItemWorkspace(container, options) {
-  disposeEmbeddedCodeEditors(container);
-  container.replaceChildren();
-  const shell = el("div", "item-workspace-shell");
-  const list = el("aside", "item-workspace-list");
-  const detail = el("main", "item-workspace-detail");
-  shell.append(list, detail);
-  container.appendChild(shell);
-  renderList(list, options);
-  renderDetail(detail, options);
+export function renderItemWorkspace(container, options, renderOptions = {}) {
+  const renderListPanel = renderOptions.list !== false;
+  const renderDetailPanel = renderOptions.detail !== false;
+  let shell = container.firstElementChild;
+  if (!shell?.classList.contains("item-workspace-shell")) {
+    disposeEmbeddedCodeEditors(container);
+    container.replaceChildren();
+    shell = el("div", "item-workspace-shell");
+    shell.append(el("aside", "item-workspace-list"), el("main", "item-workspace-detail"));
+    container.appendChild(shell);
+  }
+
+  const list = shell.querySelector(".item-workspace-list");
+  const detail = shell.querySelector(".item-workspace-detail");
+  if (renderListPanel) {
+    list.replaceChildren();
+    renderList(list, options);
+  } else {
+    for (const card of list.querySelectorAll(".item-record-card")) {
+      card.classList.toggle("active", Number(card.dataset.recordIndex) === options.state.selectedRecordIndex);
+    }
+  }
+  if (renderDetailPanel) {
+    disposeEmbeddedCodeEditors(detail);
+    detail.replaceChildren();
+    renderDetail(detail, options);
+  }
 }

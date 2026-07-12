@@ -1,6 +1,6 @@
 import { createEmbeddedJsonEditor, disposeEmbeddedCodeEditors } from "../ui/code-editor.js?v=20260711-stage6-1";
 import { createReferencePicker } from "../ui/reference-picker.js?v=20260711-core-17";
-import { bindScrollMemory } from "../ui/scroll-memory.js?v=20260711-scroll-1";
+import { bindScrollMemory } from "../ui/scroll-memory.js?v=20260712-search-1";
 import { getSectIssues, matchesSectSearch } from "../domain/sects.js?v=20260711-stage9-2";
 
 const tabs = [["overview", "门派资料"], ["references", "内容引用"], ["advanced", "高级 JSON"]];

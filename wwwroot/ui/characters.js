@@ -1,7 +1,7 @@
 import { createReferencePicker, createReferenceSummary } from "./reference-picker.js?v=20260711-core-17";
-import { bindImeSafeInput } from "../core/input-composition.js?v=20260711-core-17";
+import { bindImeSafeInput } from "../core/input-composition.js?v=20260712-search-1";
 import { createEmbeddedJsonEditor, disposeEmbeddedCodeEditors } from "./code-editor.js?v=20260711-stage6-1";
-import { bindScrollMemory } from "./scroll-memory.js?v=20260711-scroll-1";
+import { bindScrollMemory } from "./scroll-memory.js?v=20260712-search-1";
 import { characterStatFields } from "../domain/characters.js?v=20260712-navigation-2";
 
 const CHARACTER_FILTERS = Object.freeze([
@@ -156,13 +156,16 @@ function renderList(container, options) {
     const portrait = getPortraitInfo(record);
     return { record, index, issues, portrait };
   }).filter(({ record, issues, portrait }) => matchesSearch(record, query)
-    && (matchesRecordFilter ? matchesRecordFilter(record, workspace.filter) : matchesFilter(record, workspace.filter, issues, portrait)));
+    && (matchesRecordFilter
+      ? matchesRecordFilter(record, workspace.filter, { issues, portraitInfo: portrait })
+      : matchesFilter(record, workspace.filter, issues, portrait)));
 
   const summary = el("div", "character-list-summary", `显示 ${matches.length} / ${state.records.length}`);
   container.appendChild(summary);
   const list = el("div", "character-record-list");
   for (const item of matches) {
     const card = button("", "character-record-card", () => onSelect(item.index));
+    card.dataset.recordIndex = String(item.index);
     card.classList.toggle("active", item.index === state.selectedRecordIndex);
     if (item.portrait?.previewPath) {
       const image = document.createElement("img");
@@ -462,16 +465,31 @@ function renderDetail(container, options) {
   }
 }
 
-export function renderCharacterWorkspace(container, options) {
-  const { state } = options;
-  disposeEmbeddedCodeEditors(container);
-  container.replaceChildren();
-  const shell = el("div", "character-workspace-shell");
-  const list = el("aside", "character-workspace-list");
-  const detail = el("main", "character-workspace-detail");
-  shell.appendChild(list);
-  shell.appendChild(detail);
-  container.appendChild(shell);
-  renderList(list, options);
-  renderDetail(detail, options);
+export function renderCharacterWorkspace(container, options, renderOptions = {}) {
+  const renderListPanel = renderOptions.list !== false;
+  const renderDetailPanel = renderOptions.detail !== false;
+  let shell = container.firstElementChild;
+  if (!shell?.classList.contains("character-workspace-shell")) {
+    disposeEmbeddedCodeEditors(container);
+    container.replaceChildren();
+    shell = el("div", "character-workspace-shell");
+    shell.append(el("aside", "character-workspace-list"), el("main", "character-workspace-detail"));
+    container.appendChild(shell);
+  }
+
+  const list = shell.querySelector(".character-workspace-list");
+  const detail = shell.querySelector(".character-workspace-detail");
+  if (renderListPanel) {
+    list.replaceChildren();
+    renderList(list, options);
+  } else {
+    for (const card of list.querySelectorAll(".character-record-card")) {
+      card.classList.toggle("active", Number(card.dataset.recordIndex) === options.state.selectedRecordIndex);
+    }
+  }
+  if (renderDetailPanel) {
+    disposeEmbeddedCodeEditors(detail);
+    detail.replaceChildren();
+    renderDetail(detail, options);
+  }
 }
