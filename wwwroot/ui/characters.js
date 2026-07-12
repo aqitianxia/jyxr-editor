@@ -133,7 +133,7 @@ function renderEmpty(container, title, detail) {
 }
 
 function renderList(container, options) {
-  const { state, getIssues, getPortraitInfo, matchesRecordFilter, onSelect, onSearch, onFilter, onLoadMore, onCreate, onCreateSpeaker } = options;
+  const { state, getIssues, getPortraitInfo, matchesRecordFilter, onSelect, onSearch, onFilter, onCreate, onCreateSpeaker } = options;
   const workspace = state.characterWorkspace;
   const header = el("div", "character-list-header");
   const heading = el("div");
@@ -164,14 +164,10 @@ function renderList(container, options) {
   }).filter(({ record, issues, portrait }) => matchesSearch(record, query)
     && (matchesRecordFilter ? matchesRecordFilter(record, workspace.filter) : matchesFilter(record, workspace.filter, issues, portrait)));
 
-  const visibleLimit = Math.max(60, Number(workspace.visibleLimit) || 60);
-  const shown = matches.slice(0, visibleLimit);
-  const selected = matches.find((item) => item.index === state.selectedRecordIndex);
-  if (selected && !shown.includes(selected)) shown.unshift(selected);
-  const summary = el("div", "character-list-summary", `显示 ${shown.length} / ${matches.length}，全部 ${state.formRecords.length}`);
+  const summary = el("div", "character-list-summary", `显示 ${matches.length} / ${state.formRecords.length}`);
   container.appendChild(summary);
   const list = el("div", "character-record-list");
-  for (const item of shown) {
+  for (const item of matches) {
     const card = button("", "character-record-card", () => onSelect(item.index));
     card.classList.toggle("active", item.index === state.selectedRecordIndex);
     if (item.portrait?.previewPath) {
@@ -189,9 +185,6 @@ function renderList(container, options) {
     card.appendChild(copy);
     if (item.issues.length > 0) card.appendChild(el("span", "character-issue-badge", String(item.issues.length)));
     list.appendChild(card);
-  }
-  if (visibleLimit < matches.length) {
-    list.appendChild(button(`再加载 ${Math.min(60, matches.length - visibleLimit)} 条`, "button secondary character-list-more", onLoadMore));
   }
   if (matches.length === 0) renderEmpty(list, "没有匹配的角色", "尝试清除搜索词或切换筛选条件。");
   container.appendChild(list);

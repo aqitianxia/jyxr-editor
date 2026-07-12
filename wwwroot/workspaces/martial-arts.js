@@ -133,13 +133,9 @@ function renderCatalog(parent, context) {
   const records = workspace.documents[workspace.activeKind] || [];
   const matches = records.map((record, index) => ({ record, index, entry: { kind: workspace.activeKind, record } }))
     .filter(({ entry }) => matchesMartialSearch(entry, workspace.search));
-  const visibleLimit = Math.max(60, Number(workspace.visibleLimit) || 60);
-  const shown = matches.slice(0, visibleLimit);
-  const selected = matches.find((entry) => entry.index === workspace.selectedIndex);
-  if (selected && !shown.includes(selected)) shown.unshift(selected);
-  parent.appendChild(el("div", "martial-list-count", `显示 ${shown.length} / ${matches.length}，全部 ${records.length}`));
+  parent.appendChild(el("div", "martial-list-count", `显示 ${matches.length} / ${records.length}`));
   const list = el("div", "martial-record-list");
-  for (const { record, index } of shown) {
+  for (const { record, index } of matches) {
     const issues = context.getIssues({ kind: workspace.activeKind, record });
     const row = button("", "martial-record-row", () => context.onSelect(index));
     row.classList.toggle("active", index === workspace.selectedIndex);
@@ -160,7 +156,6 @@ function renderCatalog(parent, context) {
     row.append(thumb, copy, meta);
     list.appendChild(row);
   }
-  if (visibleLimit < matches.length) list.appendChild(button(`再加载 ${Math.min(60, matches.length - visibleLimit)} 条`, "button secondary martial-list-more", context.onLoadMore));
   if (!matches.length) empty(list, "没有匹配的武学", "清除搜索词后再试，或新建一条定义。");
   parent.appendChild(list);
   bindScrollMemory(list, state.workspaceScrollPositions, `martial:list:${workspace.activeKind}`);

@@ -12,7 +12,6 @@ body.resources-mode .primary-navigation{overflow-y:auto}
 .resource-workspace-list{min-height:420px;max-height:calc(100vh - 230px);overflow:auto}
 .resource-workspace-detail{position:sticky;top:0;padding:16px;max-height:calc(100vh - 110px);overflow:auto}
 .resource-list-summary{position:sticky;top:0;z-index:1;padding:9px 12px;background:var(--panel-2);border-bottom:1px solid var(--border);font-size:12px;color:var(--muted)}
-.resource-list-more{display:block;width:calc(100% - 24px);margin:10px 12px}
 .resource-list-row{width:100%;display:grid;grid-template-columns:52px minmax(0,1fr) auto;align-items:center;gap:12px;padding:9px 12px;border:0;border-bottom:1px solid var(--border);background:var(--panel);color:var(--text);text-align:left}
 .resource-list-row:hover,.resource-list-row.active{background:var(--color-primary-soft)}
 .resource-list-row.active{box-shadow:inset 3px 0 var(--accent)}

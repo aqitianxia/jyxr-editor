@@ -1,11 +1,9 @@
-import { state } from "./core/state.js?v=20260712-phase2-2";
+import { state } from "./core/state.js?v=20260712-performance-2";
 import { editorVersion } from "./core/version.js?v=20260711-stage9-1";
 import { createEditorApi } from "./core/api.js?v=20260711-core-17";
 import { createCommandRegistry } from "./core/commands.js?v=20260711-core-17";
 import { createDirtyStateController } from "./core/dirty-state.js?v=20260711-core-17";
 import { createEventBus } from "./core/events.js?v=20260711-core-17";
-import { createContentLifecycle } from "./core/content-lifecycle.js?v=20260712-phase2-2";
-import { createSaveCoordinator } from "./core/save-coordinator.js?v=20260712-phase2-2";
 import { createPreferences, storageKeys } from "./core/preferences.js?v=20260712-navigation-1";
 import { normalizeWorkspaceMode } from "./core/router.js?v=20260712-stage11-1";
 import { bindImeSafeInput } from "./core/input-composition.js?v=20260711-core-17";
@@ -19,12 +17,17 @@ import { createProblemSummary, renderStatusMessage } from "./ui/problem-list.js?
 import { createShellController } from "./ui/shell.js?v=20260712-navigation-1";
 import { renderProjectHome } from "./ui/home.js?v=20260712-performance-2";
 import { renderProblemCenter } from "./ui/problem-center.js?v=20260711-core-17";
+import { renderCharacterWorkspace } from "./ui/characters.js?v=20260711-stage6-2";
 import { createEmbeddedJsonEditor, disposeEmbeddedCodeEditors } from "./ui/code-editor.js?v=20260711-stage6-1";
 import { createGrowthTemplate, ensureGrowthTemplateShape } from "./domain/growth-templates.js?v=20260711-stage9-1";
+import { renderGrowthTemplateWorkspace } from "./workspaces/growth-templates.js?v=20260711-stage9-2";
 import { cloneJson as cloneSectJson, createSectDefinition, ensureSectShape, getSectIssues } from "./domain/sects.js?v=20260711-stage9-2";
+import { renderSectWorkspace } from "./workspaces/sects.js?v=20260711-stage9-2";
 import { createMapDefinition, ensureMapEventShape, ensureMapLocationShape, ensureMapShape, matchesMapSearch, moveMapLocation as moveMapLocationEntry } from "./domain/maps.js?v=20260712-stage11-1";
 import { createItemDefinition } from "./domain/items.js?v=20260711-stage6-1";
+import { renderItemWorkspace } from "./workspaces/items.js?v=20260711-stage6-2";
 import { createShopDefinition, createShopProduct, ensureShopShape as ensureShopWorkspaceShape, moveShopProduct as moveShopProductEntry } from "./domain/shops.js?v=20260711-stage7-1";
+import { renderShopWorkspace } from "./workspaces/shops.js?v=20260711-stage7-2";
 import {
   buildMartialIndex,
   cloneJson as cloneMartialJson,
@@ -37,6 +40,7 @@ import {
   moveEntry as moveMartialEntry,
   resolvePresentation as resolveMartialPresentation,
 } from "./domain/martial-arts.js?v=20260711-stage8-5";
+import { renderMartialArtsWorkspace } from "./workspaces/martial-arts.js?v=20260711-stage8-5";
 import {
   buildResourceCatalog,
   findAssetPath as findCatalogAssetPath,
@@ -44,6 +48,7 @@ import {
   isImageAsset,
   normalizeArtAssetValue,
 } from "./domain/resource-catalog.js?v=20260711-stage5b-1";
+import { renderResourcesWorkspace } from "./workspaces/resources.js?v=20260711-stage5b-2";
 import { createResourcePickerModel } from "./domain/resource-picker.js?v=20260711-stage5c-1";
 import { bindResourcePickerKeyboard, restoreResourcePickerKeyboardFocus } from "./ui/resource-picker-keyboard.js?v=20260711-stage5c-1";
 import { bindScrollMemory } from "./ui/scroll-memory.js?v=20260711-scroll-1";
@@ -55,6 +60,7 @@ import {
   matchesStoryDocument,
   mergeDraftStoryGraph,
 } from "./domain/story-workspace.js?v=20260712-stage12-2";
+import { destroyStoryGraph, fitStoryGraph, focusStoryGraph, renderStoryGraph } from "./ui/story-graph.js?v=20260712-stage12-2";
 
 const dataFileDisplayNames = new Map([
   ["battles.json", "战斗"],
@@ -180,47 +186,8 @@ const monacoState = {
   loader: null,
 };
 let storyGraphRenderVersion = 0;
-let renderCharacterWorkspace;
-let renderGrowthTemplateWorkspace;
-let renderSectWorkspace;
-let renderItemWorkspace;
-let renderShopWorkspace;
-let renderMartialArtsWorkspace;
-let renderResourcesWorkspace;
-let destroyStoryGraph;
-let fitStoryGraph;
-let focusStoryGraph;
-let renderStoryGraph;
-const workspaceViewPromises = new Map();
-const workspaceViewLoaders = new Map([
-  ["characters", () => import("./ui/characters.js?v=20260712-phase2-2").then((module) => {
-    renderCharacterWorkspace = module.renderCharacterWorkspace;
-  })],
-  ["growth", () => import("./workspaces/growth-templates.js?v=20260712-phase2-2").then((module) => {
-    renderGrowthTemplateWorkspace = module.renderGrowthTemplateWorkspace;
-  })],
-  ["sects", () => import("./workspaces/sects.js?v=20260712-phase2-2").then((module) => {
-    renderSectWorkspace = module.renderSectWorkspace;
-  })],
-  ["items", () => import("./workspaces/items.js?v=20260712-phase2-2").then((module) => {
-    renderItemWorkspace = module.renderItemWorkspace;
-  })],
-  ["shops", () => import("./workspaces/shops.js?v=20260712-phase2-2").then((module) => {
-    renderShopWorkspace = module.renderShopWorkspace;
-  })],
-  ["martial", () => import("./workspaces/martial-arts.js?v=20260712-phase2-2").then((module) => {
-    renderMartialArtsWorkspace = module.renderMartialArtsWorkspace;
-  })],
-  ["assets", () => import("./workspaces/resources.js?v=20260712-phase2-2").then((module) => {
-    renderResourcesWorkspace = module.renderResourcesWorkspace;
-  })],
-  ["story", () => import("./ui/story-graph.js?v=20260712-phase2-2").then((module) => {
-    destroyStoryGraph = module.destroyStoryGraph;
-    fitStoryGraph = module.fitStoryGraph;
-    focusStoryGraph = module.focusStoryGraph;
-    renderStoryGraph = module.renderStoryGraph;
-  })],
-]);
+let assetLoadPromise = null;
+let storyGraphLoadPromise = null;
 
 const preferences = createPreferences();
 const recentItemsStore = createRecentItemsStore({
@@ -245,18 +212,7 @@ const shellController = createShellController({
   navigationSectionsPreferenceKey: storageKeys.navigationSections,
   scheduleLayout: scheduleEditorLayout,
 });
-const contentLifecycle = createContentLifecycle({
-  state,
-  loadDataFiles,
-  rebuildContentIndex,
-  loadAssetFiles,
-  loadStoryGraph,
-});
 const { requestJson } = api;
-const saveCoordinator = createSaveCoordinator({
-  requestJson,
-  refreshContent: (scope) => contentLifecycle.refresh(scope),
-});
 commandRegistry.register("file.save", saveCurrentFile, { shortcut: "mod+s" });
 commandRegistry.register("file.format", formatCurrentJson, { shortcut: "mod+shift+f" });
 
@@ -894,7 +850,7 @@ function setMonacoDiagnostics(diagnostics) {
 async function boot() {
   await loadWorkspace();
   state.recentEntries = recentItemsStore.read(state.activeModId);
-  await contentLifecycle.refresh();
+  await refreshContentState();
   setMode("home");
 }
 
@@ -983,7 +939,11 @@ async function switchMod(modId) {
   };
   state.selectedStoryGroupId = "";
   state.selectedStoryNodeId = "";
-  contentLifecycle.resetOptional();
+  state.assetFiles = [];
+  state.assetFilePathSet = new Set();
+  state.assetsLoaded = false;
+  state.storyGraph = null;
+  state.storyGraphLoaded = false;
   state.problemCenter.validation = null;
   setEditorValue("");
   setEditorReadOnly(false);
@@ -991,7 +951,7 @@ async function switchMod(modId) {
   elements.currentPath.textContent = "未选择文件";
   elements.saveState.textContent = "";
   renderWorkspacePath();
-  await contentLifecycle.refresh();
+  await refreshContentState();
   state.recentEntries = recentItemsStore.read(state.activeModId);
   renderDirtyState();
   renderCursorState();
@@ -1058,26 +1018,43 @@ async function loadStoryGraph() {
   }
 }
 
-function ensureWorkspaceViewLoaded(mode) {
-  const loader = workspaceViewLoaders.get(mode);
-  if (!loader) return Promise.resolve();
-  if (!workspaceViewPromises.has(mode)) {
-    const promise = loader().catch((error) => {
-      workspaceViewPromises.delete(mode);
-      throw error;
-    });
-    workspaceViewPromises.set(mode, promise);
+async function refreshContentState({ assetsChanged = false, storyChanged = false } = {}) {
+  if (storyChanged && !state.storyGraphLoaded) {
+    state.storyGraph = null;
   }
-  return workspaceViewPromises.get(mode);
+
+  const refreshes = [loadDataFiles(), rebuildContentIndex()];
+  if (assetsChanged && state.assetsLoaded) refreshes.push(loadAssetFiles());
+  if (storyChanged && state.storyGraphLoaded) refreshes.push(loadStoryGraph());
+  await Promise.all(refreshes);
+}
+
+function ensureAssetFilesLoaded() {
+  if (state.assetsLoaded) return Promise.resolve();
+  if (!assetLoadPromise) {
+    assetLoadPromise = loadAssetFiles().finally(() => {
+      assetLoadPromise = null;
+    });
+  }
+  return assetLoadPromise;
+}
+
+function ensureStoryGraphLoaded() {
+  if (state.storyGraphLoaded) return Promise.resolve();
+  if (!storyGraphLoadPromise) {
+    storyGraphLoadPromise = loadStoryGraph().finally(() => {
+      storyGraphLoadPromise = null;
+    });
+  }
+  return storyGraphLoadPromise;
 }
 
 async function prepareWorkspaceMode(mode) {
-  await ensureWorkspaceViewLoaded(mode);
   if (["characters", "maps", "sects", "items", "shops", "martial", "assets"].includes(mode)) {
-    await contentLifecycle.ensureAssets();
+    await ensureAssetFilesLoaded();
   }
   if (mode === "story") {
-    await Promise.all([contentLifecycle.ensureStoryGraph(), initializeMonacoEditor()]);
+    await Promise.all([ensureStoryGraphLoaded(), initializeMonacoEditor()]);
   } else if (mode === "data") {
     await initializeMonacoEditor();
   }
@@ -1444,7 +1421,6 @@ async function reloadCurrentDataFile() {
 }
 
 async function openWorkspaceMode(mode) {
-  await prepareWorkspaceMode(mode);
   setMode(mode);
   if (mode === "data" && !state.dataFiles.some((file) => file.path === state.currentPath)) {
     await openLastDataFile();
@@ -1455,7 +1431,6 @@ async function openWorkspaceMode(mode) {
 }
 
 async function openStoryWorkspace() {
-  await prepareWorkspaceMode("story");
   const documents = buildStoryDocuments(state.dataFiles, state.storyGraph);
   if (documents.length === 0) {
     setMode("story");
@@ -1501,9 +1476,6 @@ function renderResourceWorkspaceView(options = {}) {
     assets,
     onChange: (key, value, changeOptions = {}) => {
       state.resourceWorkspace[key] = value;
-      if (["tab", "search", "group", "status"].includes(key)) {
-        state.resourceWorkspace.visibleLimit = 60;
-      }
       if (key === "tab") {
         state.resourceWorkspace.selectedKey = "";
         state.resourceWorkspace.search = "";
@@ -1519,23 +1491,15 @@ function renderResourceWorkspaceView(options = {}) {
   });
 }
 
-async function revealAssetInResourceWorkspace(assetPath) {
-  await prepareWorkspaceMode("assets");
+function revealAssetInResourceWorkspace(assetPath) {
   state.resourceWorkspace.tab = "assets";
   state.resourceWorkspace.search = "";
   state.resourceWorkspace.selectedKey = assetPath;
   setMode("assets");
 }
 
-async function openAssetWorkspaceFile(path) {
-  await prepareWorkspaceMode("assets");
-  setMode("assets");
-  openAssetFile(path);
-}
-
 
 async function openCharacterWorkspace() {
-  await prepareWorkspaceMode("characters");
   if (state.mode === "characters" && isCharacterFile() && state.formRecords.length > 0) {
     renderCharacterWorkspaceView();
     return;
@@ -1571,7 +1535,6 @@ function renderCharacterWorkspaceView() {
     },
     onSearch: (value) => {
       state.characterWorkspace.search = value;
-      state.characterWorkspace.visibleLimit = 60;
       renderCharacterWorkspaceView();
       const search = elements.characterWorkspaceView.querySelector(".character-list-search");
       if (search) {
@@ -1581,11 +1544,6 @@ function renderCharacterWorkspaceView() {
     },
     onFilter: (value) => {
       state.characterWorkspace.filter = value;
-      state.characterWorkspace.visibleLimit = 60;
-      renderCharacterWorkspaceView();
-    },
-    onLoadMore: () => {
-      state.characterWorkspace.visibleLimit += 60;
       renderCharacterWorkspaceView();
     },
     onTab: (value) => {
@@ -1692,7 +1650,6 @@ function deleteCharacterRecord() {
 }
 
 async function openItemWorkspace() {
-  await prepareWorkspaceMode("items");
   if (state.mode === "items" && isItemFile() && state.formRecords.length > 0) {
     renderItemWorkspaceView();
     return;
@@ -1722,7 +1679,6 @@ function renderItemWorkspaceView() {
     },
     onSearch: (value) => {
       state.itemWorkspace.search = value;
-      state.itemWorkspace.visibleLimit = 60;
       renderItemWorkspaceView();
       const search = elements.itemWorkspaceView.querySelector(".item-list-search");
       search?.focus();
@@ -1730,11 +1686,6 @@ function renderItemWorkspaceView() {
     },
     onFilter: (value) => {
       state.itemWorkspace.filter = value;
-      state.itemWorkspace.visibleLimit = 60;
-      renderItemWorkspaceView();
-    },
-    onLoadMore: () => {
-      state.itemWorkspace.visibleLimit += 60;
       renderItemWorkspaceView();
     },
     onTab: (value) => {
@@ -1854,7 +1805,7 @@ async function uploadCurrentItemPicture(file) {
   try {
     const result = await uploadItemImageAndBind(record, file, getBindableItemPictureId(record));
     if (!result) return;
-    await contentLifecycle.refresh({ assetsChanged: true });
+    await refreshContentState({ assetsChanged: true });
     record.picture = result.pictureId;
     syncFormToEditor();
     showValidation(result.validation.ok, `已上传并绑定：${result.pictureId} -> ${result.assetPath}`);
@@ -1865,7 +1816,6 @@ async function uploadCurrentItemPicture(file) {
 }
 
 async function openGrowthWorkspace() {
-  await prepareWorkspaceMode("growth");
   if (state.mode === "growth" && isGrowthFile() && state.formRecords.length > 0) {
     renderGrowthWorkspaceView();
     return;
@@ -1992,7 +1942,6 @@ function deleteGrowthTemplateRecord() {
 }
 
 async function openSectWorkspace() {
-  await prepareWorkspaceMode("sects");
   if (state.mode === "sects" && isSectFile() && state.formRecords.length > 0) {
     renderSectWorkspaceView();
     return;
@@ -2108,7 +2057,6 @@ function deleteSectRecord() {
 }
 
 async function openShopWorkspace() {
-  await prepareWorkspaceMode("shops");
   if (state.mode === "shops" && isShopFile() && state.formRecords.length > 0) {
     renderShopWorkspaceView();
     return;
@@ -2219,7 +2167,6 @@ function resetMartialWorkspaceState() {
 }
 
 async function openMartialWorkspace() {
-  await prepareWorkspaceMode("martial");
   const workspace = state.martialArtsWorkspace;
   if (state.mode === "martial" && Object.values(workspace.documents).some((records) => records.length > 0)) {
     renderMartialWorkspaceView();
@@ -2408,11 +2355,10 @@ function renderMartialWorkspaceView() {
       return resource ? resolveResourceAssetPath(resource) : "";
     },
     onSelectKind: (kind) => {
-      workspace.activeKind = kind; workspace.selectedIndex = 0; workspace.selectedFormIndex = -1; workspace.tab = "overview"; workspace.visibleLimit = 60; workspace.creatorOpen = false; workspace.creatorTemplate = ""; workspace.resourcePicker.open = false; state.currentPath = getMartialPath(kind); renderMartialWorkspaceView();
+      workspace.activeKind = kind; workspace.selectedIndex = 0; workspace.selectedFormIndex = -1; workspace.tab = "overview"; workspace.creatorOpen = false; workspace.creatorTemplate = ""; workspace.resourcePicker.open = false; state.currentPath = getMartialPath(kind); renderMartialWorkspaceView();
     },
     onSelect: (index) => { workspace.selectedIndex = index; workspace.selectedFormIndex = -1; renderMartialWorkspaceView(); },
-    onSearch: (value) => { workspace.search = value; workspace.visibleLimit = 60; renderMartialWorkspaceView(); const search = elements.martialWorkspaceView.querySelector('.martial-catalog-tools input[type="search"]'); search?.focus(); search?.setSelectionRange(value.length, value.length); },
-    onLoadMore: () => { workspace.visibleLimit += 60; renderMartialWorkspaceView(); },
+    onSearch: (value) => { workspace.search = value; renderMartialWorkspaceView(); const search = elements.martialWorkspaceView.querySelector('.martial-catalog-tools input[type="search"]'); search?.focus(); search?.setSelectionRange(value.length, value.length); },
     onTab: (tab) => { workspace.tab = tab; renderMartialWorkspaceView(); },
     onMutate: markMartialChanged,
     onReplace: (next) => {
@@ -2457,7 +2403,7 @@ function renderMartialWorkspaceView() {
         const result = await createGenericResource(id, "音效", entry.path);
         picker.target[picker.field] = result.id || id;
         workspace.resourcePicker = { open: false, type: "", search: "", selectedId: "", target: null, field: "", clearValue: null };
-        await contentLifecycle.refresh();
+        await refreshContentState();
         showValidation(result.validation.ok, result.validation.message);
         markMartialChanged();
       } catch (error) {
@@ -3050,7 +2996,8 @@ async function openRecentEntry(entry) {
   await prepareWorkspaceMode(entry.workspace === "assets" ? "assets" : "data");
   if (entry.workspace === "assets") {
     if (state.assetFilePathSet.has(entry.path)) {
-      await openAssetWorkspaceFile(entry.path);
+      setMode("assets");
+      openAssetFile(entry.path);
     }
     return;
   }
@@ -3094,7 +3041,8 @@ async function locateProblem(problem) {
   }
   if (location.workspace === "assets") {
     if (location.path && state.assetFilePathSet.has(location.path)) {
-      await openAssetWorkspaceFile(location.path);
+      setMode("assets");
+      openAssetFile(location.path);
     }
     return;
   }
@@ -4330,8 +4278,13 @@ async function saveCurrentFile() {
   try {
     const content = getEditorValue();
     parseJsonText(content);
-    const result = await saveCoordinator.saveJson(state.currentPath, content, {
-      storyChanged: isStoryDataFile(state.currentPath),
+    const result = await requestJson("/api/data/file", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        path: state.currentPath,
+        content,
+      }),
     });
 
     setEditorValue(result.content);
@@ -4343,6 +4296,7 @@ async function saveCurrentFile() {
       ? `已保存，备份：${result.backupPath}`
       : "已保存";
     showValidation(result.validation.ok, result.validation.message);
+    await refreshContentState({ storyChanged: isStoryDataFile(state.currentPath) });
     renderFileList();
     if (state.mode === "story") renderStoryView();
     if (state.mode === "characters") {
@@ -4379,7 +4333,11 @@ async function saveMartialWorkspace() {
     for (const kind of kinds) {
       const path = getMartialPath(kind);
       const content = `${JSON.stringify(workspace.documents[kind], null, 2)}\n`;
-      const result = await saveCoordinator.writeJson(path, content);
+      const result = await requestJson("/api/data/file", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ path, content }),
+      });
       validation = result.validation;
       const records = parseJsonText(result.content);
       records.forEach((record) => ensureMartialShape(kind, record));
@@ -4390,7 +4348,7 @@ async function saveMartialWorkspace() {
     }
     dirtyStateController.markClean({ render: false });
     elements.saveState.textContent = `已保存 ${saved.length} 个武学文件`;
-    await contentLifecycle.refresh();
+    await refreshContentState();
     showValidation(validation?.ok ?? true, validation?.message || `已保存：${saved.join("、")}`);
     renderMartialWorkspaceView();
     renderDirtyState();
@@ -4417,10 +4375,14 @@ async function saveCurrentStorySource() {
   elements.saveButton.disabled = true;
   try {
     const content = getEditorValue();
-    const result = await saveCoordinator.saveStorySource({
-      path: state.currentPath,
-      content,
-      compiledJson: analysis.jsonText,
+    const result = await requestJson("/api/story/source", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        path: state.currentPath,
+        content,
+        compiledJson: analysis.jsonText,
+      }),
     });
 
     state.storySource.text = result.content;
@@ -4434,6 +4396,7 @@ async function saveCurrentStorySource() {
       ? `已保存，生成：${result.compiledJsonPath}，备份：${backups.join("、")}`
       : `已保存，生成：${result.compiledJsonPath}`;
     showValidation(result.validation.ok, result.validation.message);
+    await refreshContentState({ storyChanged: true });
     renderFileList();
     if (state.mode === "story") renderStoryView();
   } catch (error) {
@@ -4483,7 +4446,14 @@ async function saveCurrentStoryJsonDsl() {
 
   elements.saveButton.disabled = true;
   try {
-    const result = await saveCoordinator.saveJson(state.currentPath, content, { storyChanged: true });
+    const result = await requestJson("/api/data/file", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        path: state.currentPath,
+        content,
+      }),
+    });
 
     state.storySource.jsonText = result.content;
     state.storySource.text = window.StoryDsl.decompileStoryJson(parseJsonText(result.content));
@@ -4495,6 +4465,7 @@ async function saveCurrentStoryJsonDsl() {
       ? `已保存 Story JSON，备份：${result.backupPath}`
       : "已保存 Story JSON";
     showValidation(result.validation.ok, result.validation.message);
+    await refreshContentState({ storyChanged: true });
     renderFileList();
     if (state.mode === "story") renderStoryView();
   } catch (error) {
@@ -4542,10 +4513,14 @@ async function saveCurrentStoryJsonAsSource() {
   elements.saveStorySourceButton.disabled = true;
   elements.saveButton.disabled = true;
   try {
-    const result = await saveCoordinator.saveStorySourceFromJson({
-      jsonPath: state.currentPath,
-      content: sourceText,
-      compiledJson,
+    const result = await requestJson("/api/story/source/from-json", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        jsonPath: state.currentPath,
+        content: sourceText,
+        compiledJson,
+      }),
     });
 
     state.currentPath = result.path;
@@ -4569,6 +4544,7 @@ async function saveCurrentStoryJsonAsSource() {
       ? `已另存为 ${result.path}，生成：${result.compiledJsonPath}，备份：${result.jsonBackupPath}`
       : `已另存为 ${result.path}，生成：${result.compiledJsonPath}`;
     showValidation(result.validation.ok, result.validation.message);
+    await refreshContentState({ storyChanged: true });
     updateStoryDslAnalysis({ showSuccess: true });
     renderFileList();
     renderDirtyState();
@@ -9415,7 +9391,7 @@ function createItemPictureSection(record, pictureInfo) {
       const pictureId = getBindableItemPictureId(record);
       const result = await uploadItemImageAndBind(record, file, pictureId);
       if (!result) return;
-      await contentLifecycle.refresh({ assetsChanged: true });
+      await refreshContentState({ assetsChanged: true });
       record.picture = result.pictureId;
       syncFormToEditor();
       showValidation(result.validation.ok, `已上传并绑定：${result.pictureId} -> ${result.assetPath}`);
@@ -9439,12 +9415,13 @@ function createItemPictureSection(record, pictureInfo) {
   openButton.type = "button";
   openButton.textContent = "打开图片";
   openButton.disabled = !pictureInfo.previewPath;
-  openButton.addEventListener("click", async () => {
+  openButton.addEventListener("click", () => {
     if (!pictureInfo.previewPath) {
       return;
     }
 
-    await openAssetWorkspaceFile(pictureInfo.previewPath);
+    setMode("assets");
+    openAssetFile(pictureInfo.previewPath);
   });
 
   const normalizeButton = document.createElement("button");
@@ -9482,7 +9459,7 @@ function createItemPictureSection(record, pictureInfo) {
     createResourceButton.disabled = true;
     try {
       const result = await createItemResource(pictureInfo.pictureId, pictureInfo.detectedAssetValue);
-      await contentLifecycle.refresh();
+      await refreshContentState();
       showValidation(result.validation.ok, result.validation.message);
       renderFormView();
     } catch (error) {
@@ -10548,12 +10525,13 @@ function createCharacterPortraitSection(record, portraitInfo) {
   openButton.type = "button";
   openButton.textContent = "打开图片";
   openButton.disabled = !portraitInfo.previewPath;
-  openButton.addEventListener("click", async () => {
+  openButton.addEventListener("click", () => {
     if (!portraitInfo.previewPath) {
       return;
     }
 
-    await openAssetWorkspaceFile(portraitInfo.previewPath);
+    setMode("assets");
+    openAssetFile(portraitInfo.previewPath);
   });
 
   const normalizeButton = document.createElement("button");
@@ -10582,7 +10560,7 @@ function createCharacterPortraitSection(record, portraitInfo) {
     createResourceButton.disabled = true;
     try {
       const result = await createPortraitResource(portraitInfo.portraitId, portraitInfo.detectedAssetValue);
-      await contentLifecycle.refresh();
+      await refreshContentState();
       showValidation(result.validation.ok, result.validation.message);
       renderFormView();
     } catch (error) {
@@ -12017,7 +11995,7 @@ function renderSpeakerTool(target = null) {
         }),
       });
 
-      await contentLifecycle.refresh();
+      await refreshContentState();
       renderFileList();
       showValidation(result.validation.ok, result.validation.message);
       status.className = "static-tool-status ok";
@@ -12127,10 +12105,15 @@ function openNewStoryDialog() {
     status.className = "static-tool-status muted";
     status.textContent = "正在创建...";
     try {
-      const result = await saveCoordinator.createStorySource({
-        fileName: fileInput.value,
-        segmentName: segmentInput.value,
+      const result = await requestJson("/api/story/source/new", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          fileName: fileInput.value,
+          segmentName: segmentInput.value,
+        }),
       });
+      await refreshContentState({ storyChanged: true });
       renderFileList();
       closeToolDialog();
       dirtyStateController.markClean({ render: false });
@@ -12262,8 +12245,9 @@ function renderSpeakerAssetStatus(value, statusNode) {
     path.className = "speaker-asset-preview-path";
     path.textContent = `assets/${found}`;
     path.title = "打开资产预览";
-    path.addEventListener("click", async () => {
-      await openAssetWorkspaceFile(found);
+    path.addEventListener("click", () => {
+      setMode("assets");
+      openAssetFile(found);
     });
 
     const normalizeButton = document.createElement("button");
@@ -12552,8 +12536,9 @@ function createPortraitIssueRow(issue) {
     const assetButton = document.createElement("button");
     assetButton.type = "button";
     assetButton.textContent = "预览图片";
-    assetButton.addEventListener("click", async () => {
-      await openAssetWorkspaceFile(issue.assetPath);
+    assetButton.addEventListener("click", () => {
+      setMode("assets");
+      openAssetFile(issue.assetPath);
     });
     actions.appendChild(assetButton);
   }
@@ -13217,7 +13202,7 @@ async function createAndUsePortraitLibraryResource(record, portraitId, entry, bu
     const result = await createPortraitResource(value, entry.assetValue);
     record.portrait = value;
     syncFormToEditor();
-    await contentLifecycle.refresh();
+    await refreshContentState();
     showValidation(result.validation.ok, result.validation.message);
     state.mode === "characters" ? renderCharacterWorkspaceView() : renderFormView();
   } catch (error) {
@@ -13236,7 +13221,7 @@ async function updateAndUsePortraitLibraryResource(record, portraitId, entry, ex
     const result = await updatePortraitResource(portraitId, entry.assetValue, existingResource.value || "");
     record.portrait = portraitId;
     syncFormToEditor();
-    await contentLifecycle.refresh();
+    await refreshContentState();
     showValidation(result.validation.ok, result.validation.message);
     state.mode === "characters" ? renderCharacterWorkspaceView() : renderFormView();
   } catch (error) {
@@ -13273,7 +13258,7 @@ async function createAndUseItemPictureLibraryResource(record, pictureId, entry, 
     const result = await createItemResource(value, entry.assetValue);
     record.picture = value;
     syncFormToEditor();
-    await contentLifecycle.refresh();
+    await refreshContentState();
     closeItemPicturePicker();
     showValidation(result.validation.ok, result.validation.message);
     state.mode === "items" ? renderItemWorkspaceView() : renderFormView();
@@ -13296,7 +13281,7 @@ async function createAndUseShopResource(record, field, resourceId, entry, button
     const result = await createGenericResource(value, getShopResourceGroup(field), entry.assetValue);
     record[field] = result.id || value;
     syncFormToEditor();
-    await contentLifecycle.refresh();
+    await refreshContentState();
     closeShopResourcePicker();
     showValidation(result.validation.ok, result.validation.message);
     state.mode === "shops" ? renderShopWorkspaceView() : renderFormView();

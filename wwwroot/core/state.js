@@ -57,7 +57,6 @@ export function createEditorState() {
       tab: "overview",
       referencesOpen: false,
       focusField: "",
-      visibleLimit: 60,
     },
     growthWorkspace: {
       search: "",
@@ -74,7 +73,6 @@ export function createEditorState() {
       search: "",
       filter: "all",
       tab: "overview",
-      visibleLimit: 60,
     },
     shopWorkspace: {
       search: "",
@@ -93,7 +91,6 @@ export function createEditorState() {
       filter: "all",
       tab: "overview",
       previewLevel: 10,
-      visibleLimit: 60,
       animationCatalog: [],
       loading: false,
       creatorOpen: false,
@@ -114,7 +111,6 @@ export function createEditorState() {
       group: "all",
       status: "all",
       selectedKey: "",
-      visibleLimit: 60,
     },
     itemTab: "requirements",
     portraitPicker: {
