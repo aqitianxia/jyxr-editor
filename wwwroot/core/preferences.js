@@ -2,6 +2,7 @@ export const storageKeys = Object.freeze({
   lastDataPath: "jyxr-json-editor:last-data-path",
   activeModId: "jyxr-json-editor:active-mod-id",
   navigationCollapsed: "jyxr-json-editor:navigation-collapsed",
+  navigationSections: "jyxr-json-editor:navigation-sections",
   recentEntries: "jyxr-json-editor:recent-entries",
 });
 

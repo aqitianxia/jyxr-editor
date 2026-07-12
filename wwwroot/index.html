@@ -8,7 +8,7 @@
   <link rel="stylesheet" href="/styles.css?v=20260710-map-icons-1">
   <link rel="stylesheet" href="/styles/tokens.css?v=20260711-shell-1">
   <link rel="stylesheet" href="/styles/components.css?v=20260711-shell-1">
-  <link rel="stylesheet" href="/styles/shell.css?v=20260711-stage3-1">
+  <link rel="stylesheet" href="/styles/shell.css?v=20260712-raw-data-nav-1">
   <link rel="stylesheet" href="/styles/stage3.css?v=20260711-stage3-1">
   <link rel="stylesheet" href="/styles/stage4.css?v=20260711-stage4-8">
   <link rel="stylesheet" href="/styles/stage5.css?v=20260711-stage5b-1">
@@ -70,93 +70,112 @@
     <main class="workspace-grid">
       <aside id="primarySidebar" class="sidebar" aria-label="编辑器导航">
         <nav class="primary-navigation" aria-label="主要工作区">
-          <div class="navigation-section-label">项目</div>
-          <button id="homeTab" type="button" class="navigation-item active">
+          <button id="projectNavigationToggle" class="navigation-section-toggle" type="button" aria-controls="projectNavigationItems" aria-expanded="true">
+            <span>项目</span><span class="navigation-section-chevron" aria-hidden="true">⌄</span>
+          </button>
+          <div id="projectNavigationItems" class="navigation-section-items">
+            <button id="homeTab" type="button" class="navigation-item active">
             <span class="navigation-icon" aria-hidden="true">⌂</span>
             <span class="navigation-copy">
               <strong>项目首页</strong>
               <small>MOD 状态与快速开始</small>
             </span>
-          </button>
-          <button id="problemsTab" type="button" class="navigation-item">
+            </button>
+            <button id="problemsTab" type="button" class="navigation-item">
             <span class="navigation-icon" aria-hidden="true">!</span>
             <span class="navigation-copy">
               <strong>问题中心</strong>
               <small>检查、筛选与定位</small>
             </span>
+            </button>
+          </div>
+          <button id="contentNavigationToggle" class="navigation-section-toggle navigation-section-spaced" type="button" aria-controls="contentNavigationItems" aria-expanded="true">
+            <span>内容创作</span><span class="navigation-section-chevron" aria-hidden="true">⌄</span>
           </button>
-          <div class="navigation-section-label navigation-section-spaced">内容创作</div>
-          <button id="charactersTab" type="button" class="navigation-item">
+          <div id="contentNavigationItems" class="navigation-section-items">
+            <button id="charactersTab" type="button" class="navigation-item">
             <span class="navigation-icon" aria-hidden="true">人</span>
             <span class="navigation-copy">
               <strong>角色与伙伴</strong>
               <small>角色、头像、成长与武学</small>
             </span>
-          </button>
-          <button id="mapsTab" type="button" class="navigation-item">
+            </button>
+            <button id="mapsTab" type="button" class="navigation-item">
             <span class="navigation-icon" aria-hidden="true">图</span>
             <span class="navigation-copy">
               <strong>地图与事件</strong>
               <small>地图、点位与交互流程</small>
             </span>
-          </button>
-          <button id="storyTab" type="button" class="navigation-item">
+            </button>
+            <button id="storyTab" type="button" class="navigation-item">
             <span class="navigation-icon" aria-hidden="true">文</span>
             <span class="navigation-copy">
               <strong>剧情与任务</strong>
               <small>DSL、JSON 与流程</small>
             </span>
-          </button>
-          <button id="growthTab" type="button" class="navigation-item">
+            </button>
+            <button id="growthTab" type="button" class="navigation-item">
             <span class="navigation-icon" aria-hidden="true">长</span>
             <span class="navigation-copy">
               <strong>成长模板</strong>
               <small>升级属性、定位与角色引用</small>
             </span>
-          </button>
-          <button id="sectsTab" type="button" class="navigation-item">
+            </button>
+            <button id="sectsTab" type="button" class="navigation-item">
             <span class="navigation-icon" aria-hidden="true">派</span>
             <span class="navigation-copy">
               <strong>门派</strong>
               <small>入门剧情、代表武学与人物</small>
             </span>
-          </button>
-          <button id="itemsTab" type="button" class="navigation-item">
+            </button>
+            <button id="itemsTab" type="button" class="navigation-item">
             <span class="navigation-icon" aria-hidden="true">◆</span>
             <span class="navigation-copy">
               <strong>物品与装备</strong>
               <small>物品、效果、词缀与图片</small>
             </span>
-          </button>
-          <button id="shopsTab" type="button" class="navigation-item">
+            </button>
+            <button id="shopsTab" type="button" class="navigation-item">
             <span class="navigation-icon" aria-hidden="true">店</span>
             <span class="navigation-copy">
               <strong>商店与经济</strong>
               <small>商品、定价、限购与资源</small>
             </span>
-          </button>
-          <button id="martialTab" type="button" class="navigation-item">
+            </button>
+            <button id="martialTab" type="button" class="navigation-item">
             <span class="navigation-icon" aria-hidden="true">武</span>
             <span class="navigation-copy">
               <strong>武学与奥义</strong>
               <small>外功、内功、绝技与奥义</small>
             </span>
+            </button>
+          </div>
+          <button id="toolsNavigationToggle" class="navigation-section-toggle navigation-section-spaced" type="button" aria-controls="toolsNavigationItems" aria-expanded="true">
+            <span>编辑工具</span><span class="navigation-section-chevron" aria-hidden="true">⌄</span>
           </button>
-          <div class="navigation-section-label navigation-section-spaced">编辑工具</div>
-          <button id="dataTab" type="button" class="navigation-item">
+          <div id="toolsNavigationItems" class="navigation-section-items">
+            <button id="dataTab" type="button" class="navigation-item">
             <span class="navigation-icon" aria-hidden="true">▦</span>
             <span class="navigation-copy">
               <strong>高级数据</strong>
-              <small>表单与 JSON 文件</small>
-            </span>
-          </button>
-          <button id="assetsTab" type="button" class="navigation-item">
+              <small>表单与完整 JSON 文件</small>
+              </span>
+            </button>
+            <div class="raw-data-navigation" aria-label="当前 MOD 原始 JSON">
+              <div class="raw-data-navigation-header">
+                <span>原始 JSON</span>
+                <span id="rawDataNavigationCount" class="raw-data-navigation-count">0</span>
+              </div>
+              <div id="rawDataNavigationList" class="raw-data-navigation-list"></div>
+            </div>
+            <button id="assetsTab" type="button" class="navigation-item">
             <span class="navigation-icon" aria-hidden="true">◇</span>
             <span class="navigation-copy">
               <strong>资源管理</strong>
               <small>定义、资产与引用状态</small>
             </span>
-          </button>
+            </button>
+          </div>
         </nav>
 
         <section id="sidebarBrowser" class="sidebar-browser" aria-labelledby="browserTitle">
@@ -270,6 +289,6 @@
 
   <script src="/vendor/monaco/vs/loader.js?v=20260708-monaco-1"></script>
   <script src="/story-dsl.js?v=20260709-dsl-json-1"></script>
-  <script src="/bootstrap.js?v=20260712-stage12-2"></script>
+  <script src="/bootstrap.js?v=20260712-raw-data-nav-1"></script>
 </body>
 </html>

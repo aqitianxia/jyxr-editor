@@ -1,10 +1,10 @@
-import { state } from "./core/state.js?v=20260712-stage11-1";
+import { state } from "./core/state.js?v=20260712-navigation-1";
 import { editorVersion } from "./core/version.js?v=20260711-stage9-1";
 import { createEditorApi } from "./core/api.js?v=20260711-core-17";
 import { createCommandRegistry } from "./core/commands.js?v=20260711-core-17";
 import { createDirtyStateController } from "./core/dirty-state.js?v=20260711-core-17";
 import { createEventBus } from "./core/events.js?v=20260711-core-17";
-import { createPreferences, storageKeys } from "./core/preferences.js?v=20260711-core-17";
+import { createPreferences, storageKeys } from "./core/preferences.js?v=20260712-navigation-1";
 import { normalizeWorkspaceMode } from "./core/router.js?v=20260712-stage11-1";
 import { bindImeSafeInput } from "./core/input-composition.js?v=20260711-core-17";
 import { createProblem, summarizeProblems } from "./core/problems.js?v=20260711-core-17";
@@ -14,7 +14,7 @@ import { confirmAction, createDialogController } from "./ui/dialogs.js?v=2026071
 import { createField, createTextInput } from "./ui/fields.js?v=20260711-core-17";
 import { createTextList } from "./ui/lists.js?v=20260711-core-17";
 import { createProblemSummary, renderStatusMessage } from "./ui/problem-list.js?v=20260711-core-17";
-import { createShellController } from "./ui/shell.js?v=20260711-stage9-1";
+import { createShellController } from "./ui/shell.js?v=20260712-navigation-1";
 import { renderProjectHome } from "./ui/home.js?v=20260711-core-17";
 import { renderProblemCenter } from "./ui/problem-center.js?v=20260711-core-17";
 import { renderCharacterWorkspace } from "./ui/characters.js?v=20260711-stage6-2";
@@ -90,6 +90,14 @@ const elements = {
   coreLoadState: document.getElementById("coreLoadState"),
   workspacePath: document.getElementById("workspacePath"),
   navigationToggleButton: document.getElementById("navigationToggleButton"),
+  projectNavigationToggle: document.getElementById("projectNavigationToggle"),
+  projectNavigationItems: document.getElementById("projectNavigationItems"),
+  contentNavigationToggle: document.getElementById("contentNavigationToggle"),
+  contentNavigationItems: document.getElementById("contentNavigationItems"),
+  toolsNavigationToggle: document.getElementById("toolsNavigationToggle"),
+  toolsNavigationItems: document.getElementById("toolsNavigationItems"),
+  rawDataNavigationCount: document.getElementById("rawDataNavigationCount"),
+  rawDataNavigationList: document.getElementById("rawDataNavigationList"),
   inspectorToggleButton: document.getElementById("inspectorToggleButton"),
   inspectorCloseButton: document.getElementById("inspectorCloseButton"),
   contextDrawerBackdrop: document.getElementById("contextDrawerBackdrop"),
@@ -197,6 +205,7 @@ const shellController = createShellController({
   elements,
   preferences,
   navigationPreferenceKey: storageKeys.navigationCollapsed,
+  navigationSectionsPreferenceKey: storageKeys.navigationSections,
   scheduleLayout: scheduleEditorLayout,
 });
 const { requestJson } = api;
@@ -206,6 +215,9 @@ commandRegistry.register("file.format", formatCurrentJson, { shortcut: "mod+shif
 elements.navigationToggleButton.addEventListener("click", () => {
   setNavigationCollapsed(!state.shell.navigationCollapsed);
 });
+elements.projectNavigationToggle.addEventListener("click", () => shellController.toggleNavigationSection("project"));
+elements.contentNavigationToggle.addEventListener("click", () => shellController.toggleNavigationSection("content"));
+elements.toolsNavigationToggle.addEventListener("click", () => shellController.toggleNavigationSection("tools"));
 elements.inspectorToggleButton.addEventListener("click", () => {
   setContextDrawerOpen(!state.shell.contextDrawerOpen);
 });
@@ -919,6 +931,37 @@ function getActiveMod() {
 
 async function loadDataFiles() {
   state.dataFiles = await requestJson("/api/data/files");
+  renderRawDataNavigation();
+}
+
+function renderRawDataNavigation() {
+  const files = state.dataFiles.filter((file) => file.path.toLowerCase().endsWith(".json"));
+  elements.rawDataNavigationCount.textContent = String(files.length);
+  elements.rawDataNavigationList.replaceChildren();
+
+  for (const file of files) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "raw-data-navigation-item";
+    button.classList.toggle("active", state.mode === "data" && state.currentPath === file.path);
+    button.title = file.path;
+
+    const title = document.createElement("strong");
+    title.textContent = getDataFileDisplayName(file.path) || file.name;
+    const path = document.createElement("small");
+    path.textContent = file.path;
+    button.append(title, path);
+    button.addEventListener("click", () => openRawJsonFile(file.path));
+    elements.rawDataNavigationList.appendChild(button);
+  }
+}
+
+async function openRawJsonFile(path) {
+  const opened = await openDataFile(path);
+  if (!opened) return;
+  setMode("data");
+  setViewMode("json");
+  renderRawDataNavigation();
 }
 
 async function loadAssetFiles() {
@@ -1111,6 +1154,7 @@ function setMode(mode) {
     renderCurrentFileInfo();
   }
   renderProblemIndicators();
+  renderRawDataNavigation();
   scheduleEditorLayout();
 }
 
@@ -4042,8 +4086,9 @@ async function openDataFile(path) {
     };
     elements.formModeButton.textContent = "表单";
     elements.jsonModeButton.textContent = "JSON";
-    const supportsForm = refreshFormFromEditor({ preferForm: true });
-    showValidation(true, supportsForm ? "JSON 已载入，可使用表单视图。" : "JSON 已载入。");
+    state.viewMode = "json";
+    const supportsForm = refreshFormFromEditor({ preferForm: false });
+    showValidation(true, supportsForm ? "完整 JSON 已载入；也可切换到表单视图。" : "完整 JSON 已载入。");
   }
   updateSearchMatches();
   renderEditorOutline();
@@ -4058,6 +4103,7 @@ async function openDataFile(path) {
     state.storyWorkspace.view = isStorySourceFile(file.path) ? "dsl" : "json";
     renderStoryView();
   }
+  return true;
 }
 
 function openAssetFile(path) {

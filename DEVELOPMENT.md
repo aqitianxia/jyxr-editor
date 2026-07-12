@@ -208,14 +208,20 @@ These are known rough edges in the tool:
 - No batch image normalization for portraits.
 - Save always formats the entire JSON file.
 - The tool selects a MOD from `mods/*/mod.json`; each operation uses the current MOD id.
+- Startup eagerly initializes Monaco, reads every data file, builds the full content index and story graph, lists all assets, and runs full validation before showing the home workspace.
+- `app.js` still imports every specialized workspace up front and retains orchestration and legacy workspace code that should move behind workspace-specific modules.
+- The staged CSS files still reflect implementation history instead of final UI ownership boundaries.
 
 ## Recommended Next Steps
 
-Follow `REFACTORING_PLAN.md` section 20. The current order is:
+The current order is:
 
-1. Equipment random-affix workspace and remaining static-data review.
-2. Help, usability, legacy-code cleanup, and backend responsibility cleanup.
-3. Story follow-ups should stay text-first: richer diagnostics, command documentation/hover, log clue checks, and author/base diffing. Do not add a second writable story model.
+1. Clean up completed migration artifacts and reorganize staged CSS by stable UI ownership such as shell, maps, story, forms, and shared components.
+2. Make startup demand-driven: keep the home workspace lightweight, load Monaco on first code edit, load assets and story graphs only when their workspaces open, and move full validation behind the explicit check action or an idle background task.
+3. Replace the per-file startup index rebuild with a cached backend summary and refresh only files affected by a save.
+4. Split remaining workspace implementation out of `app.js` and lazy-load specialized workspaces from the router.
+5. Build the equipment random-affix workspace and review remaining static data only where a dedicated workflow is clearer than advanced JSON editing.
+6. Keep story follow-ups text-first: richer diagnostics, command documentation/hover, log clue checks, and author/base diffing. Do not add a second writable story model.
 
 ## Design Principles
 

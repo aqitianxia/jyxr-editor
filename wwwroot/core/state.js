@@ -154,6 +154,11 @@ export function createEditorState() {
     },
     shell: {
       navigationCollapsed: false,
+      navigationSections: {
+        project: false,
+        content: false,
+        tools: false,
+      },
       contextDrawerOpen: false,
     },
     contentIndex: {

@@ -18,6 +18,7 @@ export function createShellController({
   elements,
   preferences,
   navigationPreferenceKey,
+  navigationSectionsPreferenceKey,
   scheduleLayout,
   matchMedia = window.matchMedia.bind(window),
 }) {
@@ -27,9 +28,46 @@ export function createShellController({
     state.shell.navigationCollapsed = savedNavigationState === null
       ? collapseForNarrowScreen
       : savedNavigationState === "true";
+    restoreNavigationSections();
     setNavigationCollapsed(state.shell.navigationCollapsed, { persist: false });
     setContextDrawerOpen(false, { focusClose: false });
     renderContext();
+  }
+
+  function restoreNavigationSections() {
+    const saved = preferences.get(navigationSectionsPreferenceKey);
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        for (const section of Object.keys(state.shell.navigationSections)) {
+          state.shell.navigationSections[section] = parsed?.[section] === true;
+        }
+      } catch {
+        preferences.remove(navigationSectionsPreferenceKey);
+      }
+    }
+
+    renderNavigationSections();
+  }
+
+  function toggleNavigationSection(section) {
+    if (!(section in state.shell.navigationSections)) return;
+    state.shell.navigationSections[section] = !state.shell.navigationSections[section];
+    preferences.set(navigationSectionsPreferenceKey, JSON.stringify(state.shell.navigationSections));
+    renderNavigationSections();
+  }
+
+  function renderNavigationSections() {
+    const sections = {
+      project: [elements.projectNavigationToggle, elements.projectNavigationItems],
+      content: [elements.contentNavigationToggle, elements.contentNavigationItems],
+      tools: [elements.toolsNavigationToggle, elements.toolsNavigationItems],
+    };
+    for (const [section, [toggle, items]] of Object.entries(sections)) {
+      const collapsed = state.shell.navigationSections[section];
+      toggle.setAttribute("aria-expanded", String(!collapsed));
+      items.hidden = collapsed;
+    }
   }
 
   function setNavigationCollapsed(collapsed, options = {}) {
@@ -74,6 +112,7 @@ export function createShellController({
   return {
     initialize,
     setNavigationCollapsed,
+    toggleNavigationSection,
     setContextDrawerOpen,
     renderContext,
     renderInspectorStatus,
