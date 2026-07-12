@@ -12,10 +12,11 @@ var workspace = WorkspacePaths.FromCurrentDirectory();
 
 var builder = WebApplication.CreateBuilder(args);
 builder.WebHost.UseWebRoot(Path.Combine(workspace.RootPath, "tools", "JsonEditor", "wwwroot"));
-builder.WebHost.UseUrls("http://localhost:5127");
+builder.WebHost.UseUrls(builder.Configuration["urls"] ?? "http://localhost:5127");
 
 var app = builder.Build();
 var contentTypes = new FileExtensionContentTypeProvider();
+var contentSnapshots = new ContentDocumentSnapshotService();
 
 app.UseDefaultFiles();
 app.UseStaticFiles();
@@ -209,6 +210,18 @@ app.MapPost("/api/story/source/new", IResult (CreateStorySourceRequest request, 
 });
 
 app.MapGet("/api/validate", (string? modId) => Results.Ok(ValidateContent(workspace.ForMod(modId))));
+
+app.MapGet("/api/content/snapshot", IResult (string? modId) =>
+{
+    try
+    {
+        return Results.Ok(contentSnapshots.Load(workspace.ForMod(modId).DataPath));
+    }
+    catch (Exception ex)
+    {
+        return Results.BadRequest(new ErrorResponse(ex.Message));
+    }
+});
 
 app.MapGet("/api/story/graph", IResult (string? modId) =>
 {

@@ -1,4 +1,4 @@
-import { state } from "./core/state.js?v=20260712-navigation-1";
+import { state } from "./core/state.js?v=20260712-performance-2";
 import { editorVersion } from "./core/version.js?v=20260711-stage9-1";
 import { createEditorApi } from "./core/api.js?v=20260711-core-17";
 import { createCommandRegistry } from "./core/commands.js?v=20260711-core-17";
@@ -15,7 +15,7 @@ import { createField, createTextInput } from "./ui/fields.js?v=20260711-core-17"
 import { createTextList } from "./ui/lists.js?v=20260711-core-17";
 import { createProblemSummary, renderStatusMessage } from "./ui/problem-list.js?v=20260711-core-17";
 import { createShellController } from "./ui/shell.js?v=20260712-navigation-1";
-import { renderProjectHome } from "./ui/home.js?v=20260711-core-17";
+import { renderProjectHome } from "./ui/home.js?v=20260712-performance-2";
 import { renderProblemCenter } from "./ui/problem-center.js?v=20260711-core-17";
 import { renderCharacterWorkspace } from "./ui/characters.js?v=20260711-stage6-2";
 import { createEmbeddedJsonEditor, disposeEmbeddedCodeEditors } from "./ui/code-editor.js?v=20260711-stage6-1";
@@ -182,8 +182,12 @@ const monacoState = {
   editor: null,
   language: "json",
   suppressChange: false,
+  loading: null,
+  loader: null,
 };
 let storyGraphRenderVersion = 0;
+let assetLoadPromise = null;
+let storyGraphLoadPromise = null;
 
 const preferences = createPreferences();
 const recentItemsStore = createRecentItemsStore({
@@ -308,48 +312,78 @@ function renderInspectorStatus(ok, label) {
 }
 
 function initializeMonacoEditor() {
-  if (!elements.monacoHost || !window.require) {
+  if (monacoState.ready) {
+    return Promise.resolve(true);
+  }
+  if (monacoState.loading) {
+    return monacoState.loading;
+  }
+  if (!elements.monacoHost) {
     useLegacyTextEditor();
     return Promise.resolve(false);
   }
 
-  return new Promise((resolve) => {
-    window.require.config({ paths: { vs: "/vendor/monaco/vs" } });
-    window.require(["vs/editor/editor.main"], () => {
-      registerStoryDslMonacoLanguage();
-      monacoState.editor = monaco.editor.create(elements.monacoHost, {
-        value: elements.editor.value,
-        language: "json",
-        theme: "vs",
-        automaticLayout: true,
-        minimap: { enabled: true },
-        fontSize: 13,
-        lineNumbersMinChars: 3,
-        scrollBeyondLastLine: false,
-        wordWrap: "off",
-        tabSize: 2,
-        insertSpaces: true,
-        renderLineHighlight: "line",
-        padding: { top: 10, bottom: 10 },
-      });
-      monacoState.editor.onDidChangeModelContent(() => {
-        if (monacoState.suppressChange) {
-          return;
-        }
-
-        elements.editor.value = monacoState.editor.getValue();
-        handleTextEditorInput();
-      });
-      monacoState.editor.onDidChangeCursorPosition(renderCursorState);
-      monacoState.editor.onDidChangeCursorSelection(renderCursorState);
-      monacoState.ready = true;
-      syncMonacoFromEditor();
-      resolve(true);
-    }, () => {
+  monacoState.loading = loadMonacoLoader().then((loaderReady) => {
+    if (!loaderReady) {
       useLegacyTextEditor();
-      resolve(false);
+      return false;
+    }
+
+    return new Promise((resolve) => {
+      window.require.config({ paths: { vs: "/vendor/monaco/vs" } });
+      window.require(["vs/editor/editor.main"], () => {
+        registerStoryDslMonacoLanguage();
+        monacoState.editor = monaco.editor.create(elements.monacoHost, {
+          value: elements.editor.value,
+          language: "json",
+          theme: "vs",
+          automaticLayout: true,
+          minimap: { enabled: true },
+          fontSize: 13,
+          lineNumbersMinChars: 3,
+          scrollBeyondLastLine: false,
+          wordWrap: "off",
+          tabSize: 2,
+          insertSpaces: true,
+          renderLineHighlight: "line",
+          padding: { top: 10, bottom: 10 },
+        });
+        monacoState.editor.onDidChangeModelContent(() => {
+          if (monacoState.suppressChange) {
+            return;
+          }
+
+          elements.editor.value = monacoState.editor.getValue();
+          handleTextEditorInput();
+        });
+        monacoState.editor.onDidChangeCursorPosition(renderCursorState);
+        monacoState.editor.onDidChangeCursorSelection(renderCursorState);
+        monacoState.ready = true;
+        syncMonacoFromEditor();
+        resolve(true);
+      }, () => {
+        useLegacyTextEditor();
+        resolve(false);
+      });
     });
   });
+  return monacoState.loading.finally(() => {
+    monacoState.loading = null;
+  });
+}
+
+function loadMonacoLoader() {
+  if (window.require) return Promise.resolve(true);
+  if (monacoState.loader) return monacoState.loader;
+
+  monacoState.loader = new Promise((resolve) => {
+    const script = document.createElement("script");
+    script.src = "/vendor/monaco/vs/loader.js?v=20260708-monaco-1";
+    script.addEventListener("load", () => resolve(Boolean(window.require)), { once: true });
+    script.addEventListener("error", () => resolve(false), { once: true });
+    document.head.appendChild(script);
+  });
+  return monacoState.loader;
 }
 
 function useLegacyTextEditor() {
@@ -814,13 +848,9 @@ function setMonacoDiagnostics(diagnostics) {
 }
 
 async function boot() {
-  await initializeMonacoEditor();
   await loadWorkspace();
-  await Promise.all([loadDataFiles(), loadAssetFiles()]);
   state.recentEntries = recentItemsStore.read(state.activeModId);
-  await rebuildContentIndex();
-  await loadStoryGraph();
-  await validateContent();
+  await refreshContentState();
   setMode("home");
 }
 
@@ -909,19 +939,22 @@ async function switchMod(modId) {
   };
   state.selectedStoryGroupId = "";
   state.selectedStoryNodeId = "";
+  state.assetFiles = [];
+  state.assetFilePathSet = new Set();
+  state.assetsLoaded = false;
+  state.storyGraph = null;
+  state.storyGraphLoaded = false;
+  state.problemCenter.validation = null;
   setEditorValue("");
   setEditorReadOnly(false);
   setEditorLanguage("json");
   elements.currentPath.textContent = "未选择文件";
   elements.saveState.textContent = "";
   renderWorkspacePath();
-  await Promise.all([loadDataFiles(), loadAssetFiles()]);
-  await rebuildContentIndex();
-  await loadStoryGraph();
+  await refreshContentState();
   state.recentEntries = recentItemsStore.read(state.activeModId);
   renderDirtyState();
   renderCursorState();
-  await validateContent();
   setMode("home");
 }
 
@@ -967,6 +1000,7 @@ async function openRawJsonFile(path) {
 async function loadAssetFiles() {
   state.assetFiles = await requestJson("/api/assets/files");
   state.assetFilePathSet = new Set(state.assetFiles.map((file) => file.path));
+  state.assetsLoaded = true;
 }
 
 async function loadStoryGraph() {
@@ -979,7 +1013,50 @@ async function loadStoryGraph() {
     state.storyGraph = null;
     showValidation(false, error.message);
   } finally {
+    state.storyGraphLoaded = true;
     renderProblemIndicators();
+  }
+}
+
+async function refreshContentState({ assetsChanged = false, storyChanged = false } = {}) {
+  if (storyChanged && !state.storyGraphLoaded) {
+    state.storyGraph = null;
+  }
+
+  const refreshes = [loadDataFiles(), rebuildContentIndex()];
+  if (assetsChanged && state.assetsLoaded) refreshes.push(loadAssetFiles());
+  if (storyChanged && state.storyGraphLoaded) refreshes.push(loadStoryGraph());
+  await Promise.all(refreshes);
+}
+
+function ensureAssetFilesLoaded() {
+  if (state.assetsLoaded) return Promise.resolve();
+  if (!assetLoadPromise) {
+    assetLoadPromise = loadAssetFiles().finally(() => {
+      assetLoadPromise = null;
+    });
+  }
+  return assetLoadPromise;
+}
+
+function ensureStoryGraphLoaded() {
+  if (state.storyGraphLoaded) return Promise.resolve();
+  if (!storyGraphLoadPromise) {
+    storyGraphLoadPromise = loadStoryGraph().finally(() => {
+      storyGraphLoadPromise = null;
+    });
+  }
+  return storyGraphLoadPromise;
+}
+
+async function prepareWorkspaceMode(mode) {
+  if (["characters", "maps", "sects", "items", "shops", "martial", "assets"].includes(mode)) {
+    await ensureAssetFilesLoaded();
+  }
+  if (mode === "story") {
+    await Promise.all([ensureStoryGraphLoaded(), initializeMonacoEditor()]);
+  } else if (mode === "data") {
+    await initializeMonacoEditor();
   }
 }
 
@@ -1161,6 +1238,7 @@ function setMode(mode) {
 
 async function requestWorkspaceChange(mode) {
   if (mode === state.mode) return;
+  await prepareWorkspaceMode(mode);
   if (state.mode === "martial") {
     if (dirtyStateController.isDirty() && !(await confirmDiscardChanges("武学区有尚未保存的修改，是否放弃全部修改？"))) return;
     resetMartialWorkspaceState();
@@ -1727,9 +1805,7 @@ async function uploadCurrentItemPicture(file) {
   try {
     const result = await uploadItemImageAndBind(record, file, getBindableItemPictureId(record));
     if (!result) return;
-    await loadAssetFiles();
-    await loadDataFiles();
-    await rebuildContentIndex();
+    await refreshContentState({ assetsChanged: true });
     record.picture = result.pictureId;
     syncFormToEditor();
     showValidation(result.validation.ok, `已上传并绑定：${result.pictureId} -> ${result.assetPath}`);
@@ -2327,8 +2403,7 @@ function renderMartialWorkspaceView() {
         const result = await createGenericResource(id, "音效", entry.path);
         picker.target[picker.field] = result.id || id;
         workspace.resourcePicker = { open: false, type: "", search: "", selectedId: "", target: null, field: "", clearValue: null };
-        await loadDataFiles();
-        await rebuildContentIndex();
+        await refreshContentState();
         showValidation(result.validation.ok, result.validation.message);
         markMartialChanged();
       } catch (error) {
@@ -2630,12 +2705,14 @@ function formatReferenceAffix(affix) {
 function renderProjectHomeWorkspace() {
   const definitionCount = Array.from(state.contentIndex.definitionsById.values())
     .reduce((total, definitions) => total + definitions.length, 0);
+  const storyNodeCount = Array.from(state.contentIndex.definitionsById.values())
+    .reduce((total, definitions) => total + definitions.filter((definition) => definition.type === "story").length, 0);
   renderProjectHome(elements.homeView, {
     mod: getActiveMod(),
     dataFileCount: state.dataFiles.length,
-    assetFileCount: state.assetFiles.length,
+    assetFileCount: state.assetsLoaded ? state.assetFiles.length : null,
     definitionCount,
-    storyNodeCount: state.storyGraph?.summary?.nodeCount || 0,
+    storyNodeCount,
     problems: collectProjectProblems(),
     recentEntries: state.recentEntries,
     quickStarts: [
@@ -2890,6 +2967,7 @@ async function runProjectChecks() {
 }
 
 async function openQuickStart(item) {
+  await prepareWorkspaceMode(item.mode);
   if (item.mode === "problems") {
     setMode("problems");
     return;
@@ -2915,6 +2993,7 @@ async function openQuickStart(item) {
 }
 
 async function openRecentEntry(entry) {
+  await prepareWorkspaceMode(entry.workspace === "assets" ? "assets" : "data");
   if (entry.workspace === "assets") {
     if (state.assetFilePathSet.has(entry.path)) {
       setMode("assets");
@@ -4217,9 +4296,7 @@ async function saveCurrentFile() {
       ? `已保存，备份：${result.backupPath}`
       : "已保存";
     showValidation(result.validation.ok, result.validation.message);
-    await loadDataFiles();
-    await rebuildContentIndex();
-    await loadStoryGraph();
+    await refreshContentState({ storyChanged: isStoryDataFile(state.currentPath) });
     renderFileList();
     if (state.mode === "story") renderStoryView();
     if (state.mode === "characters") {
@@ -4271,9 +4348,7 @@ async function saveMartialWorkspace() {
     }
     dirtyStateController.markClean({ render: false });
     elements.saveState.textContent = `已保存 ${saved.length} 个武学文件`;
-    await loadDataFiles();
-    await rebuildContentIndex();
-    await loadStoryGraph();
+    await refreshContentState();
     showValidation(validation?.ok ?? true, validation?.message || `已保存：${saved.join("、")}`);
     renderMartialWorkspaceView();
     renderDirtyState();
@@ -4321,9 +4396,7 @@ async function saveCurrentStorySource() {
       ? `已保存，生成：${result.compiledJsonPath}，备份：${backups.join("、")}`
       : `已保存，生成：${result.compiledJsonPath}`;
     showValidation(result.validation.ok, result.validation.message);
-    await loadDataFiles();
-    await rebuildContentIndex();
-    await loadStoryGraph();
+    await refreshContentState({ storyChanged: true });
     renderFileList();
     if (state.mode === "story") renderStoryView();
   } catch (error) {
@@ -4392,9 +4465,7 @@ async function saveCurrentStoryJsonDsl() {
       ? `已保存 Story JSON，备份：${result.backupPath}`
       : "已保存 Story JSON";
     showValidation(result.validation.ok, result.validation.message);
-    await loadDataFiles();
-    await rebuildContentIndex();
-    await loadStoryGraph();
+    await refreshContentState({ storyChanged: true });
     renderFileList();
     if (state.mode === "story") renderStoryView();
   } catch (error) {
@@ -4473,9 +4544,7 @@ async function saveCurrentStoryJsonAsSource() {
       ? `已另存为 ${result.path}，生成：${result.compiledJsonPath}，备份：${result.jsonBackupPath}`
       : `已另存为 ${result.path}，生成：${result.compiledJsonPath}`;
     showValidation(result.validation.ok, result.validation.message);
-    await loadDataFiles();
-    await rebuildContentIndex();
-    await loadStoryGraph();
+    await refreshContentState({ storyChanged: true });
     updateStoryDslAnalysis({ showSuccess: true });
     renderFileList();
     renderDirtyState();
@@ -9322,9 +9391,7 @@ function createItemPictureSection(record, pictureInfo) {
       const pictureId = getBindableItemPictureId(record);
       const result = await uploadItemImageAndBind(record, file, pictureId);
       if (!result) return;
-      await loadAssetFiles();
-      await loadDataFiles();
-      await rebuildContentIndex();
+      await refreshContentState({ assetsChanged: true });
       record.picture = result.pictureId;
       syncFormToEditor();
       showValidation(result.validation.ok, `已上传并绑定：${result.pictureId} -> ${result.assetPath}`);
@@ -9392,8 +9459,7 @@ function createItemPictureSection(record, pictureInfo) {
     createResourceButton.disabled = true;
     try {
       const result = await createItemResource(pictureInfo.pictureId, pictureInfo.detectedAssetValue);
-      await loadDataFiles();
-      await rebuildContentIndex();
+      await refreshContentState();
       showValidation(result.validation.ok, result.validation.message);
       renderFormView();
     } catch (error) {
@@ -10494,8 +10560,7 @@ function createCharacterPortraitSection(record, portraitInfo) {
     createResourceButton.disabled = true;
     try {
       const result = await createPortraitResource(portraitInfo.portraitId, portraitInfo.detectedAssetValue);
-      await loadDataFiles();
-      await rebuildContentIndex();
+      await refreshContentState();
       showValidation(result.validation.ok, result.validation.message);
       renderFormView();
     } catch (error) {
@@ -11466,7 +11531,15 @@ async function rebuildContentIndex() {
   const storySpeakers = new Map();
   const referencesByValue = new Map();
 
-  for (const file of state.dataFiles) {
+  for (const file of state.dataFiles.filter((entry) => isStorySourceFile(entry.path))) {
+    fileSummaries.set(file.path, {
+      definitions: 0,
+      type: "story-dsl",
+    });
+  }
+
+  const snapshot = await requestJson("/api/content/snapshot");
+  for (const file of snapshot.documents || []) {
     if (isStorySourceFile(file.path)) {
       fileSummaries.set(file.path, {
         definitions: 0,
@@ -11476,8 +11549,7 @@ async function rebuildContentIndex() {
     }
 
     try {
-      const response = await requestJson(`/api/data/file?path=${encodeURIComponent(file.path)}`);
-      const json = parseJsonText(response.content);
+      const json = parseJsonText(file.content);
       indexStaticStringReferences(referencesByValue, file.path, json);
       if (file.path === "resources.json" && Array.isArray(json)) {
         for (const resource of json) {
@@ -11517,12 +11589,12 @@ async function rebuildContentIndex() {
       }
 
       if (file.path.endsWith(".story.json")) {
-        for (const speaker of ExtractStorySpeakers(file.path, response.content, json)) {
+        for (const speaker of ExtractStorySpeakers(file.path, file.content, json)) {
           storySpeakers.set(speaker.Name, (storySpeakers.get(speaker.Name) || 0) + 1);
         }
       }
 
-      const definitions = extractDefinitions(file.path, response.content, json);
+      const definitions = extractDefinitions(file.path, file.content, json);
       fileSummaries.set(file.path, {
         definitions: definitions.length,
         type: getDefinitionType(file.path),
@@ -11543,6 +11615,7 @@ async function rebuildContentIndex() {
 
   state.contentIndex = {
     ready: true,
+    version: snapshot.version || "",
     definitionsById,
     fileSummaries,
     duplicateDefinitions: findDuplicateDefinitions(definitionsById),
@@ -11922,8 +11995,7 @@ function renderSpeakerTool(target = null) {
         }),
       });
 
-      await loadDataFiles();
-      await rebuildContentIndex();
+      await refreshContentState();
       renderFileList();
       showValidation(result.validation.ok, result.validation.message);
       status.className = "static-tool-status ok";
@@ -12041,9 +12113,7 @@ function openNewStoryDialog() {
           segmentName: segmentInput.value,
         }),
       });
-      await loadDataFiles();
-      await rebuildContentIndex();
-      await loadStoryGraph();
+      await refreshContentState({ storyChanged: true });
       renderFileList();
       closeToolDialog();
       dirtyStateController.markClean({ render: false });
@@ -13132,8 +13202,7 @@ async function createAndUsePortraitLibraryResource(record, portraitId, entry, bu
     const result = await createPortraitResource(value, entry.assetValue);
     record.portrait = value;
     syncFormToEditor();
-    await loadDataFiles();
-    await rebuildContentIndex();
+    await refreshContentState();
     showValidation(result.validation.ok, result.validation.message);
     state.mode === "characters" ? renderCharacterWorkspaceView() : renderFormView();
   } catch (error) {
@@ -13152,8 +13221,7 @@ async function updateAndUsePortraitLibraryResource(record, portraitId, entry, ex
     const result = await updatePortraitResource(portraitId, entry.assetValue, existingResource.value || "");
     record.portrait = portraitId;
     syncFormToEditor();
-    await loadDataFiles();
-    await rebuildContentIndex();
+    await refreshContentState();
     showValidation(result.validation.ok, result.validation.message);
     state.mode === "characters" ? renderCharacterWorkspaceView() : renderFormView();
   } catch (error) {
@@ -13190,8 +13258,7 @@ async function createAndUseItemPictureLibraryResource(record, pictureId, entry, 
     const result = await createItemResource(value, entry.assetValue);
     record.picture = value;
     syncFormToEditor();
-    await loadDataFiles();
-    await rebuildContentIndex();
+    await refreshContentState();
     closeItemPicturePicker();
     showValidation(result.validation.ok, result.validation.message);
     state.mode === "items" ? renderItemWorkspaceView() : renderFormView();
@@ -13214,8 +13281,7 @@ async function createAndUseShopResource(record, field, resourceId, entry, button
     const result = await createGenericResource(value, getShopResourceGroup(field), entry.assetValue);
     record[field] = result.id || value;
     syncFormToEditor();
-    await loadDataFiles();
-    await rebuildContentIndex();
+    await refreshContentState();
     closeShopResourcePicker();
     showValidation(result.validation.ok, result.validation.message);
     state.mode === "shops" ? renderShopWorkspaceView() : renderFormView();

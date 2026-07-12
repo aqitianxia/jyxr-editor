@@ -130,10 +130,12 @@ export function createEditorState() {
       selectedAssetPath: "",
     },
     assetImageInfo: new Map(),
+    assetsLoaded: false,
     assetFilePathSet: new Set(),
     resourceValues: new Map(),
     portraitCheck: null,
     storyGraph: null,
+    storyGraphLoaded: false,
     recentEntries: [],
     problemCenter: {
       validation: null,
@@ -163,6 +165,7 @@ export function createEditorState() {
     },
     contentIndex: {
       ready: false,
+      version: "",
       definitionsById: new Map(),
       fileSummaries: new Map(),
       duplicateDefinitions: [],
