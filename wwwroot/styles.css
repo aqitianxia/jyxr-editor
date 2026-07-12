@@ -165,36 +165,6 @@ body.story-mode .editor-pane {
   grid-template-rows: auto minmax(0, 1fr);
 }
 
-body.map-focus-mode .topbar {
-  min-height: 46px;
-  padding: 6px 12px;
-}
-
-body.map-focus-mode .brand {
-  font-size: 14px;
-}
-
-body.map-focus-mode .path-line {
-  display: none;
-}
-
-body.map-focus-mode .workspace-grid {
-  grid-template-columns: minmax(0, 1fr);
-}
-
-body.map-focus-mode .sidebar,
-body.map-focus-mode .inspector {
-  display: none;
-}
-
-body.map-focus-mode .editor-pane {
-  grid-template-rows: auto 38px minmax(0, 1fr);
-}
-
-body.map-focus-mode .statusbar {
-  display: none;
-}
-
 body.help-page {
   min-height: 100%;
   height: auto;
@@ -559,15 +529,6 @@ body.help-page {
   overflow: hidden;
 }
 
-.form-view {
-  min-height: 0;
-  overflow: hidden;
-  display: grid;
-  grid-template-columns: minmax(220px, 320px) minmax(360px, 1fr);
-  gap: 0;
-  background: #fffdf6;
-}
-
 .story-view {
   min-height: 0;
   overflow: auto;
@@ -827,41 +788,6 @@ body.help-page {
   padding: 8px 0;
 }
 
-.record-panel {
-  min-height: 0;
-  overflow: hidden;
-  display: grid;
-  grid-template-rows: auto auto auto 1fr;
-  border-right: 1px solid var(--border);
-  background: #fffefa;
-}
-
-.record-panel-header,
-.form-detail-header {
-  padding: 12px 14px;
-  border-bottom: 1px solid var(--border);
-}
-
-.form-detail-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.record-panel-title,
-.form-detail-title {
-  font-weight: 700;
-}
-
-.record-panel-subtitle,
-.form-detail-subtitle {
-  margin-top: 4px;
-  color: var(--muted);
-  font-family: var(--mono);
-  font-size: 12px;
-}
-
 .record-actions {
   display: flex;
   gap: 8px;
@@ -874,23 +800,6 @@ body.help-page {
   padding: 0 10px;
 }
 
-.record-search {
-  margin: 10px 12px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  min-height: 34px;
-  padding: 0 10px;
-}
-
-.record-list {
-  min-height: 0;
-  overflow: auto;
-  display: grid;
-  align-content: start;
-  gap: 8px;
-  padding: 0 10px 14px;
-}
-
 .record-empty {
   border: 1px dashed var(--border);
   border-radius: 7px;
@@ -898,25 +807,6 @@ body.help-page {
   color: var(--muted);
   text-align: center;
   font-size: 13px;
-}
-
-.record-card {
-  width: 100%;
-  min-height: 70px;
-  display: grid;
-  grid-template-columns: 48px 1fr;
-  gap: 10px;
-  align-items: center;
-  text-align: left;
-  padding: 8px;
-  border: 1px solid var(--border);
-  border-radius: 7px;
-  background: #fffefa;
-}
-
-.record-card.active {
-  border-color: #5d938c;
-  background: #eaf4ef;
 }
 
 .character-record-card {
@@ -1022,13 +912,6 @@ body.help-page {
   font-size: 11px;
 }
 
-.record-title {
-  font-weight: 700;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 .record-subtitle {
   margin-top: 4px;
   color: var(--muted);
@@ -1037,24 +920,6 @@ body.help-page {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.form-detail {
-  min-height: 0;
-  overflow: auto;
-  background: #fffdf6;
-}
-
-.character-form-detail {
-  background:
-    radial-gradient(circle at top right, rgba(33, 111, 237, 0.07), transparent 28%),
-    linear-gradient(180deg, #fffef8 0%, #fffaf0 100%);
-}
-
-.character-detail-shell {
-  padding: 14px;
-  display: grid;
-  gap: 14px;
 }
 
 .character-summary-card {
@@ -1157,71 +1022,6 @@ body.help-page {
   grid-template-columns: minmax(360px, 0.9fr) minmax(420px, 1.1fr);
   gap: 14px;
   align-items: start;
-}
-
-body.map-focus-mode .form-view {
-  grid-template-columns: minmax(220px, 260px) minmax(0, 1fr);
-}
-
-body.map-focus-mode .map-record-panel {
-  background: #ffffff;
-}
-
-body.map-focus-mode .map-form-detail {
-  background: #f8faf9;
-}
-
-body.map-focus-mode .map-detail-shell {
-  padding: 12px;
-  gap: 12px;
-}
-
-body.map-focus-mode .map-summary-card {
-  grid-template-columns: 150px minmax(0, 1fr);
-  padding: 10px 12px;
-  border-radius: 8px;
-  box-shadow: none;
-}
-
-body.map-focus-mode .map-summary-background {
-  width: 150px;
-  height: 86px;
-  border-radius: 7px;
-}
-
-body.map-focus-mode .map-issue-summary {
-  padding: 10px 12px;
-}
-
-body.map-focus-mode .map-detail-shell > .character-section {
-  border-radius: 8px;
-  padding: 12px;
-}
-
-body.map-focus-mode .map-detail-shell > .character-section:first-of-type .character-form-grid {
-  grid-template-columns: repeat(3, minmax(160px, 1fr));
-}
-
-body.map-focus-mode .map-editor-workspace {
-  grid-template-columns: minmax(420px, 1.08fr) minmax(420px, 1fr);
-  gap: 12px;
-}
-
-body.map-focus-mode .map-small-preview img,
-body.map-focus-mode .map-small-preview .map-canvas-placeholder {
-  min-height: min(46vh, 420px);
-}
-
-body.map-focus-mode .map-location-body {
-  grid-template-columns: 190px minmax(0, 1fr);
-}
-
-body.map-focus-mode .map-location-list {
-  max-height: calc(100vh - 270px);
-}
-
-body.map-focus-mode .map-location-editor {
-  padding: 12px;
 }
 
 .map-canvas-wrap,

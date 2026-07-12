@@ -200,7 +200,7 @@ The checker should stay diagnostic. Do not make it auto-resize images or auto-ed
 
 These are known rough edges in the tool:
 
-- Form view is generic and not schema-aware enough.
+- Advanced data intentionally exposes raw JSON only; schema-aware editing belongs in dedicated workspaces.
 - Complex fields are still edited as raw JSON text.
 - Story grouping and backend diagnostics are still heuristic and can over-report entryless segments as informational issues.
 - Flow layout is intentionally read-only; direct visual graph editing is not supported.

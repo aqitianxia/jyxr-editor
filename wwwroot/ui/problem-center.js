@@ -19,7 +19,7 @@ export function renderProblemCenter(container, model, actions = {}) {
   const title = document.createElement("h1");
   title.textContent = "问题中心";
   const detail = document.createElement("p");
-  detail.textContent = "统一查看正式内容校验、索引、剧情、头像和当前表单的辅助检查结果。";
+  detail.textContent = "统一查看正式内容校验、索引、剧情、头像和当前结构化内容的辅助检查结果。";
   copy.append(eyebrow, title, detail);
   const runButton = document.createElement("button");
   runButton.type = "button";

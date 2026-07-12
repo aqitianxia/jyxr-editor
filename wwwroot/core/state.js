@@ -12,13 +12,10 @@ export function createEditorState() {
     searchMatches: [],
     searchIndex: -1,
     viewMode: "json",
-    formRecords: [],
+    records: [],
     selectedRecordIndex: 0,
-    formSearch: "",
-    formFilter: "all",
     mapEditor: {
       selectedLocationIndex: 0,
-      focusMode: false,
       canvasMode: "select",
       locationSearch: "",
       search: "",
@@ -50,7 +47,6 @@ export function createEditorState() {
       selectedSegmentId: "",
       selectedGraphNodeId: "",
     },
-    characterTab: "talents",
     characterWorkspace: {
       search: "",
       filter: "all",
@@ -112,7 +108,6 @@ export function createEditorState() {
       status: "all",
       selectedKey: "",
     },
-    itemTab: "requirements",
     portraitPicker: {
       open: false,
       search: "",

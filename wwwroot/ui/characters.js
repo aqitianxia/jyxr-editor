@@ -2,6 +2,7 @@ import { createReferencePicker, createReferenceSummary } from "./reference-picke
 import { bindImeSafeInput } from "../core/input-composition.js?v=20260711-core-17";
 import { createEmbeddedJsonEditor, disposeEmbeddedCodeEditors } from "./code-editor.js?v=20260711-stage6-1";
 import { bindScrollMemory } from "./scroll-memory.js?v=20260711-scroll-1";
+import { characterStatFields } from "../domain/characters.js?v=20260712-navigation-2";
 
 const CHARACTER_FILTERS = Object.freeze([
   { value: "all", label: "全部" },
@@ -18,13 +19,6 @@ const CHARACTER_TABS = Object.freeze([
   { value: "skills", label: "武学与成长" },
   { value: "equipment", label: "装备与天赋" },
   { value: "advanced", label: "高级 JSON" },
-]);
-
-const STAT_FIELDS = Object.freeze([
-  ["bili", "臂力"], ["dingli", "定力"], ["fuyuan", "福缘"], ["gengu", "根骨"],
-  ["jianfa", "剑法"], ["daofa", "刀法"], ["quanzhang", "拳掌"], ["qimen", "奇门"],
-  ["shenfa", "身法"], ["wuxing", "悟性"], ["wuxue", "武学常识"],
-  ["max_hp", "最大生命"], ["max_mp", "最大内力"],
 ]);
 
 function el(tag, className = "", text = "") {
@@ -138,7 +132,7 @@ function renderList(container, options) {
   const header = el("div", "character-list-header");
   const heading = el("div");
   heading.appendChild(el("strong", "", "角色列表"));
-  heading.appendChild(el("small", "", `${state.formRecords.length} 条定义`));
+  heading.appendChild(el("small", "", `${state.records.length} 条定义`));
   header.appendChild(heading);
   const actions = el("div", "character-list-actions");
   const speakerButton = button("对白角色", "button secondary", onCreateSpeaker);
@@ -157,14 +151,14 @@ function renderList(container, options) {
   container.appendChild(selectInput(workspace.filter, CHARACTER_FILTERS, onFilter));
 
   const query = workspace.search.trim().toLowerCase();
-  const matches = state.formRecords.map((record, index) => {
+  const matches = state.records.map((record, index) => {
     const issues = getIssues(record);
     const portrait = getPortraitInfo(record);
     return { record, index, issues, portrait };
   }).filter(({ record, issues, portrait }) => matchesSearch(record, query)
     && (matchesRecordFilter ? matchesRecordFilter(record, workspace.filter) : matchesFilter(record, workspace.filter, issues, portrait)));
 
-  const summary = el("div", "character-list-summary", `显示 ${matches.length} / ${state.formRecords.length}`);
+  const summary = el("div", "character-list-summary", `显示 ${matches.length} / ${state.records.length}`);
   container.appendChild(summary);
   const list = el("div", "character-record-list");
   for (const item of matches) {
@@ -271,7 +265,7 @@ function renderStats(parent, context) {
   section.appendChild(el("h3", "", "初始属性"));
   section.appendChild(el("p", "character-section-help", "仅编辑 CharacterDefinition 当前支持的 stats 字段。"));
   const fields = el("div", "character-stat-grid");
-  for (const [key, label] of STAT_FIELDS) {
+  for (const [key, label] of characterStatFields) {
     fields.appendChild(field(`${label} · ${key}`, textInput(record.stats?.[key] ?? 0, (value) => {
       mutateNested("stats", key, Number(value) || 0);
     }, { type: "number" })));
@@ -372,7 +366,7 @@ function renderEquipment(parent, context) {
 function renderAdvanced(parent, context) {
   const { record, replaceRecord, onOpenAdvancedData } = context;
   const notice = el("div", "character-advanced-notice");
-  notice.appendChild(el("strong", "", "高级 JSON 与表单编辑同一条内存记录"));
+  notice.appendChild(el("strong", "", "高级 JSON 与结构化编辑共享同一条内存记录"));
   notice.appendChild(el("p", "", "未识别字段会保留。应用 JSON 后仍需点击顶部“保存”写入 characters.json。"));
   notice.appendChild(button("在高级数据中打开 characters.json", "button ghost", onOpenAdvancedData));
   parent.appendChild(notice);
@@ -420,7 +414,7 @@ function renderReferences(container, references, onClose) {
 function renderDetail(container, options) {
   const { state, getIssues, getPortraitInfo, getReferences, onMutate, onReplaceRecord, onPickPortrait,
     referenceOptions, onDuplicate, onDelete, onOpenAdvancedData, onOpenProblems, onOpenReferences, onCloseReferences, onTab } = options;
-  const record = state.formRecords[state.selectedRecordIndex];
+  const record = state.records[state.selectedRecordIndex];
   if (!record) {
     renderEmpty(container, "没有可编辑的角色", "点击左侧“新建”创建第一条角色定义。" );
     return;

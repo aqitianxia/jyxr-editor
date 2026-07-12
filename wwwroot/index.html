@@ -158,7 +158,7 @@
             <span class="navigation-icon" aria-hidden="true">▦</span>
             <span class="navigation-copy">
               <strong>高级数据</strong>
-              <small>表单与完整 JSON 文件</small>
+              <small>完整 JSON 与 Story 源文件</small>
               </span>
             </button>
             <div class="raw-data-navigation" aria-label="当前 MOD 原始 JSON">
@@ -219,11 +219,10 @@
         </div>
 
         <div id="editorTools" class="editor-tools hidden" aria-label="当前内容工具">
-          <div class="segmented-control" aria-label="编辑视图">
-            <button id="formModeButton" type="button">表单</button>
+          <div id="editorViewModes" class="segmented-control hidden" aria-label="Story 源码视图">
+            <button id="sourceModeButton" type="button">DSL</button>
             <button id="jsonModeButton" type="button">JSON</button>
           </div>
-          <button id="mapFocusButton" type="button" class="map-focus-button hidden">地图工作台</button>
           <button id="formatButton" type="button" class="button ghost">格式化</button>
           <div class="toolbar-divider" aria-hidden="true"></div>
           <input id="contentSearch" class="content-search" type="search" placeholder="搜索当前文件" aria-label="搜索当前内容">
@@ -234,7 +233,6 @@
           <div id="searchState" class="tool-state" aria-live="polite"></div>
         </div>
 
-        <div id="formView" class="form-view hidden"></div>
         <div id="storyView" class="story-view hidden"></div>
         <textarea id="editor" class="legacy-editor" spellcheck="false" autocomplete="off" autocapitalize="off" aria-label="内容编辑器"></textarea>
         <div id="monacoHost" class="monaco-host hidden"></div>

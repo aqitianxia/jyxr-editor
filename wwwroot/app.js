@@ -24,7 +24,8 @@ import { renderGrowthTemplateWorkspace } from "./workspaces/growth-templates.js?
 import { cloneJson as cloneSectJson, createSectDefinition, ensureSectShape, getSectIssues } from "./domain/sects.js?v=20260711-stage9-2";
 import { renderSectWorkspace } from "./workspaces/sects.js?v=20260711-stage9-2";
 import { createMapDefinition, ensureMapEventShape, ensureMapLocationShape, ensureMapShape, matchesMapSearch, moveMapLocation as moveMapLocationEntry } from "./domain/maps.js?v=20260712-stage11-1";
-import { createItemDefinition } from "./domain/items.js?v=20260711-stage6-1";
+import { characterStatFields } from "./domain/characters.js?v=20260712-navigation-2";
+import { createItemDefinition, effectTypes, statChoices, weaponTypes } from "./domain/items.js?v=20260711-stage6-1";
 import { renderItemWorkspace } from "./workspaces/items.js?v=20260711-stage6-2";
 import { createShopDefinition, createShopProduct, ensureShopShape as ensureShopWorkspaceShape, moveShopProduct as moveShopProductEntry } from "./domain/shops.js?v=20260711-stage7-1";
 import { renderShopWorkspace } from "./workspaces/shops.js?v=20260711-stage7-2";
@@ -140,9 +141,9 @@ const elements = {
   assetsTab: document.getElementById("assetsTab"),
   fileSearch: document.getElementById("fileSearch"),
   fileList: document.getElementById("fileList"),
-  formModeButton: document.getElementById("formModeButton"),
+  editorViewModes: document.getElementById("editorViewModes"),
+  sourceModeButton: document.getElementById("sourceModeButton"),
   jsonModeButton: document.getElementById("jsonModeButton"),
-  mapFocusButton: document.getElementById("mapFocusButton"),
   currentPath: document.getElementById("currentPath"),
   currentFileSummary: document.getElementById("currentFileSummary"),
   currentFileBox: document.getElementById("currentFileBox"),
@@ -156,7 +157,6 @@ const elements = {
   findPreviousButton: document.getElementById("findPreviousButton"),
   findNextButton: document.getElementById("findNextButton"),
   searchState: document.getElementById("searchState"),
-  formView: document.getElementById("formView"),
   saveStorySourceButton: document.getElementById("saveStorySourceButton"),
   storyView: document.getElementById("storyView"),
   monacoHost: document.getElementById("monacoHost"),
@@ -237,10 +237,9 @@ elements.dataTab.addEventListener("click", () => requestWorkspaceChange("data"))
 elements.storyTab.addEventListener("click", () => requestWorkspaceChange("story"));
 elements.assetsTab.addEventListener("click", () => requestWorkspaceChange("assets"));
 bindImeSafeInput(elements.fileSearch, renderFileList);
-elements.formModeButton.addEventListener("click", () => setViewMode(isStoryDslEditingFile() ? "dsl" : "form"));
+elements.sourceModeButton.addEventListener("click", () => setViewMode("dsl"));
 elements.jsonModeButton.addEventListener("click", () => setViewMode("json"));
 elements.saveStorySourceButton.addEventListener("click", saveCurrentStoryJsonAsSource);
-elements.mapFocusButton.addEventListener("click", () => setMapFocusMode(!state.mapEditor.focusMode));
 elements.formatButton.addEventListener("click", formatCurrentJson);
 elements.validateButton.addEventListener("click", runProjectChecks);
 elements.saveButton.addEventListener("click", saveCurrentFile);
@@ -887,7 +886,7 @@ async function switchMod(modId) {
   preferences.set(storageKeys.activeModId, modId);
   state.currentPath = "";
   dirtyStateController.markClean({ render: false });
-  state.formRecords = [];
+  state.records = [];
   state.selectedRecordIndex = 0;
   state.workspaceScrollPositions = {};
   resetMartialWorkspaceState();
@@ -1049,83 +1048,56 @@ function setMode(mode) {
   elements.formatButton.disabled = mode !== "data";
 
   if (mode === "home") {
-    elements.formView.classList.add("hidden");
     elements.storyView.classList.add("hidden");
     setTextEditorVisible(false);
     renderProjectHomeWorkspace();
   } else if (mode === "problems") {
-    elements.formView.classList.add("hidden");
     elements.storyView.classList.add("hidden");
     setTextEditorVisible(false);
     renderProblemCenterWorkspace();
   } else if (isCharacters) {
-    disposeEmbeddedCodeEditors(elements.formView);
-    elements.formView.replaceChildren();
-    elements.formView.classList.add("hidden");
     elements.storyView.classList.add("hidden");
     setTextEditorVisible(false);
     elements.currentPath.textContent = "characters.json";
     renderCharacterWorkspaceView();
   } else if (isMaps) {
-    disposeEmbeddedCodeEditors(elements.formView);
-    elements.formView.replaceChildren();
-    elements.formView.classList.add("hidden");
     elements.storyView.classList.add("hidden");
     setTextEditorVisible(false);
     elements.currentPath.textContent = "maps.json";
     renderMapWorkspaceView();
   } else if (isGrowth) {
-    disposeEmbeddedCodeEditors(elements.formView);
-    elements.formView.replaceChildren();
-    elements.formView.classList.add("hidden");
     elements.storyView.classList.add("hidden");
     setTextEditorVisible(false);
     elements.currentPath.textContent = "grow-templates.json";
     renderGrowthWorkspaceView();
   } else if (isSects) {
-    disposeEmbeddedCodeEditors(elements.formView);
-    elements.formView.replaceChildren();
-    elements.formView.classList.add("hidden");
     elements.storyView.classList.add("hidden");
     setTextEditorVisible(false);
     elements.currentPath.textContent = "sects.json";
     renderSectWorkspaceView();
   } else if (isItems) {
-    disposeEmbeddedCodeEditors(elements.formView);
-    elements.formView.replaceChildren();
-    elements.formView.classList.add("hidden");
     elements.storyView.classList.add("hidden");
     setTextEditorVisible(false);
     elements.currentPath.textContent = "items.json";
     renderItemWorkspaceView();
   } else if (isShops) {
-    disposeEmbeddedCodeEditors(elements.formView);
-    elements.formView.replaceChildren();
-    elements.formView.classList.add("hidden");
     elements.storyView.classList.add("hidden");
     setTextEditorVisible(false);
     elements.currentPath.textContent = "shops.json";
     renderShopWorkspaceView();
   } else if (isMartial) {
-    disposeEmbeddedCodeEditors(elements.formView);
-    elements.formView.replaceChildren();
-    elements.formView.classList.add("hidden");
     elements.storyView.classList.add("hidden");
     setTextEditorVisible(false);
     elements.currentPath.textContent = "武学与奥义";
     renderMartialWorkspaceView();
   } else if (isResources) {
-    elements.formView.classList.add("hidden");
     elements.storyView.classList.add("hidden");
     setTextEditorVisible(false);
     renderResourceWorkspaceView();
   } else if (isStory) {
     elements.currentPath.textContent = state.currentPath || "剧情与任务";
     elements.assetPreview.textContent = "流程视图由当前剧情草稿生成";
-    elements.formModeButton.disabled = true;
-    elements.jsonModeButton.disabled = true;
     elements.saveStorySourceButton.classList.add("hidden");
-    elements.formView.classList.add("hidden");
     elements.storyView.classList.remove("hidden");
     renderDirtyState();
     renderStoryView();
@@ -1136,17 +1108,13 @@ function setMode(mode) {
     if (isStoryDslEditingFile()) {
       setViewMode(state.viewMode === "json" ? "json" : "dsl");
     } else {
-      elements.formModeButton.textContent = "表单";
-      elements.jsonModeButton.textContent = "JSON";
-      elements.formModeButton.disabled = state.formRecords.length === 0;
-      elements.jsonModeButton.disabled = false;
-      elements.formView.classList.toggle("hidden", state.viewMode !== "form");
-      setTextEditorVisible(state.viewMode === "json");
+      state.viewMode = "json";
+      elements.editorViewModes.classList.add("hidden");
+      setTextEditorVisible(true);
     }
     renderEditorOutline();
   }
 
-  updateMapFocusControl();
   updateStorySourceButton();
   renderShellContext();
   if (!isOverview && !isCharacters && !isMaps && !isGrowth && !isItems && !isShops && !isMartial && !isResources) {
@@ -1175,9 +1143,8 @@ async function requestWorkspaceChange(mode) {
         if (!Array.isArray(records) || !records.every((record) => record && typeof record === "object" && !Array.isArray(record))) {
           throw new Error("characters.json 顶层必须是角色对象数组。");
         }
-        state.formRecords = records;
+        state.records = records;
         state.selectedRecordIndex = Math.min(state.selectedRecordIndex, Math.max(0, records.length - 1));
-        state.viewMode = "form";
         setMode("characters");
       } catch (error) {
         showValidation(false, error instanceof SyntaxError ? formatJsonError(error) : error.message);
@@ -1197,10 +1164,9 @@ async function requestWorkspaceChange(mode) {
         if (!Array.isArray(records) || !records.every((record) => record && typeof record === "object" && !Array.isArray(record))) {
           throw new Error("maps.json 顶层必须是地图对象数组。");
         }
-        state.formRecords = records;
-        state.formRecords.forEach(ensureMapShape);
+        state.records = records;
+        state.records.forEach(ensureMapShape);
         state.selectedRecordIndex = Math.min(state.selectedRecordIndex, Math.max(0, records.length - 1));
-        state.viewMode = "form";
         setMode("maps");
       } catch (error) {
         showValidation(false, error instanceof SyntaxError ? formatJsonError(error) : error.message);
@@ -1220,10 +1186,9 @@ async function requestWorkspaceChange(mode) {
         if (!Array.isArray(records) || !records.every((record) => record && typeof record === "object" && !Array.isArray(record))) {
           throw new Error("grow-templates.json 顶层必须是成长模板对象数组。");
         }
-        state.formRecords = records;
-        state.formRecords.forEach(ensureGrowthTemplateShape);
+        state.records = records;
+        state.records.forEach(ensureGrowthTemplateShape);
         state.selectedRecordIndex = Math.min(state.selectedRecordIndex, Math.max(0, records.length - 1));
-        state.viewMode = "form";
         setMode("growth");
       } catch (error) {
         showValidation(false, error instanceof SyntaxError ? formatJsonError(error) : error.message);
@@ -1243,10 +1208,9 @@ async function requestWorkspaceChange(mode) {
         if (!Array.isArray(records) || !records.every((record) => record && typeof record === "object" && !Array.isArray(record))) {
           throw new Error("sects.json 顶层必须是门派对象数组。");
         }
-        state.formRecords = records;
-        state.formRecords.forEach(ensureSectShape);
+        state.records = records;
+        state.records.forEach(ensureSectShape);
         state.selectedRecordIndex = Math.min(state.selectedRecordIndex, Math.max(0, records.length - 1));
-        state.viewMode = "form";
         setMode("sects");
       } catch (error) {
         showValidation(false, error instanceof SyntaxError ? formatJsonError(error) : error.message);
@@ -1266,9 +1230,8 @@ async function requestWorkspaceChange(mode) {
         if (!Array.isArray(records) || !records.every((record) => record && typeof record === "object" && !Array.isArray(record))) {
           throw new Error("items.json 顶层必须是物品对象数组。");
         }
-        state.formRecords = records;
+        state.records = records;
         state.selectedRecordIndex = Math.min(state.selectedRecordIndex, Math.max(0, records.length - 1));
-        state.viewMode = "form";
         setMode("items");
       } catch (error) {
         showValidation(false, error instanceof SyntaxError ? formatJsonError(error) : error.message);
@@ -1288,11 +1251,10 @@ async function requestWorkspaceChange(mode) {
         if (!Array.isArray(records) || !records.every((record) => record && typeof record === "object" && !Array.isArray(record))) {
           throw new Error("shops.json 顶层必须是商店对象数组。");
         }
-        state.formRecords = records;
-        state.formRecords.forEach(ensureShopWorkspaceShape);
+        state.records = records;
+        state.records.forEach(ensureShopWorkspaceShape);
         state.selectedRecordIndex = Math.min(state.selectedRecordIndex, Math.max(0, records.length - 1));
         state.shopWorkspace.selectedProductIndex = Math.min(state.shopWorkspace.selectedProductIndex, Math.max(0, (records[state.selectedRecordIndex]?.products?.length || 0) - 1));
-        state.viewMode = "form";
         setMode("shops");
       } catch (error) {
         showValidation(false, error instanceof SyntaxError ? formatJsonError(error) : error.message);
@@ -1338,7 +1300,7 @@ async function reloadCurrentDataFile() {
   const file = await requestJson(`/api/data/file?path=${encodeURIComponent(state.currentPath)}`);
   setEditorValue(file.content);
   dirtyStateController.markClean({ render: false });
-  refreshFormFromEditor({ preferForm: state.viewMode === "form" || state.mode === "characters" || state.mode === "maps" || state.mode === "growth" || state.mode === "sects" || state.mode === "items" || state.mode === "shops" });
+  refreshRecordsFromEditor();
   renderDirtyState();
 }
 
@@ -1422,7 +1384,7 @@ function revealAssetInResourceWorkspace(assetPath) {
 
 
 async function openCharacterWorkspace() {
-  if (state.mode === "characters" && isCharacterFile() && state.formRecords.length > 0) {
+  if (state.mode === "characters" && isCharacterFile() && state.records.length > 0) {
     renderCharacterWorkspaceView();
     return;
   }
@@ -1434,7 +1396,6 @@ async function openCharacterWorkspace() {
   if (!isCharacterFile()) {
     return;
   }
-  state.viewMode = "form";
   setMode("characters");
 }
 
@@ -1474,12 +1435,12 @@ function renderCharacterWorkspaceView() {
     },
     onMutate: (record, key, value) => {
       record[key] = value;
-      syncFormToEditor();
+      syncRecordsToEditor();
       renderCharacterWorkspaceView();
     },
     onReplaceRecord: (record) => {
-      state.formRecords[state.selectedRecordIndex] = record;
-      syncFormToEditor();
+      state.records[state.selectedRecordIndex] = record;
+      syncRecordsToEditor();
       renderCharacterWorkspaceView();
     },
     onPickPortrait: () => openPortraitPicker(getCurrentCharacterPortraitAssetPath()),
@@ -1499,7 +1460,7 @@ function renderCharacterWorkspaceView() {
       setMode("data");
       state.viewMode = "json";
       setViewMode("json");
-      const record = state.formRecords[state.selectedRecordIndex];
+      const record = state.records[state.selectedRecordIndex];
       if (record?.id) {
         const definition = (state.contentIndex.definitionsById.get(record.id) || [])
           .find((candidate) => candidate.path === "characters.json");
@@ -1533,29 +1494,29 @@ function createCharacterRecord() {
     equipmentIds: [],
     externalSkills: [],
   };
-  state.formRecords.push(record);
-  state.selectedRecordIndex = state.formRecords.length - 1;
+  state.records.push(record);
+  state.selectedRecordIndex = state.records.length - 1;
   state.characterWorkspace.filter = "all";
   state.characterWorkspace.search = "";
   state.characterWorkspace.tab = "overview";
-  syncFormToEditor();
+  syncRecordsToEditor();
   renderCharacterWorkspaceView();
 }
 
 function duplicateCharacterRecord() {
-  const current = state.formRecords[state.selectedRecordIndex];
+  const current = state.records[state.selectedRecordIndex];
   if (!current) return;
   const copy = structuredCloneCompat(current);
   copy.id = createUniqueId(`${String(current.id || "新角色")}_copy`);
   copy.name = `${String(current.name || current.id || "新角色")} 副本`;
-  state.formRecords.splice(state.selectedRecordIndex + 1, 0, copy);
+  state.records.splice(state.selectedRecordIndex + 1, 0, copy);
   state.selectedRecordIndex += 1;
-  syncFormToEditor();
+  syncRecordsToEditor();
   renderCharacterWorkspaceView();
 }
 
 function deleteCharacterRecord() {
-  const current = state.formRecords[state.selectedRecordIndex];
+  const current = state.records[state.selectedRecordIndex];
   if (!current) return;
   const references = getCharacterReferences(current);
   const referenceSummary = references.length > 0
@@ -1564,15 +1525,15 @@ function deleteCharacterRecord() {
   if (!confirmAction(`${referenceSummary}确认删除角色「${current.name || current.id}」？此操作会留在未保存状态。`)) {
     return;
   }
-  state.formRecords.splice(state.selectedRecordIndex, 1);
-  state.selectedRecordIndex = Math.max(0, Math.min(state.selectedRecordIndex, state.formRecords.length - 1));
+  state.records.splice(state.selectedRecordIndex, 1);
+  state.selectedRecordIndex = Math.max(0, Math.min(state.selectedRecordIndex, state.records.length - 1));
   state.characterWorkspace.referencesOpen = false;
-  syncFormToEditor();
+  syncRecordsToEditor();
   renderCharacterWorkspaceView();
 }
 
 async function openItemWorkspace() {
-  if (state.mode === "items" && isItemFile() && state.formRecords.length > 0) {
+  if (state.mode === "items" && isItemFile() && state.records.length > 0) {
     renderItemWorkspaceView();
     return;
   }
@@ -1582,7 +1543,6 @@ async function openItemWorkspace() {
   }
   await openDataFile("items.json");
   if (!isItemFile()) return;
-  state.viewMode = "form";
   setMode("items");
 }
 
@@ -1616,12 +1576,12 @@ function renderItemWorkspaceView() {
     },
     onMutate: (record, key, value) => {
       record[key] = value;
-      syncFormToEditor();
+      syncRecordsToEditor();
       renderItemWorkspaceView();
     },
     onReplaceRecord: (record) => {
-      state.formRecords[state.selectedRecordIndex] = record;
-      syncFormToEditor();
+      state.records[state.selectedRecordIndex] = record;
+      syncRecordsToEditor();
       renderItemWorkspaceView();
     },
     onCreate: createItemRecord,
@@ -1633,7 +1593,7 @@ function renderItemWorkspaceView() {
       setMode("data");
       state.viewMode = "json";
       setViewMode("json");
-      const record = state.formRecords[state.selectedRecordIndex];
+      const record = state.records[state.selectedRecordIndex];
       if (record?.id) {
         const definition = (state.contentIndex.definitionsById.get(record.id) || [])
           .find((candidate) => candidate.path === "items.json");
@@ -1647,38 +1607,38 @@ function renderItemWorkspaceView() {
 
 function createItemRecord() {
   const id = createUniqueId("新物品");
-  state.formRecords.push(createItemDefinition("consumable", id));
-  state.selectedRecordIndex = state.formRecords.length - 1;
+  state.records.push(createItemDefinition("consumable", id));
+  state.selectedRecordIndex = state.records.length - 1;
   state.itemWorkspace.search = "";
   state.itemWorkspace.filter = "all";
   state.itemWorkspace.tab = "overview";
-  syncFormToEditor();
+  syncRecordsToEditor();
   renderItemWorkspaceView();
 }
 
 function duplicateItemRecord() {
-  const current = state.formRecords[state.selectedRecordIndex];
+  const current = state.records[state.selectedRecordIndex];
   if (!current) return;
   const copy = structuredCloneCompat(current);
   copy.id = createUniqueId(`${String(current.id || "新物品")}_copy`);
   copy.name = `${String(current.name || current.id || "新物品")} 副本`;
-  state.formRecords.splice(state.selectedRecordIndex + 1, 0, copy);
+  state.records.splice(state.selectedRecordIndex + 1, 0, copy);
   state.selectedRecordIndex += 1;
-  syncFormToEditor();
+  syncRecordsToEditor();
   renderItemWorkspaceView();
 }
 
 function deleteItemRecord() {
-  const current = state.formRecords[state.selectedRecordIndex];
+  const current = state.records[state.selectedRecordIndex];
   if (!current) return;
   const references = getItemReferences(current);
   const summary = references.length
     ? `静态扫描找到 ${references.length} 处引用。\n\n${references.slice(0, 5).map((item) => `${item.path} · ${item.fieldPath}`).join("\n")}\n\n`
     : "静态扫描未找到引用，但无法覆盖动态脚本或运行时引用。\n\n";
   if (!confirmAction(`${summary}确认删除物品「${current.name || current.id}」？此操作会留在未保存状态。`)) return;
-  state.formRecords.splice(state.selectedRecordIndex, 1);
-  state.selectedRecordIndex = Math.max(0, Math.min(state.selectedRecordIndex, state.formRecords.length - 1));
-  syncFormToEditor();
+  state.records.splice(state.selectedRecordIndex, 1);
+  state.selectedRecordIndex = Math.max(0, Math.min(state.selectedRecordIndex, state.records.length - 1));
+  syncRecordsToEditor();
   renderItemWorkspaceView();
 }
 
@@ -1731,7 +1691,7 @@ async function uploadCurrentItemPicture(file) {
     await loadDataFiles();
     await rebuildContentIndex();
     record.picture = result.pictureId;
-    syncFormToEditor();
+    syncRecordsToEditor();
     showValidation(result.validation.ok, `已上传并绑定：${result.pictureId} -> ${result.assetPath}`);
     renderItemWorkspaceView();
   } catch (error) {
@@ -1740,7 +1700,7 @@ async function uploadCurrentItemPicture(file) {
 }
 
 async function openGrowthWorkspace() {
-  if (state.mode === "growth" && isGrowthFile() && state.formRecords.length > 0) {
+  if (state.mode === "growth" && isGrowthFile() && state.records.length > 0) {
     renderGrowthWorkspaceView();
     return;
   }
@@ -1750,8 +1710,7 @@ async function openGrowthWorkspace() {
   }
   await openDataFile("grow-templates.json");
   if (!isGrowthFile()) return;
-  state.formRecords.forEach(ensureGrowthTemplateShape);
-  state.viewMode = "form";
+  state.records.forEach(ensureGrowthTemplateShape);
   setMode("growth");
 }
 
@@ -1774,15 +1733,15 @@ function getGrowthTemplateUsage(templateId) {
 
 function renderGrowthWorkspaceView() {
   if (state.mode !== "growth") return;
-  state.formRecords.forEach(ensureGrowthTemplateShape);
+  state.records.forEach(ensureGrowthTemplateShape);
   const idCounts = new Map();
-  for (const record of state.formRecords) {
+  for (const record of state.records) {
     const id = String(record.id || "").trim();
     if (id) idCounts.set(id, (idCounts.get(id) || 0) + 1);
   }
   renderGrowthTemplateWorkspace(elements.growthWorkspaceView, {
     state,
-    records: state.formRecords,
+    records: state.records,
     idCounts,
     getUsage: getGrowthTemplateUsage,
     onSelect: (index) => {
@@ -1800,22 +1759,22 @@ function renderGrowthWorkspaceView() {
     onFilter: (value) => { state.growthWorkspace.filter = value; renderGrowthWorkspaceView(); },
     onTab: (value) => { state.growthWorkspace.tab = value; renderGrowthWorkspaceView(); },
     onPatch: (key, value) => {
-      const record = state.formRecords[state.selectedRecordIndex];
+      const record = state.records[state.selectedRecordIndex];
       if (!record) return;
       record[key] = value;
-      syncFormToEditor();
+      syncRecordsToEditor();
       renderGrowthWorkspaceView();
     },
     onPatchGrowth: (key, value) => {
-      const record = state.formRecords[state.selectedRecordIndex];
+      const record = state.records[state.selectedRecordIndex];
       if (!record) return;
       ensureGrowthTemplateShape(record).statGrowth[key] = value;
-      syncFormToEditor();
+      syncRecordsToEditor();
       renderGrowthWorkspaceView();
     },
     onReplace: (next) => {
-      state.formRecords[state.selectedRecordIndex] = ensureGrowthTemplateShape(next);
-      syncFormToEditor();
+      state.records[state.selectedRecordIndex] = ensureGrowthTemplateShape(next);
+      syncRecordsToEditor();
       renderGrowthWorkspaceView();
     },
     onDuplicate: duplicateGrowthTemplateRecord,
@@ -1830,43 +1789,43 @@ function renderGrowthWorkspaceView() {
 
 function createGrowthTemplateRecord() {
   const id = createUniqueId("新成长模板");
-  state.formRecords.push(createGrowthTemplate(id, state.growthWorkspace.creatorTemplate));
-  state.selectedRecordIndex = state.formRecords.length - 1;
+  state.records.push(createGrowthTemplate(id, state.growthWorkspace.creatorTemplate));
+  state.selectedRecordIndex = state.records.length - 1;
   state.growthWorkspace.creatorOpen = false;
   state.growthWorkspace.search = "";
   state.growthWorkspace.filter = "all";
   state.growthWorkspace.tab = "overview";
-  syncFormToEditor();
+  syncRecordsToEditor();
   renderGrowthWorkspaceView();
 }
 
 function duplicateGrowthTemplateRecord() {
-  const current = state.formRecords[state.selectedRecordIndex];
+  const current = state.records[state.selectedRecordIndex];
   if (!current) return;
   const copy = structuredCloneCompat(current);
   copy.id = createUniqueId(`${String(current.id || "成长模板")}_copy`);
   copy.name = `${String(current.name || current.id || "成长模板")} 副本`;
-  state.formRecords.splice(state.selectedRecordIndex + 1, 0, copy);
+  state.records.splice(state.selectedRecordIndex + 1, 0, copy);
   state.selectedRecordIndex += 1;
-  syncFormToEditor();
+  syncRecordsToEditor();
   renderGrowthWorkspaceView();
 }
 
 function deleteGrowthTemplateRecord() {
-  const current = state.formRecords[state.selectedRecordIndex];
+  const current = state.records[state.selectedRecordIndex];
   if (!current) return;
   const usage = getGrowthTemplateUsage(current.id);
   const defaultWarning = current.id === "default" ? "\n\n这是运行时回退模板，删除后未指定模板的角色升级会失败。" : "";
   const usageWarning = usage.length ? `\n\n当前静态扫描发现 ${usage.length} 名角色使用：${usage.slice(0, 6).map((item) => item.name || item.id).join("、")}${usage.length > 6 ? "等" : ""}。` : "";
   if (!confirmAction(`确认删除成长模板「${current.name || current.id}」？${defaultWarning}${usageWarning}\n\n此操作会留在未保存状态。`)) return;
-  state.formRecords.splice(state.selectedRecordIndex, 1);
-  state.selectedRecordIndex = Math.max(0, Math.min(state.selectedRecordIndex, state.formRecords.length - 1));
-  syncFormToEditor();
+  state.records.splice(state.selectedRecordIndex, 1);
+  state.selectedRecordIndex = Math.max(0, Math.min(state.selectedRecordIndex, state.records.length - 1));
+  syncRecordsToEditor();
   renderGrowthWorkspaceView();
 }
 
 async function openSectWorkspace() {
-  if (state.mode === "sects" && isSectFile() && state.formRecords.length > 0) {
+  if (state.mode === "sects" && isSectFile() && state.records.length > 0) {
     renderSectWorkspaceView();
     return;
   }
@@ -1876,8 +1835,7 @@ async function openSectWorkspace() {
   }
   await openDataFile("sects.json");
   if (!isSectFile()) return;
-  state.formRecords.forEach(ensureSectShape);
-  state.viewMode = "form";
+  state.records.forEach(ensureSectShape);
   setMode("sects");
 }
 
@@ -1920,10 +1878,10 @@ function getSectWorkspaceReferences() {
 
 function renderSectWorkspaceView() {
   if (state.mode !== "sects") return;
-  state.formRecords.forEach(ensureSectShape);
+  state.records.forEach(ensureSectShape);
   const references = getSectWorkspaceReferences();
   const idCounts = new Map();
-  state.formRecords.forEach((record) => { const id = String(record.id || "").trim(); if (id) idCounts.set(id, (idCounts.get(id) || 0) + 1); });
+  state.records.forEach((record) => { const id = String(record.id || "").trim(); if (id) idCounts.set(id, (idCounts.get(id) || 0) + 1); });
   const issueContext = {
     idCounts,
     storyIds: new Set(references.stories.map((item) => item.id)),
@@ -1932,7 +1890,7 @@ function renderSectWorkspaceView() {
     characterNames: new Set(references.characters.flatMap((item) => [item.id, item.name, item.subtitle].filter(Boolean))),
   };
   renderSectWorkspace(elements.sectWorkspaceView, {
-    state, records: state.formRecords, references,
+    state, records: state.records, references,
     getIssues: (record) => getSectIssues(record, issueContext),
     resolveResource: (id) => {
       const resource = state.contentIndex.resourcesById.get(String(id || ""));
@@ -1941,8 +1899,8 @@ function renderSectWorkspaceView() {
     onSelect: (index) => { state.selectedRecordIndex = index; state.sectWorkspace.tab = "overview"; renderSectWorkspaceView(); },
     onSearch: (value) => { state.sectWorkspace.search = value; renderSectWorkspaceView(); const search = elements.sectWorkspaceView.querySelector('input[type="search"]'); search?.focus(); search?.setSelectionRange(value.length, value.length); },
     onTab: (value) => { state.sectWorkspace.tab = value; renderSectWorkspaceView(); },
-    onPatch: (key, value) => { const record = state.formRecords[state.selectedRecordIndex]; if (!record) return; record[key] = value; syncFormToEditor(); renderSectWorkspaceView(); },
-    onReplace: (next) => { state.formRecords[state.selectedRecordIndex] = ensureSectShape(next); syncFormToEditor(); renderSectWorkspaceView(); },
+    onPatch: (key, value) => { const record = state.records[state.selectedRecordIndex]; if (!record) return; record[key] = value; syncRecordsToEditor(); renderSectWorkspaceView(); },
+    onReplace: (next) => { state.records[state.selectedRecordIndex] = ensureSectShape(next); syncRecordsToEditor(); renderSectWorkspaceView(); },
     onCreate: createSectRecord,
     onDuplicate: duplicateSectRecord,
     onDelete: deleteSectRecord,
@@ -1952,36 +1910,36 @@ function renderSectWorkspaceView() {
 
 function createSectRecord() {
   const id = createUniqueId("新门派");
-  state.formRecords.push(createSectDefinition(id));
-  state.selectedRecordIndex = state.formRecords.length - 1;
+  state.records.push(createSectDefinition(id));
+  state.selectedRecordIndex = state.records.length - 1;
   state.sectWorkspace.search = "";
   state.sectWorkspace.tab = "overview";
-  syncFormToEditor();
+  syncRecordsToEditor();
   renderSectWorkspaceView();
   showValidation(true, "已创建最小门派模板。Web 编辑器可配置文本与已有资源引用；新图片和 PCK 资源仍需在 Godot 资源流程中制作。 ");
 }
 
 function duplicateSectRecord() {
-  const current = state.formRecords[state.selectedRecordIndex];
+  const current = state.records[state.selectedRecordIndex];
   if (!current) return;
   const copy = cloneSectJson(current);
   copy.id = createUniqueId(`${String(current.id || "门派")}_copy`);
   copy.name = `${String(current.name || current.id || "门派")} 副本`;
-  state.formRecords.splice(state.selectedRecordIndex + 1, 0, copy);
+  state.records.splice(state.selectedRecordIndex + 1, 0, copy);
   state.selectedRecordIndex += 1;
-  syncFormToEditor(); renderSectWorkspaceView();
+  syncRecordsToEditor(); renderSectWorkspaceView();
 }
 
 function deleteSectRecord() {
-  const current = state.formRecords[state.selectedRecordIndex];
+  const current = state.records[state.selectedRecordIndex];
   if (!current || !confirmAction(`确认删除门派「${current.name || current.id}」？\n\n剧情或其他高级数据中的字符串引用不会自动修改。此操作会留在未保存状态。`)) return;
-  state.formRecords.splice(state.selectedRecordIndex, 1);
-  state.selectedRecordIndex = Math.max(0, Math.min(state.selectedRecordIndex, state.formRecords.length - 1));
-  syncFormToEditor(); renderSectWorkspaceView();
+  state.records.splice(state.selectedRecordIndex, 1);
+  state.selectedRecordIndex = Math.max(0, Math.min(state.selectedRecordIndex, state.records.length - 1));
+  syncRecordsToEditor(); renderSectWorkspaceView();
 }
 
 async function openShopWorkspace() {
-  if (state.mode === "shops" && isShopFile() && state.formRecords.length > 0) {
+  if (state.mode === "shops" && isShopFile() && state.records.length > 0) {
     renderShopWorkspaceView();
     return;
   }
@@ -1991,14 +1949,13 @@ async function openShopWorkspace() {
   }
   await openDataFile("shops.json");
   if (!isShopFile()) return;
-  state.formRecords.forEach(ensureShopWorkspaceShape);
-  state.viewMode = "form";
+  state.records.forEach(ensureShopWorkspaceShape);
   setMode("shops");
 }
 
 function renderShopWorkspaceView() {
   if (state.mode !== "shops") return;
-  const record = state.formRecords[state.selectedRecordIndex];
+  const record = state.records[state.selectedRecordIndex];
   if (record) ensureShopWorkspaceShape(record);
   renderShopWorkspace(elements.shopWorkspaceView, {
     state,
@@ -2034,16 +1991,16 @@ function renderShopWorkspaceView() {
       renderShopWorkspaceView();
     },
     onMutateShop: (key, value) => {
-      const current = state.formRecords[state.selectedRecordIndex];
+      const current = state.records[state.selectedRecordIndex];
       if (!current) return;
       current[key] = value;
-      syncFormToEditor();
+      syncRecordsToEditor();
       renderShopWorkspaceView();
     },
     onReplaceShop: (next) => {
-      state.formRecords[state.selectedRecordIndex] = ensureShopWorkspaceShape(next);
+      state.records[state.selectedRecordIndex] = ensureShopWorkspaceShape(next);
       state.shopWorkspace.selectedProductIndex = Math.min(state.shopWorkspace.selectedProductIndex, Math.max(0, next.products.length - 1));
-      syncFormToEditor();
+      syncRecordsToEditor();
       renderShopWorkspaceView();
     },
     onAddProduct: addWorkspaceShopProduct,
@@ -2387,92 +2344,92 @@ function getShopReferences(record) {
 
 function createShopRecord() {
   const id = createUniqueId("新商店");
-  state.formRecords.push(createShopDefinition(id));
-  state.selectedRecordIndex = state.formRecords.length - 1;
+  state.records.push(createShopDefinition(id));
+  state.selectedRecordIndex = state.records.length - 1;
   state.shopWorkspace.search = "";
   state.shopWorkspace.filter = "all";
   state.shopWorkspace.tab = "settings";
   state.shopWorkspace.selectedProductIndex = 0;
-  syncFormToEditor();
+  syncRecordsToEditor();
   renderShopWorkspaceView();
 }
 
 function duplicateShopRecord() {
-  const current = state.formRecords[state.selectedRecordIndex];
+  const current = state.records[state.selectedRecordIndex];
   if (!current) return;
   const copy = structuredCloneCompat(current);
   copy.id = createUniqueId(`${String(current.id || "新商店")}_copy`);
   copy.name = `${String(current.name || current.id || "新商店")} 副本`;
-  state.formRecords.splice(state.selectedRecordIndex + 1, 0, copy);
+  state.records.splice(state.selectedRecordIndex + 1, 0, copy);
   state.selectedRecordIndex += 1;
   state.shopWorkspace.selectedProductIndex = 0;
-  syncFormToEditor();
+  syncRecordsToEditor();
   renderShopWorkspaceView();
 }
 
 function deleteShopRecord() {
-  const current = state.formRecords[state.selectedRecordIndex];
+  const current = state.records[state.selectedRecordIndex];
   if (!current) return;
   const references = getShopReferences(current);
   const summary = references.length
     ? `静态扫描找到 ${references.length} 处引用。\n\n${references.slice(0, 5).map((item) => `${item.path} · ${item.fieldPath}`).join("\n")}\n\n`
     : "静态扫描未找到引用，但无法覆盖动态脚本或运行时引用。\n\n";
   if (!confirmAction(`${summary}确认删除商店「${current.name || current.id}」？此操作会留在未保存状态。`)) return;
-  state.formRecords.splice(state.selectedRecordIndex, 1);
-  state.selectedRecordIndex = Math.max(0, Math.min(state.selectedRecordIndex, state.formRecords.length - 1));
+  state.records.splice(state.selectedRecordIndex, 1);
+  state.selectedRecordIndex = Math.max(0, Math.min(state.selectedRecordIndex, state.records.length - 1));
   state.shopWorkspace.selectedProductIndex = 0;
-  syncFormToEditor();
+  syncRecordsToEditor();
   renderShopWorkspaceView();
 }
 
 function addWorkspaceShopProduct() {
-  const record = state.formRecords[state.selectedRecordIndex];
+  const record = state.records[state.selectedRecordIndex];
   if (!record) return;
   ensureShopWorkspaceShape(record);
   const firstAvailable = getShopItemOptions().find((option) => !record.products.some((product) => product.contentId === option.id));
   record.products.push(createShopProduct(firstAvailable?.id || ""));
   state.shopWorkspace.selectedProductIndex = record.products.length - 1;
   state.shopWorkspace.tab = "products";
-  syncFormToEditor();
+  syncRecordsToEditor();
   renderShopWorkspaceView();
 }
 
 function patchShopProduct(index, patch) {
-  const record = state.formRecords[state.selectedRecordIndex];
+  const record = state.records[state.selectedRecordIndex];
   if (!record?.products?.[index]) return;
   record.products[index] = { ...record.products[index], ...patch };
-  syncFormToEditor();
+  syncRecordsToEditor();
   renderShopWorkspaceView();
 }
 
 function moveCurrentShopProduct(index, direction) {
-  const record = state.formRecords[state.selectedRecordIndex];
+  const record = state.records[state.selectedRecordIndex];
   if (!record) return;
   const next = moveShopProductEntry(record.products, index, direction);
   if (next === record.products) return;
   record.products = next;
   state.shopWorkspace.selectedProductIndex = index + direction;
-  syncFormToEditor();
+  syncRecordsToEditor();
   renderShopWorkspaceView();
 }
 
 function duplicateWorkspaceShopProduct(index) {
-  const record = state.formRecords[state.selectedRecordIndex];
+  const record = state.records[state.selectedRecordIndex];
   const product = record?.products?.[index];
   if (!product) return;
   record.products.splice(index + 1, 0, structuredCloneCompat(product));
   state.shopWorkspace.selectedProductIndex = index + 1;
-  syncFormToEditor();
+  syncRecordsToEditor();
   renderShopWorkspaceView();
 }
 
 function deleteWorkspaceShopProduct(index) {
-  const record = state.formRecords[state.selectedRecordIndex];
+  const record = state.records[state.selectedRecordIndex];
   const product = record?.products?.[index];
   if (!product || !confirmAction(`确认从当前商店删除商品「${product.contentId || "未命名商品"}」？`)) return;
   record.products.splice(index, 1);
   state.shopWorkspace.selectedProductIndex = Math.max(0, Math.min(index, record.products.length - 1));
-  syncFormToEditor();
+  syncRecordsToEditor();
   renderShopWorkspaceView();
 }
 
@@ -2506,7 +2463,7 @@ function getCharacterReferenceOptions() {
   }
 
   const modelIds = new Set(
-    state.formRecords
+    state.records
       .map((record) => typeof record?.model === "string" ? record.model.trim() : "")
       .filter(Boolean)
   );
@@ -2645,7 +2602,7 @@ function renderProjectHomeWorkspace() {
       { label: "物品与装备", detail: "编辑物品、装备和效果", icon: "物", mode: "data", path: "items.json", available: false },
       { label: "商店与经济", detail: "编辑商店商品、价格和限购", icon: "商", mode: "data", path: "shops.json", available: false },
       { label: "浏览共享资源", detail: "预览项目图片、音频与文件", icon: "◇", mode: "assets", available: true },
-      { label: "高级数据", detail: "打开完整文件树、表单、JSON 与 DSL", icon: "▦", mode: "data", available: true },
+      { label: "高级数据", detail: "打开完整文件树与原始 JSON", icon: "▦", mode: "data", available: true },
       { label: "问题中心", detail: "执行检查并定位内容问题", icon: "!", mode: "problems", available: true },
     ],
   }, {
@@ -2800,11 +2757,11 @@ function collectProjectProblems() {
     }
   }
 
-  if (isCharacterFile() && state.formRecords.length > 0) {
+  if (isCharacterFile() && state.records.length > 0) {
     appendCurrentRecordProblems(problems, "character", "角色", getCharacterValidationIssues);
-  } else if (isMapFile() && state.formRecords.length > 0) {
-    for (let index = 0; index < state.formRecords.length; index += 1) {
-      const record = state.formRecords[index];
+  } else if (isMapFile() && state.records.length > 0) {
+    for (let index = 0; index < state.records.length; index += 1) {
+      const record = state.records[index];
       const recordId = String(record?.id || record?.name || `#${index + 1}`);
       for (const message of getMapStats(record).issues) {
         problems.push(createProblem({
@@ -2819,7 +2776,7 @@ function collectProjectProblems() {
         }));
       }
     }
-  } else if (isItemFile() && state.formRecords.length > 0) {
+  } else if (isItemFile() && state.records.length > 0) {
     appendCurrentRecordProblems(problems, "item", "物品", getItemValidationIssues);
   }
 
@@ -2827,15 +2784,15 @@ function collectProjectProblems() {
 }
 
 function appendCurrentRecordProblems(problems, contentType, contentTypeLabel, getIssues) {
-  for (let index = 0; index < state.formRecords.length; index += 1) {
-    const record = state.formRecords[index];
+  for (let index = 0; index < state.records.length; index += 1) {
+    const record = state.records[index];
     const recordId = String(record?.id || record?.name || `#${index + 1}`);
     for (const issue of getIssues(record)) {
       problems.push(createProblem({
         id: `form:${state.currentPath}:${recordId}:${issue.message}`,
         severity: issue.severity,
         source: "form-check",
-        sourceLabel: "编辑器表单检查",
+        sourceLabel: "结构化内容检查",
         contentType,
         contentTypeLabel,
         message: issue.message,
@@ -2943,7 +2900,7 @@ async function locateProblem(problem) {
   }
   if (location.workspace === "characters" || location.path === "characters.json") {
     await openCharacterWorkspace();
-    const index = state.formRecords.findIndex((record) => record?.id === location.definitionId || record?.name === location.definitionId);
+    const index = state.records.findIndex((record) => record?.id === location.definitionId || record?.name === location.definitionId);
     if (index >= 0) {
       state.selectedRecordIndex = index;
       renderCharacterWorkspaceView();
@@ -2952,7 +2909,7 @@ async function locateProblem(problem) {
   }
   if (location.workspace === "maps" || location.path === "maps.json") {
     await openMapWorkspace();
-    const index = state.formRecords.findIndex((record) => record?.id === location.definitionId || record?.name === location.definitionId);
+    const index = state.records.findIndex((record) => record?.id === location.definitionId || record?.name === location.definitionId);
     if (index >= 0) {
       state.selectedRecordIndex = index;
       state.mapEditor.selectedLocationIndex = 0;
@@ -2993,29 +2950,6 @@ function recordRecentEntry(workspace, path) {
   if (state.mode === "home") {
     renderProjectHomeWorkspace();
   }
-}
-
-function setMapFocusMode(enabled) {
-  state.mapEditor.focusMode = enabled && canUseMapFocusMode();
-  updateMapFocusControl();
-}
-
-function canUseMapFocusMode() {
-  return state.mode === "data" && state.viewMode === "form" && isMapFile();
-}
-
-function updateMapFocusControl() {
-  if (!canUseMapFocusMode()) {
-    state.mapEditor.focusMode = false;
-  }
-
-  document.body.classList.toggle("map-focus-mode", state.mapEditor.focusMode);
-  elements.mapFocusButton.classList.toggle("hidden", !canUseMapFocusMode());
-  elements.mapFocusButton.classList.toggle("active", state.mapEditor.focusMode);
-  elements.mapFocusButton.textContent = state.mapEditor.focusMode ? "退出工作台" : "地图工作台";
-  elements.mapFocusButton.title = state.mapEditor.focusMode
-    ? "退出地图工作台（Esc）"
-    : "隐藏两侧栏，放大地图编辑区";
 }
 
 function updateStorySourceButton() {
@@ -4084,11 +4018,9 @@ async function openDataFile(path) {
       diagnostics: [],
       kind: "",
     };
-    elements.formModeButton.textContent = "表单";
-    elements.jsonModeButton.textContent = "JSON";
     state.viewMode = "json";
-    const supportsForm = refreshFormFromEditor({ preferForm: false });
-    showValidation(true, supportsForm ? "完整 JSON 已载入；也可切换到表单视图。" : "完整 JSON 已载入。");
+    refreshRecordsFromEditor();
+    showValidation(true, "完整 JSON 已载入。");
   }
   updateSearchMatches();
   renderEditorOutline();
@@ -4124,7 +4056,6 @@ function openAssetFile(path) {
   elements.currentPath.textContent = path;
   elements.saveState.textContent = "";
   setViewMode("json");
-  elements.formModeButton.disabled = true;
   updateSearchMatches();
   renderEditorOutline();
   renderIndexPanel();
@@ -4210,7 +4141,7 @@ async function saveCurrentFile() {
 
     setEditorValue(result.content);
     dirtyStateController.markClean({ render: false });
-    refreshFormFromEditor({ preferForm: state.viewMode === "form" });
+    refreshRecordsFromEditor();
     renderDirtyState();
     renderCursorState();
     elements.saveState.textContent = result.backupPath
@@ -4351,7 +4282,7 @@ function formatCurrentJson() {
     dirtyStateController.markDirty({ render: false });
     elements.saveState.textContent = "已格式化，尚未保存";
     showValidation(true, "JSON format is valid.");
-    refreshFormFromEditor({ preferForm: state.viewMode === "form" });
+    refreshRecordsFromEditor();
     updateSearchMatches();
     renderEditorOutline();
     renderDirtyState();
@@ -5169,693 +5100,49 @@ function setViewMode(mode) {
     }
 
     state.viewMode = mode === "json" ? "json" : "dsl";
-    elements.formModeButton.textContent = "DSL";
+    elements.editorViewModes.classList.remove("hidden");
+    elements.sourceModeButton.textContent = "DSL";
     elements.jsonModeButton.textContent = "JSON";
-    elements.formModeButton.disabled = false;
+    elements.sourceModeButton.disabled = false;
     elements.jsonModeButton.disabled = false;
-    elements.formModeButton.classList.toggle("active", state.viewMode === "dsl");
+    elements.sourceModeButton.classList.toggle("active", state.viewMode === "dsl");
     elements.jsonModeButton.classList.toggle("active", state.viewMode === "json");
-    elements.formView.classList.add("hidden");
     setTextEditorVisible(true);
     if (dslIsSource) renderStoryDslStatus();
     updateSearchMatches();
     renderEditorOutline();
     renderCursorState();
-    updateMapFocusControl();
     updateStorySourceButton();
     return;
   }
 
-  elements.formModeButton.textContent = "表单";
-  elements.jsonModeButton.textContent = "JSON";
+  mode = "json";
+  state.viewMode = "json";
+  elements.editorViewModes.classList.add("hidden");
   elements.saveStorySourceButton.classList.add("hidden");
-  if (mode === "form" && !refreshFormFromEditor({ preferForm: false })) {
-    showValidation(false, "当前 JSON 暂不支持表单视图。");
-    mode = "json";
-  }
-
-  state.viewMode = mode;
-  elements.formModeButton.classList.toggle("active", mode === "form");
-  elements.jsonModeButton.classList.toggle("active", mode === "json");
-  elements.formView.classList.toggle("hidden", mode !== "form");
-  setTextEditorVisible(mode === "json");
-  renderFormView();
+  setTextEditorVisible(true);
   renderEditorOutline();
-  updateMapFocusControl();
   updateStorySourceButton();
 }
 
-function refreshFormFromEditor({ preferForm }) {
+function refreshRecordsFromEditor() {
   try {
-      const json = parseJsonText(getEditorValue());
+    const json = parseJsonText(getEditorValue());
     if (!Array.isArray(json) || !json.every((record) => record && typeof record === "object" && !Array.isArray(record))) {
-      state.formRecords = [];
-      elements.formModeButton.disabled = true;
-      if (state.viewMode === "form") {
-        state.viewMode = "json";
-      }
-
-      setViewModeButtons();
-      elements.formView.classList.add("hidden");
-      setTextEditorVisible(true);
-      updateMapFocusControl();
+      state.records = [];
       return false;
     }
 
-    state.formRecords = json;
-    state.selectedRecordIndex = Math.min(state.selectedRecordIndex, Math.max(0, state.formRecords.length - 1));
-    elements.formModeButton.disabled = false;
-    if (preferForm) {
-      state.viewMode = "form";
-    }
-
-    setViewModeButtons();
-    elements.formView.classList.toggle("hidden", state.viewMode !== "form");
-    setTextEditorVisible(state.viewMode === "json");
-    renderFormView();
-    updateMapFocusControl();
+    state.records = json;
+    state.selectedRecordIndex = Math.min(state.selectedRecordIndex, Math.max(0, state.records.length - 1));
     return true;
   } catch {
-    state.formRecords = [];
-    elements.formModeButton.disabled = true;
-    if (state.viewMode === "form") {
-      state.viewMode = "json";
-    }
-
-    setViewModeButtons();
-    elements.formView.classList.add("hidden");
-    setTextEditorVisible(true);
-    updateMapFocusControl();
+    state.records = [];
     return false;
   }
 }
 
-function setViewModeButtons() {
-  elements.formModeButton.classList.toggle("active", state.viewMode === "form");
-  elements.jsonModeButton.classList.toggle("active", state.viewMode === "json");
-}
-
-function renderFormView() {
-  if (state.mode === "maps") {
-    elements.formView.classList.add("hidden");
-    setTextEditorVisible(false);
-    renderMapWorkspaceView();
-    renderMapResourcePicker();
-    return;
-  }
-  if (state.mode === "characters" || state.mode === "growth" || state.mode === "sects" || state.mode === "items" || state.mode === "shops") {
-    elements.formView.classList.add("hidden");
-    setTextEditorVisible(false);
-    renderPortraitPicker();
-    renderItemPicturePicker();
-    renderShopResourcePicker();
-    return;
-  }
-
-  const scrollState = captureFormViewScrollState();
-  disposeEmbeddedCodeEditors(elements.formView);
-  elements.formView.replaceChildren();
-  if (state.viewMode !== "form") {
-    renderCharacterCheckTool();
-    renderPortraitPicker();
-    renderItemPicturePicker();
-    renderShopResourcePicker();
-    renderMapResourcePicker();
-    return;
-  }
-
-  if (state.formRecords.length === 0) {
-    const error = document.createElement("div");
-    error.className = "form-error";
-    error.textContent = "当前 JSON 没有可表单化的顶层数组条目。";
-    elements.formView.appendChild(error);
-    renderCharacterCheckTool();
-    renderPortraitPicker();
-    renderItemPicturePicker();
-    renderShopResourcePicker();
-    renderMapResourcePicker();
-    return;
-  }
-
-  if (isCharacterFile()) {
-    renderCharacterFormView();
-  } else if (isMapFile()) {
-    renderMapFormView();
-  } else if (isItemFile()) {
-    renderItemFormView();
-  } else if (isShopFile()) {
-    renderShopFormView();
-  } else {
-    renderGenericFormView();
-  }
-
-  renderCharacterCheckTool();
-  renderPortraitPicker();
-  renderItemPicturePicker();
-  renderShopResourcePicker();
-  renderMapResourcePicker();
-  restoreFormViewScrollState(scrollState);
-}
-
-function selectFormRecord(index) {
-  if (index === state.selectedRecordIndex) {
-    return;
-  }
-
-  state.selectedRecordIndex = index;
-  updateRecordCardSelection();
-  renderSelectedRecordDetail();
-  renderCharacterCheckTool();
-  renderPortraitPicker();
-  renderItemPicturePicker();
-  renderShopResourcePicker();
-  renderMapResourcePicker();
-}
-
-function updateRecordCardSelection() {
-  for (const card of elements.formView.querySelectorAll(".record-card[data-record-index]")) {
-    card.classList.toggle("active", Number(card.dataset.recordIndex) === state.selectedRecordIndex);
-  }
-}
-
-function renderSelectedRecordDetail() {
-  const detail = elements.formView.querySelector(".form-detail");
-  if (!detail) {
-    renderFormView();
-    return;
-  }
-
-  detail.replaceChildren();
-  if (isCharacterFile()) {
-    renderCharacterDetail(detail);
-  } else if (isMapFile()) {
-    renderMapDetail(detail);
-  } else if (isItemFile()) {
-    renderItemDetail(detail);
-  } else if (isShopFile()) {
-    renderShopDetail(detail);
-  } else {
-    renderGenericRecordDetail(detail);
-  }
-  detail.scrollTop = 0;
-}
-
-function captureFormViewScrollState() {
-  return {
-    recordListScrollTop: elements.formView.querySelector(".record-list")?.scrollTop ?? 0,
-    detailScrollTop: elements.formView.querySelector(".form-detail")?.scrollTop ?? 0,
-  };
-}
-
-function restoreFormViewScrollState(scrollState) {
-  if (!scrollState) {
-    return;
-  }
-
-  requestAnimationFrame(() => {
-    const recordList = elements.formView.querySelector(".record-list");
-    const detail = elements.formView.querySelector(".form-detail");
-    if (recordList) {
-      recordList.scrollTop = scrollState.recordListScrollTop;
-    }
-
-    if (detail) {
-      detail.scrollTop = scrollState.detailScrollTop;
-    }
-  });
-}
-
-function renderGenericFormView() {
-  const recordPanel = document.createElement("aside");
-  recordPanel.className = "record-panel";
-
-  const recordHeader = document.createElement("div");
-  recordHeader.className = "record-panel-header";
-  recordHeader.innerHTML = `<div class="record-panel-title">条目</div><div class="record-panel-subtitle">${state.formRecords.length} 条</div>`;
-
-  const recordSearch = document.createElement("input");
-  recordSearch.className = "record-search";
-  recordSearch.type = "search";
-  recordSearch.placeholder = "搜索 id、名称、类型";
-  recordSearch.value = state.formSearch;
-  bindImeSafeInput(recordSearch, (value) => {
-    state.formSearch = value;
-    renderGenericRecordCards(recordList);
-  });
-
-  const recordList = document.createElement("div");
-  recordList.className = "record-list";
-  renderGenericRecordCards(recordList);
-
-  recordPanel.append(recordHeader, recordSearch, recordList);
-
-  const detail = document.createElement("section");
-  detail.className = "form-detail";
-  renderGenericRecordDetail(detail);
-
-  elements.formView.append(recordPanel, detail);
-}
-
-function renderCharacterFormView() {
-  if (!getCharacterFilters().some((filter) => filter.value === state.formFilter)) {
-    state.formFilter = "all";
-  }
-
-  const recordPanel = document.createElement("aside");
-  recordPanel.className = "record-panel character-record-panel";
-
-  const recordHeader = document.createElement("div");
-  recordHeader.className = "record-panel-header";
-  const headerTitle = document.createElement("div");
-  headerTitle.className = "record-panel-title";
-  headerTitle.textContent = "角色";
-  const headerSubtitle = document.createElement("div");
-  headerSubtitle.className = "record-panel-subtitle";
-  recordHeader.append(headerTitle, headerSubtitle);
-
-  const recordSearch = document.createElement("input");
-  recordSearch.className = "record-search";
-  recordSearch.type = "search";
-  recordSearch.placeholder = "搜索 id、姓名、头像、门派、标签";
-  recordSearch.value = state.formSearch;
-  bindImeSafeInput(recordSearch, (value) => {
-    state.formSearch = value;
-    renderCharacterRecordCards(recordList, headerSubtitle);
-  });
-
-  const filterRow = document.createElement("div");
-  filterRow.className = "character-filter-row";
-  for (const filter of getCharacterFilters()) {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = "character-filter-button";
-    button.classList.toggle("active", state.formFilter === filter.value);
-    button.textContent = filter.label;
-    button.addEventListener("click", () => {
-      state.formFilter = filter.value;
-      renderFormView();
-    });
-    filterRow.appendChild(button);
-  }
-
-  const recordList = document.createElement("div");
-  recordList.className = "record-list";
-  renderCharacterRecordCards(recordList, headerSubtitle);
-
-  recordPanel.append(recordHeader, recordSearch, filterRow, recordList);
-
-  const detail = document.createElement("section");
-  detail.className = "form-detail character-form-detail";
-  renderCharacterDetail(detail);
-
-  elements.formView.append(recordPanel, detail);
-}
-
-function renderGenericRecordCards(parent) {
-  parent.replaceChildren();
-  const query = state.formSearch.trim().toLowerCase();
-  let visibleCount = 0;
-
-  state.formRecords.forEach((record, index) => {
-    const title = getRecordTitle(record, index);
-    const subtitle = getRecordSubtitle(record, index);
-    const haystack = `${title} ${subtitle} ${JSON.stringify(record)}`.toLowerCase();
-    if (query && !haystack.includes(query)) {
-      return;
-    }
-
-    visibleCount += 1;
-    const card = document.createElement("button");
-    card.type = "button";
-    card.className = "record-card";
-    card.dataset.recordIndex = String(index);
-    card.classList.toggle("active", index === state.selectedRecordIndex);
-    card.addEventListener("click", () => {
-      selectFormRecord(index);
-    });
-
-    const text = document.createElement("div");
-    const titleNode = document.createElement("div");
-    titleNode.className = "record-title";
-    titleNode.textContent = title;
-    const subtitleNode = document.createElement("div");
-    subtitleNode.className = "record-subtitle";
-    subtitleNode.textContent = subtitle;
-    text.append(titleNode, subtitleNode);
-    card.append(createRecordThumb(record), text);
-    parent.appendChild(card);
-  });
-
-  if (visibleCount === 0) {
-    const empty = document.createElement("div");
-    empty.className = "record-empty";
-    empty.textContent = "没有匹配的条目";
-    parent.appendChild(empty);
-  }
-}
-
-function renderCharacterRecordCards(parent, subtitleNode) {
-  parent.replaceChildren();
-  const query = state.formSearch.trim().toLowerCase();
-  let visibleCount = 0;
-
-  state.formRecords.forEach((record, index) => {
-    if (!matchesCharacterSearch(record, query) || !matchesCharacterFilter(record, state.formFilter)) {
-      return;
-    }
-
-    visibleCount += 1;
-    const card = document.createElement("button");
-    card.type = "button";
-    card.className = "record-card character-record-card";
-    card.dataset.recordIndex = String(index);
-    card.classList.toggle("active", index === state.selectedRecordIndex);
-    card.addEventListener("click", () => {
-      selectFormRecord(index);
-    });
-
-    const portraitInfo = getCharacterPortraitInfo(record);
-    const classification = getCharacterUiClassification(record);
-    const issues = getCharacterValidationIssues(record);
-
-    const text = document.createElement("div");
-    text.className = "character-record-text";
-
-    const titleRow = document.createElement("div");
-    titleRow.className = "character-record-title-row";
-    const title = document.createElement("div");
-    title.className = "record-title";
-    title.textContent = typeof record.name === "string" && record.name.trim() ? record.name.trim() : (record.id || `#${index + 1}`);
-    const badge = document.createElement("span");
-    badge.className = `character-role-badge ${classification.key}`;
-    badge.textContent = classification.label;
-    titleRow.append(title, badge);
-
-    const subtitle = document.createElement("div");
-    subtitle.className = "record-subtitle";
-    subtitle.textContent = typeof record.id === "string" && record.id.trim() ? record.id.trim() : `#${index + 1}`;
-
-    const meta = document.createElement("div");
-    meta.className = "character-record-meta";
-    meta.textContent = [
-      `Lv.${getDisplayNumber(record.level, 1)}`,
-      portraitInfo.assetExists ? "有头像" : portraitInfo.portraitId ? "缺头像" : "无 portrait",
-      issues.length > 0 ? `${issues.length} 项待处理` : "配置正常",
-    ].join(" · ");
-
-    text.append(titleRow, subtitle, meta);
-    card.append(createRecordThumb(record), text);
-    parent.appendChild(card);
-  });
-
-  subtitleNode.textContent = `${visibleCount} / ${state.formRecords.length} 条`;
-
-  if (visibleCount === 0) {
-    const empty = document.createElement("div");
-    empty.className = "record-empty";
-    empty.textContent = "没有匹配的角色";
-    parent.appendChild(empty);
-  }
-}
-
-function renderGenericRecordDetail(parent) {
-  const record = state.formRecords[state.selectedRecordIndex];
-  if (!record) {
-    parent.innerHTML = `<div class="form-error">未选择条目。</div>`;
-    return;
-  }
-
-  const title = getRecordTitle(record, state.selectedRecordIndex);
-  const subtitle = getRecordSubtitle(record, state.selectedRecordIndex);
-  const header = document.createElement("div");
-  header.className = "form-detail-header";
-  const titleGroup = document.createElement("div");
-  titleGroup.innerHTML = `<div class="form-detail-title">${escapeHtml(title)}</div><div class="form-detail-subtitle">${escapeHtml(subtitle)}</div>`;
-  const actions = document.createElement("div");
-  actions.className = "record-actions";
-  actions.append(
-    createActionButton("新增", addRecord),
-    createActionButton("复制", duplicateRecord),
-    createActionButton("删除", deleteRecord)
-  );
-  header.append(titleGroup, actions);
-
-  const summary = document.createElement("div");
-  summary.className = "form-summary";
-  summary.textContent = "常用字段可直接编辑；复杂字段会保留为 JSON 文本。保存仍使用顶部保存按钮。";
-
-  const fieldset = document.createElement("section");
-  fieldset.className = "form-fieldset";
-  const fieldsetTitle = document.createElement("div");
-  fieldsetTitle.className = "form-fieldset-title";
-  fieldsetTitle.textContent = "字段";
-  const grid = document.createElement("div");
-  grid.className = "form-grid";
-
-  for (const [key, value] of Object.entries(record)) {
-    grid.appendChild(createFieldEditor(record, key, value));
-  }
-
-  fieldset.append(fieldsetTitle, grid);
-  parent.append(header, summary, fieldset);
-}
-
-function renderCharacterDetail(parent) {
-  const record = state.formRecords[state.selectedRecordIndex];
-  if (!record) {
-    parent.innerHTML = `<div class="form-error">未选择角色。</div>`;
-    return;
-  }
-
-  ensureCharacterShape(record);
-  const portraitInfo = getCharacterPortraitInfo(record);
-  const classification = getCharacterUiClassification(record);
-  const issues = getCharacterValidationIssues(record);
-
-  const shell = document.createElement("div");
-  shell.className = "character-detail-shell";
-
-  const summaryCard = document.createElement("section");
-  summaryCard.className = "character-summary-card";
-
-  const portrait = createCharacterPortraitHero(record, portraitInfo);
-  const content = document.createElement("div");
-  content.className = "character-summary-content";
-
-  const titleRow = document.createElement("div");
-  titleRow.className = "character-summary-title-row";
-  const titleGroup = document.createElement("div");
-  const title = document.createElement("div");
-  title.className = "form-detail-title";
-  title.textContent = typeof record.name === "string" && record.name.trim() ? record.name.trim() : (record.id || "未命名角色");
-  const subtitle = document.createElement("div");
-  subtitle.className = "form-detail-subtitle";
-  subtitle.textContent = typeof record.id === "string" && record.id.trim() ? record.id.trim() : `#${state.selectedRecordIndex + 1}`;
-  titleGroup.append(title, subtitle);
-  const actions = document.createElement("div");
-  actions.className = "record-actions";
-  actions.append(
-    createActionButton("新增", addRecord),
-    createActionButton("复制", duplicateRecord),
-    createActionButton("删除", deleteRecord)
-  );
-  titleRow.append(titleGroup, actions);
-
-  const badgeRow = document.createElement("div");
-  badgeRow.className = "character-summary-badges";
-  badgeRow.append(
-    createPill(`等级 Lv.${getDisplayNumber(record.level, 1)}`),
-    createPill(`性别 ${formatGenderLabel(record.gender)}`),
-    createPill(`用途 ${classification.label}`, classification.key),
-    createPill(issues.length > 0 ? `待处理 ${issues.length}` : "配置正常", issues.length > 0 ? "warn" : "ok")
-  );
-
-  content.append(titleRow, badgeRow);
-  summaryCard.append(portrait, content);
-  shell.appendChild(summaryCard);
-
-  if (issues.length > 0) {
-    shell.appendChild(createCharacterIssueSummary(issues));
-  }
-
-  const intro = document.createElement("div");
-  intro.className = "form-summary character-form-summary";
-  intro.textContent = "底层仍保存原 JSON；这里把角色常用字段整理成可直接编辑的专用界面。复杂字段保留在“高级 JSON”里兜底。";
-  shell.appendChild(intro);
-
-  const basicSection = createCharacterSection("基础信息", "Basic");
-  const basicGrid = document.createElement("div");
-  basicGrid.className = "character-form-grid";
-  basicGrid.append(
-    createCharacterTextField(record, "角色ID", "id", {
-      list: null,
-      placeholder: "例如：骆冰",
-      rerenderOnChange: true,
-    }),
-    createCharacterTextField(record, "显示名", "name", {
-      placeholder: "例如：骆冰",
-      rerenderOnChange: true,
-    }),
-    createCharacterNumberField(record, "等级", "level", {
-      min: 1,
-      fallback: 1,
-      rerenderOnChange: true,
-    }),
-    createCharacterSelectField(record, "性别", "gender", [
-      { value: "neutral", label: "neutral 中立" },
-      { value: "male", label: "male 男" },
-      { value: "female", label: "female 女" },
-    ]),
-    createCharacterTextField(record, "头像", "portrait", {
-      list: ensureResourceIdDatalist("头像"),
-      placeholder: "例如：头像.骆冰",
-      rerenderOnChange: true,
-    }),
-    createCharacterTextField(record, "模型", "model", {
-      placeholder: "例如：luobing",
-      rerenderOnChange: true,
-    }),
-    createCharacterTextField(record, "成长模板", "growTemplate", {
-      list: ensureDefinitionIdDatalist("grow-templates"),
-      placeholder: "例如：主角",
-      nullable: true,
-      rerenderOnChange: true,
-    }),
-    createCharacterCheckboxField(record, "可上战场", "arenaEnabled", "arenaEnabled")
-  );
-  basicSection.appendChild(basicGrid);
-  shell.appendChild(basicSection);
-
-  const portraitSection = createCharacterSection("头像", "Portrait");
-  portraitSection.appendChild(createCharacterPortraitSection(record, portraitInfo));
-  shell.appendChild(portraitSection);
-
-  const statsSection = createCharacterSection("属性", "Stats");
-  const statsGrid = document.createElement("div");
-  statsGrid.className = "character-stats-grid";
-  for (const stat of CHARACTER_STAT_FIELDS) {
-    statsGrid.appendChild(createCharacterStatField(record, stat));
-  }
-  statsSection.appendChild(statsGrid);
-  shell.appendChild(statsSection);
-
-  const skillsSection = createCharacterSection("技能与装备", "Skills & Equipment");
-  skillsSection.appendChild(createCharacterTabBar());
-  skillsSection.appendChild(createCharacterTabContent(record));
-  shell.appendChild(skillsSection);
-
-  const advancedSection = createCharacterAdvancedJsonSection(record);
-  shell.appendChild(advancedSection);
-
-  parent.appendChild(shell);
-}
-
-const CHARACTER_STAT_FIELDS = [
-  { key: "bili", label: "臂力" },
-  { key: "dingli", label: "定力" },
-  { key: "fuyuan", label: "福缘" },
-  { key: "gengu", label: "根骨" },
-  { key: "jianfa", label: "剑法" },
-  { key: "daofa", label: "刀法" },
-  { key: "quanzhang", label: "拳掌" },
-  { key: "qimen", label: "奇门" },
-  { key: "shenfa", label: "身法" },
-  { key: "wuxing", label: "悟性" },
-  { key: "wuxue", label: "武学" },
-  { key: "max_hp", label: "最大生命" },
-  { key: "max_mp", label: "最大内力" },
-];
-
-const ITEM_TYPE_CHOICES = [
-  { value: "consumable", label: "consumable 消耗品" },
-  { value: "equipment", label: "equipment 装备" },
-  { value: "skill_book", label: "skill_book 武学书" },
-  { value: "special_skill_book", label: "special_skill_book 绝技书" },
-  { value: "talent_book", label: "talent_book 天赋书" },
-  { value: "quest_item", label: "quest_item 剧情物品" },
-  { value: "booster", label: "booster 强化道具" },
-  { value: "utility", label: "utility 功能物品" },
-];
-
-const ITEM_CATEGORY_CHOICES = [
-  { value: "normal", label: "normal 普通" },
-  { value: "equipment", label: "equipment 装备" },
-];
-
-const ITEM_SLOT_TYPE_CHOICES = [
-  { value: "weapon", label: "weapon 武器" },
-  { value: "armor", label: "armor 护甲" },
-  { value: "accessory", label: "accessory 饰品" },
-];
-
-const ITEM_REQUIREMENT_TYPE_CHOICES = [
-  { value: "stat", label: "stat 属性要求" },
-  { value: "talent", label: "talent 天赋要求" },
-];
-
-const ITEM_EFFECT_TYPE_CHOICES = [
-  { value: "add_hp", label: "add_hp 回复生命" },
-  { value: "add_mp", label: "add_mp 回复内力" },
-  { value: "add_hp_percent", label: "add_hp_percent 生命百分比" },
-  { value: "add_mp_percent", label: "add_mp_percent 内力百分比" },
-  { value: "add_maxhp", label: "add_maxhp 提升生命上限" },
-  { value: "add_maxmp", label: "add_maxmp 提升内力上限" },
-  { value: "add_rage", label: "add_rage 增加怒气" },
-  { value: "detoxify", label: "detoxify 解毒" },
-  { value: "add_buff", label: "add_buff 添加 Buff" },
-  { value: "external_skill", label: "external_skill 学会外功" },
-  { value: "internal_skill", label: "internal_skill 学会内功" },
-  { value: "special_skill", label: "special_skill 学会绝技" },
-  { value: "grant_talent", label: "grant_talent 获得天赋" },
-];
-
-const ITEM_AFFIX_TYPE_CHOICES = [
-  { value: "stat_modifier", label: "stat_modifier 属性修正" },
-  { value: "grant_talent", label: "grant_talent 赋予天赋" },
-  { value: "grant_model", label: "grant_model 赋予模型" },
-  { value: "skill_bonus_modifier", label: "skill_bonus_modifier 技能威力修正" },
-  { value: "weapon_bonus_modifier", label: "weapon_bonus_modifier 武学类别修正" },
-  { value: "legend_skill_chance_modifier", label: "legend_skill_chance_modifier 传奇招式触发率" },
-];
-
-const ITEM_AFFIX_STAT_CHOICES = [
-  { value: "attack", label: "attack 攻击" },
-  { value: "defence", label: "defence 防御" },
-  { value: "crit_chance", label: "crit_chance 暴击率" },
-  { value: "anti_crit_chance", label: "anti_crit_chance 抗暴率" },
-  { value: "crit_mult", label: "crit_mult 暴击倍率" },
-  { value: "lifesteal", label: "lifesteal 吸血" },
-  { value: "anti_debuff", label: "anti_debuff 抗异常" },
-  { value: "bili", label: "bili 臂力" },
-  { value: "dingli", label: "dingli 定力" },
-  { value: "fuyuan", label: "fuyuan 福缘" },
-  { value: "gengu", label: "gengu 根骨" },
-  { value: "jianfa", label: "jianfa 剑法" },
-  { value: "daofa", label: "daofa 刀法" },
-  { value: "quanzhang", label: "quanzhang 拳掌" },
-  { value: "qimen", label: "qimen 奇门" },
-  { value: "shenfa", label: "shenfa 身法" },
-  { value: "wuxing", label: "wuxing 悟性" },
-];
-
-const ITEM_WEAPON_TYPE_CHOICES = [
-  { value: "quanzhang", label: "quanzhang 拳掌" },
-  { value: "jianfa", label: "jianfa 剑法" },
-  { value: "daofa", label: "daofa 刀法" },
-  { value: "qimen", label: "qimen 奇门" },
-  { value: "internal_skill", label: "internal_skill 内功" },
-];
-
-const SHOP_PRODUCT_FILTERS = [
-  { value: "all", label: "全部" },
-  { value: "limited", label: "限购" },
-  { value: "premium", label: "元宝价" },
-  { value: "fallbackPrice", label: "用基础价" },
-  { value: "ignored", label: "兼容忽略" },
-  { value: "missing", label: "引用缺失" },
-];
-
-function isCharacterFile() {
+ function isCharacterFile() {
   return state.currentPath === "characters.json";
 }
 
@@ -5864,7 +5151,7 @@ function isMapFile() {
 }
 
 async function openMapWorkspace() {
-  if (state.mode === "maps" && isMapFile() && state.formRecords.length > 0) {
+  if (state.mode === "maps" && isMapFile() && state.records.length > 0) {
     renderMapWorkspaceView();
     return;
   }
@@ -5874,8 +5161,7 @@ async function openMapWorkspace() {
   }
   await openDataFile("maps.json");
   if (!isMapFile()) return;
-  state.formRecords.forEach(ensureMapShape);
-  state.viewMode = "form";
+  state.records.forEach(ensureMapShape);
   state.mapEditor.tab = "locations";
   setMode("maps");
 }
@@ -5884,7 +5170,7 @@ function renderMapWorkspaceView() {
   if (state.mode !== "maps") return;
   disposeEmbeddedCodeEditors(elements.mapWorkspaceView);
   elements.mapWorkspaceView.replaceChildren();
-  state.formRecords.forEach(ensureMapShape);
+  state.records.forEach(ensureMapShape);
   clampMapSelection();
 
   const shell = document.createElement("div");
@@ -5899,13 +5185,13 @@ function renderMapWorkspaceView() {
   elements.mapWorkspaceView.appendChild(shell);
 
   renderMapWorkspaceCatalog(catalog);
-  const record = state.formRecords[state.selectedRecordIndex];
+  const record = state.records[state.selectedRecordIndex];
   if (!record) {
     const empty = document.createElement("div");
     empty.className = "map-workspace-empty";
     empty.innerHTML = "<strong>还没有地图</strong><span>新建第一张地图后即可布置点位与事件。</span>";
     stage.appendChild(empty);
-    const create = createActionButton("新建地图", addRecord);
+    const create = createActionButton("新建地图", addMapRecord);
     create.classList.add("primary");
     inspector.appendChild(create);
     return;
@@ -5921,8 +5207,8 @@ function renderMapWorkspaceCatalog(parent) {
   const header = document.createElement("header");
   header.className = "map-workspace-catalog-header";
   const copy = document.createElement("div");
-  copy.innerHTML = `<strong>地图</strong><small>${state.formRecords.length} 张地图</small>`;
-  header.append(copy, createActionButton("新建", addRecord));
+  copy.innerHTML = `<strong>地图</strong><small>${state.records.length} 张地图</small>`;
+  header.append(copy, createActionButton("新建", addMapRecord));
 
   const search = document.createElement("input");
   search.type = "search";
@@ -5955,7 +5241,7 @@ function renderMapWorkspaceCatalog(parent) {
   list.className = "map-workspace-map-list";
   const query = state.mapEditor.search.trim().toLowerCase();
   let visibleCount = 0;
-  state.formRecords.forEach((record, index) => {
+  state.records.forEach((record, index) => {
     if (!matchesMapSearch(record, query) || !matchesMapFilter(record, state.mapEditor.filter)) return;
     visibleCount += 1;
     const stats = getMapStats(record);
@@ -6013,7 +5299,7 @@ function renderMapWorkspaceStage(parent, record) {
   copy.append(eyebrow, title, id);
   const actions = document.createElement("div");
   actions.className = "map-workspace-stage-actions";
-  actions.append(createActionButton("复制", duplicateRecord), createActionButton("删除", deleteRecord));
+  actions.append(createActionButton("复制", duplicateMapRecord), createActionButton("删除", deleteMapRecord));
   header.append(copy, actions);
 
   const metrics = document.createElement("div");
@@ -6147,203 +5433,6 @@ const MAP_CONDITION_CHOICES = [
   { value: "in_newbie_task", label: "新手任务中" },
 ];
 
-function renderMapFormView() {
-  if (!MAP_FILTERS.some((filter) => filter.value === state.formFilter)) {
-    state.formFilter = "all";
-  }
-
-  clampMapSelection();
-
-  const recordPanel = document.createElement("aside");
-  recordPanel.className = "record-panel character-record-panel map-record-panel";
-
-  const recordHeader = document.createElement("div");
-  recordHeader.className = "record-panel-header";
-  const headerTitle = document.createElement("div");
-  headerTitle.className = "record-panel-title";
-  headerTitle.textContent = "地图";
-  const headerSubtitle = document.createElement("div");
-  headerSubtitle.className = "record-panel-subtitle";
-  recordHeader.append(headerTitle, headerSubtitle);
-
-  const recordSearch = document.createElement("input");
-  recordSearch.className = "record-search";
-  recordSearch.type = "search";
-  recordSearch.placeholder = "搜索地图、点位、剧情、目标";
-  recordSearch.value = state.formSearch;
-  bindImeSafeInput(recordSearch, (value) => {
-    state.formSearch = value;
-    renderMapRecordCards(recordList, headerSubtitle);
-  });
-
-  const filterRow = document.createElement("div");
-  filterRow.className = "character-filter-row";
-  for (const filter of MAP_FILTERS) {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = "character-filter-button";
-    button.classList.toggle("active", state.formFilter === filter.value);
-    button.textContent = filter.label;
-    button.addEventListener("click", () => {
-      state.formFilter = filter.value;
-      renderFormView();
-    });
-    filterRow.appendChild(button);
-  }
-
-  const recordList = document.createElement("div");
-  recordList.className = "record-list";
-  renderMapRecordCards(recordList, headerSubtitle);
-
-  recordPanel.append(recordHeader, recordSearch, filterRow, recordList);
-
-  const detail = document.createElement("section");
-  detail.className = "form-detail character-form-detail map-form-detail";
-  renderMapDetail(detail);
-
-  elements.formView.append(recordPanel, detail);
-}
-
-function renderMapRecordCards(parent, subtitleNode) {
-  parent.replaceChildren();
-  const query = state.formSearch.trim().toLowerCase();
-  let visibleCount = 0;
-
-  state.formRecords.forEach((record, index) => {
-    ensureMapShape(record);
-    if (!matchesMapSearch(record, query) || !matchesMapFilter(record, state.formFilter)) {
-      return;
-    }
-
-    visibleCount += 1;
-    const stats = getMapStats(record);
-    const card = document.createElement("button");
-    card.type = "button";
-    card.className = "record-card character-record-card map-record-card";
-    card.dataset.recordIndex = String(index);
-    card.classList.toggle("active", index === state.selectedRecordIndex);
-    card.addEventListener("click", () => {
-      state.mapEditor.selectedLocationIndex = 0;
-      state.mapEditor.canvasMode = "select";
-      state.mapEditor.locationSearch = "";
-      selectFormRecord(index);
-    });
-
-    const text = document.createElement("div");
-    text.className = "character-record-text";
-    const titleRow = document.createElement("div");
-    titleRow.className = "character-record-title-row";
-    const title = document.createElement("div");
-    title.className = "record-title";
-    title.textContent = record.name || record.id || `#${index + 1}`;
-    const badge = document.createElement("span");
-    badge.className = `character-role-badge map-kind-badge ${isLargeMap(record) ? "large" : "small"}`;
-    badge.textContent = isLargeMap(record) ? "大地图" : "小地图";
-    titleRow.append(title, badge);
-
-    const subtitle = document.createElement("div");
-    subtitle.className = "record-subtitle";
-    subtitle.textContent = record.id || `#${index + 1}`;
-
-    const meta = document.createElement("div");
-    meta.className = "character-record-meta";
-    meta.textContent = [
-      `${stats.locations} 点位`,
-      `${stats.storyEvents} 剧情`,
-      `${stats.mapEvents} 跳转`,
-      stats.issues.length > 0 ? `${stats.issues.length} 项待处理` : "可运行",
-    ].join(" · ");
-
-    text.append(titleRow, subtitle, meta);
-    card.append(createRecordThumb(record), text);
-    parent.appendChild(card);
-  });
-
-  subtitleNode.textContent = `${visibleCount} / ${state.formRecords.length} 条`;
-  if (visibleCount === 0) {
-    const empty = document.createElement("div");
-    empty.className = "record-empty";
-    empty.textContent = "没有匹配的地图";
-    parent.appendChild(empty);
-  }
-}
-
-function renderMapDetail(parent) {
-  const record = state.formRecords[state.selectedRecordIndex];
-  if (!record) {
-    parent.innerHTML = `<div class="form-error">未选择地图。</div>`;
-    return;
-  }
-
-  ensureMapShape(record);
-  clampMapSelection();
-  const stats = getMapStats(record);
-
-  const shell = document.createElement("div");
-  shell.className = "character-detail-shell map-detail-shell";
-  shell.appendChild(createMapSummary(record, stats));
-  shell.appendChild(createMapIntro(stats));
-  shell.appendChild(createMapBasicSection(record));
-  shell.appendChild(createMapWorkspaceSection(record));
-  shell.appendChild(createMapAdvancedJsonSection(record));
-  parent.appendChild(shell);
-}
-
-function createMapSummary(record, stats) {
-  const summaryCard = document.createElement("section");
-  summaryCard.className = "character-summary-card map-summary-card";
-
-  const preview = document.createElement("div");
-  preview.className = "character-summary-portrait map-summary-background";
-  const assetPath = resolveAssetPath(record.picture);
-  if (assetPath && isImage(assetPath.toLowerCase())) {
-    const image = document.createElement("img");
-    image.src = `/api/assets/file?path=${encodeURIComponent(assetPath)}`;
-    image.alt = record.name || record.id || "地图背景";
-    preview.appendChild(image);
-  } else {
-    const placeholder = document.createElement("div");
-    placeholder.className = "character-summary-portrait-placeholder";
-    placeholder.textContent = "地图";
-    preview.appendChild(placeholder);
-  }
-
-  const content = document.createElement("div");
-  content.className = "character-summary-content";
-  const titleRow = document.createElement("div");
-  titleRow.className = "character-summary-title-row";
-  const titleGroup = document.createElement("div");
-  const title = document.createElement("div");
-  title.className = "form-detail-title";
-  title.textContent = record.name || record.id || "未命名地图";
-  const subtitle = document.createElement("div");
-  subtitle.className = "form-detail-subtitle";
-  subtitle.textContent = record.id || `#${state.selectedRecordIndex + 1}`;
-  titleGroup.append(title, subtitle);
-  const actions = document.createElement("div");
-  actions.className = "record-actions";
-  actions.append(
-    createActionButton("新增", addRecord),
-    createActionButton("复制", duplicateRecord),
-    createActionButton("删除", deleteRecord)
-  );
-  titleRow.append(titleGroup, actions);
-
-  const badgeRow = document.createElement("div");
-  badgeRow.className = "character-summary-badges";
-  badgeRow.append(
-    createPill(isLargeMap(record) ? "大地图" : "小地图", "ok"),
-    createPill(`点位 ${stats.locations}`),
-    createPill(`事件 ${stats.events}`),
-    createPill(`剧情 ${stats.storyEvents}`),
-    createPill(stats.issues.length > 0 ? `待处理 ${stats.issues.length}` : "可运行", stats.issues.length > 0 ? "warn" : "ok")
-  );
-
-  content.append(titleRow, badgeRow);
-  summaryCard.append(preview, content);
-  return summaryCard;
-}
-
 function createMapIntro(stats) {
   const box = document.createElement("div");
   box.className = "form-summary character-form-summary map-issue-summary";
@@ -6398,8 +5487,8 @@ function createMapKindField(record) {
     if (record.kind === "small") {
       delete record.kind;
     }
-    syncFormToEditor();
-    renderFormView();
+    syncRecordsToEditor();
+    renderMapWorkspaceView();
   });
   field.appendChild(select);
   return field;
@@ -6412,7 +5501,7 @@ function createMapTextareaField(record, labelCn, key) {
   textarea.value = record[key] == null ? "" : String(record[key]);
   textarea.addEventListener("input", () => {
     record[key] = textarea.value;
-    syncFormToEditor();
+    syncRecordsToEditor();
   });
   field.appendChild(textarea);
   return field;
@@ -6429,9 +5518,9 @@ function createMapResourceField(record, labelCn, key, group) {
   input.addEventListener("input", () => {
     const value = input.value.trim();
     record[key] = value || null;
-    syncFormToEditor();
+    syncRecordsToEditor();
   });
-  input.addEventListener("change", () => renderFormView());
+  input.addEventListener("change", () => renderMapWorkspaceView());
   field.appendChild(input);
   field.appendChild(createShopResourcePreview(getMapResourceInfo(record[key], group)));
   return field;
@@ -6451,13 +5540,13 @@ function createMapMusicField(record) {
     input.setAttribute("list", ensureResourceIdDatalist("音乐"));
     input.addEventListener("input", () => {
       record.musics[index] = input.value.trim();
-      syncFormToEditor();
+      syncRecordsToEditor();
     });
-    input.addEventListener("change", () => renderFormView());
+    input.addEventListener("change", () => renderMapWorkspaceView());
     const remove = createActionButton("删除", () => {
       record.musics.splice(index, 1);
-      syncFormToEditor();
-      renderFormView();
+      syncRecordsToEditor();
+      renderMapWorkspaceView();
     });
     row.append(input, remove);
     list.appendChild(row);
@@ -6472,8 +5561,8 @@ function createMapMusicField(record) {
 
   const add = createActionButton("添加音乐", () => {
     record.musics.push("");
-    syncFormToEditor();
-    renderFormView();
+    syncRecordsToEditor();
+    renderMapWorkspaceView();
   });
   field.append(list, add);
   return field;
@@ -6508,7 +5597,7 @@ function createLargeMapCanvas(record) {
     button.textContent = choice.label;
     button.addEventListener("click", () => {
       state.mapEditor.canvasMode = choice.value;
-      renderFormView();
+      renderMapWorkspaceView();
     });
     modeActions.appendChild(button);
   }
@@ -6547,7 +5636,7 @@ function createLargeMapCanvas(record) {
       event.stopPropagation();
       state.mapEditor.selectedLocationIndex = index;
       state.mapEditor.canvasMode = "select";
-      renderFormView();
+      renderMapWorkspaceView();
     });
     pin.addEventListener("pointerdown", (event) => {
       if (state.mapEditor.canvasMode !== "select") {
@@ -6560,8 +5649,8 @@ function createLargeMapCanvas(record) {
       const up = () => {
         window.removeEventListener("pointermove", move);
         window.removeEventListener("pointerup", up);
-        syncFormToEditor();
-        renderFormView();
+        syncRecordsToEditor();
+        renderMapWorkspaceView();
       };
       window.addEventListener("pointermove", move);
       window.addEventListener("pointerup", up);
@@ -6581,8 +5670,8 @@ function createLargeMapCanvas(record) {
     record.locations.push(location);
     state.mapEditor.selectedLocationIndex = record.locations.length - 1;
     state.mapEditor.canvasMode = "select";
-    syncFormToEditor();
-    renderFormView();
+    syncRecordsToEditor();
+    renderMapWorkspaceView();
   });
 
   const hint = document.createElement("div");
@@ -6626,7 +5715,7 @@ function moveMapLocationFromPointer(record, location, canvas, event) {
     x: Math.max(0, Math.min(800, x)),
     y: Math.max(0, Math.min(600, y)),
   };
-  syncFormToEditor();
+  syncRecordsToEditor();
 }
 
 function createSmallMapPreview(record) {
@@ -6697,7 +5786,7 @@ function createMapLocationPanel(record) {
       card.addEventListener("click", () => {
         state.mapEditor.selectedLocationIndex = index;
         state.mapEditor.canvasMode = "select";
-        renderFormView();
+        renderMapWorkspaceView();
       });
 
       const iconInfo = getMapLocationIconInfo(location, location.events[0] || null);
@@ -6817,10 +5906,10 @@ function createMapObjectTextField(owner, labelCn, key, options = {}) {
   input.addEventListener("input", () => {
     const value = input.value.trim();
     owner[key] = options.nullable && !value ? null : input.value;
-    syncFormToEditor();
+    syncRecordsToEditor();
   });
   if (options.rerenderOnChange) {
-    input.addEventListener("change", () => renderFormView());
+    input.addEventListener("change", () => renderMapWorkspaceView());
   }
   field.appendChild(input);
   return field;
@@ -6833,7 +5922,7 @@ function createMapObjectTextareaField(owner, labelCn, key) {
   textarea.value = owner[key] == null ? "" : String(owner[key]);
   textarea.addEventListener("input", () => {
     owner[key] = textarea.value.trim() ? textarea.value : null;
-    syncFormToEditor();
+    syncRecordsToEditor();
   });
   field.appendChild(textarea);
   return field;
@@ -6849,9 +5938,9 @@ function createMapObjectResourceField(owner, labelCn, key, group, pickerContext 
   input.setAttribute("list", pickerContext ? ensureMapIconResourceDatalist() : ensureResourceIdDatalist(group));
   input.addEventListener("input", () => {
     owner[key] = input.value.trim() || null;
-    syncFormToEditor();
+    syncRecordsToEditor();
   });
-  input.addEventListener("change", () => renderFormView());
+  input.addEventListener("change", () => renderMapWorkspaceView());
   field.appendChild(input);
 
   const info = getMapResourceInfo(owner[key], group);
@@ -6872,8 +5961,8 @@ function createMapObjectResourceField(owner, labelCn, key, group, pickerContext 
     clearButton.disabled = !info.resourceId;
     clearButton.addEventListener("click", () => {
       owner[key] = null;
-      syncFormToEditor();
-      renderFormView();
+      syncRecordsToEditor();
+      renderMapWorkspaceView();
     });
     actions.append(pickerButton, clearButton);
     field.appendChild(actions);
@@ -6987,9 +6076,9 @@ function createMapPositionField(location, axis) {
     const next = normalizeMapPosition(location.position);
     next[axis] = parseNumberInputValue(input.value, 0);
     location.position = next;
-    syncFormToEditor();
+    syncRecordsToEditor();
   });
-  input.addEventListener("change", () => renderFormView());
+  input.addEventListener("change", () => renderMapWorkspaceView());
   field.appendChild(input);
   return field;
 }
@@ -7110,8 +6199,8 @@ function createMapEventTypeField(mapEvent) {
   }
   select.addEventListener("change", () => {
     mapEvent.type = select.value;
-    syncFormToEditor();
-    renderFormView();
+    syncRecordsToEditor();
+    renderMapWorkspaceView();
   });
   field.appendChild(select);
   return field;
@@ -7130,9 +6219,9 @@ function createMapEventTargetField(mapEvent) {
   input.disabled = mapEvent.type === "xiangzi";
   input.addEventListener("input", () => {
     mapEvent.targetId = input.value.trim();
-    syncFormToEditor();
+    syncRecordsToEditor();
   });
-  input.addEventListener("change", () => renderFormView());
+  input.addEventListener("change", () => renderMapWorkspaceView());
   field.appendChild(input);
   return field;
 }
@@ -7156,8 +6245,8 @@ function createMapEventRepeatField(mapEvent) {
     } else {
       delete mapEvent.repeatMode;
     }
-    syncFormToEditor();
-    renderFormView();
+    syncRecordsToEditor();
+    renderMapWorkspaceView();
   });
   field.appendChild(select);
   return field;
@@ -7172,9 +6261,9 @@ function createMapEventProbabilityField(mapEvent) {
   input.value = String(Number.isFinite(mapEvent.probability) ? mapEvent.probability : 100);
   input.addEventListener("input", () => {
     mapEvent.probability = Math.max(0, Math.min(100, parseNumberInputValue(input.value, 100)));
-    syncFormToEditor();
+    syncRecordsToEditor();
   });
-  input.addEventListener("change", () => renderFormView());
+  input.addEventListener("change", () => renderMapWorkspaceView());
   field.appendChild(input);
   return field;
 }
@@ -7189,8 +6278,8 @@ function createMapConditionEditor(mapEvent) {
   note.textContent = "条件全部满足后才会尝试触发这个事件。多个值用 # 分隔，例如 角色#10。";
   const add = createActionButton("添加条件", () => {
     mapEvent.conditions.push({ type: "should_not_finish", value: "" });
-    syncFormToEditor();
-    renderFormView();
+    syncRecordsToEditor();
+    renderMapWorkspaceView();
   });
   header.append(note, add);
   const list = document.createElement("div");
@@ -7228,8 +6317,8 @@ function createMapConditionRow(mapEvent, condition, index) {
   }
   type.addEventListener("change", () => {
     condition.type = type.value;
-    syncFormToEditor();
-    renderFormView();
+    syncRecordsToEditor();
+    renderMapWorkspaceView();
   });
 
   const value = document.createElement("input");
@@ -7243,13 +6332,13 @@ function createMapConditionRow(mapEvent, condition, index) {
   value.disabled = condition.type === "always" || condition.type === "in_newbie_task";
   value.addEventListener("input", () => {
     condition.value = value.value.trim();
-    syncFormToEditor();
+    syncRecordsToEditor();
   });
 
   const remove = createActionButton("删除", () => {
     mapEvent.conditions.splice(index, 1);
-    syncFormToEditor();
-    renderFormView();
+    syncRecordsToEditor();
+    renderMapWorkspaceView();
   });
   row.append(type, value, remove);
   return row;
@@ -7265,8 +6354,8 @@ function addMapLocation(record) {
   const location = createMapLocationTemplate(record, `新点位${record.locations.length + 1}`);
   record.locations.push(location);
   state.mapEditor.selectedLocationIndex = record.locations.length - 1;
-  syncFormToEditor();
-  renderFormView();
+  syncRecordsToEditor();
+  renderMapWorkspaceView();
 }
 
 function addMapReturnLocation(record) {
@@ -7284,8 +6373,8 @@ function addMapReturnLocation(record) {
   ];
   record.locations.push(location);
   state.mapEditor.selectedLocationIndex = record.locations.length - 1;
-  syncFormToEditor();
-  renderFormView();
+  syncRecordsToEditor();
+  renderMapWorkspaceView();
 }
 
 function createMapLocationTemplate(record, baseId) {
@@ -7323,8 +6412,8 @@ function moveMapLocation(record, index, delta) {
     return;
   }
   state.mapEditor.selectedLocationIndex = nextIndex;
-  syncFormToEditor();
-  renderFormView();
+  syncRecordsToEditor();
+  renderMapWorkspaceView();
 }
 
 function duplicateMapLocation(record, index) {
@@ -7337,8 +6426,8 @@ function duplicateMapLocation(record, index) {
   copy.name = copy.name ? `${copy.name} 复制` : copy.id;
   record.locations.splice(index + 1, 0, copy);
   state.mapEditor.selectedLocationIndex = index + 1;
-  syncFormToEditor();
-  renderFormView();
+  syncRecordsToEditor();
+  renderMapWorkspaceView();
 }
 
 function deleteMapLocation(record, index) {
@@ -7352,8 +6441,8 @@ function deleteMapLocation(record, index) {
   }
   record.locations.splice(index, 1);
   state.mapEditor.selectedLocationIndex = Math.max(0, Math.min(index, record.locations.length - 1));
-  syncFormToEditor();
-  renderFormView();
+  syncRecordsToEditor();
+  renderMapWorkspaceView();
 }
 
 function addMapEvent(location) {
@@ -7364,8 +6453,8 @@ function addMapEvent(location) {
     description: "",
     conditions: [],
   });
-  syncFormToEditor();
-  renderFormView();
+  syncRecordsToEditor();
+  renderMapWorkspaceView();
 }
 
 function moveMapEvent(location, index, delta) {
@@ -7375,8 +6464,8 @@ function moveMapEvent(location, index, delta) {
   }
   const [event] = location.events.splice(index, 1);
   location.events.splice(nextIndex, 0, event);
-  syncFormToEditor();
-  renderFormView();
+  syncRecordsToEditor();
+  renderMapWorkspaceView();
 }
 
 function duplicateMapEvent(location, index) {
@@ -7385,8 +6474,8 @@ function duplicateMapEvent(location, index) {
     return;
   }
   location.events.splice(index + 1, 0, structuredCloneCompat(source));
-  syncFormToEditor();
-  renderFormView();
+  syncRecordsToEditor();
+  renderMapWorkspaceView();
 }
 
 function deleteMapEvent(location, index) {
@@ -7399,12 +6488,12 @@ function deleteMapEvent(location, index) {
     return;
   }
   location.events.splice(index, 1);
-  syncFormToEditor();
-  renderFormView();
+  syncRecordsToEditor();
+  renderMapWorkspaceView();
 }
 
 function clampMapSelection() {
-  const record = state.formRecords[state.selectedRecordIndex];
+  const record = state.records[state.selectedRecordIndex];
   const count = Array.isArray(record?.locations) ? record.locations.length : 0;
   if (count <= 0) {
     state.mapEditor.selectedLocationIndex = 0;
@@ -7470,7 +6559,7 @@ function getMapStats(record) {
   if (!record.id) {
     issues.push("地图缺少 id。");
   }
-  if (record.id && state.formRecords.filter((candidate) => candidate?.id === record.id).length > 1) {
+  if (record.id && state.records.filter((candidate) => candidate?.id === record.id).length > 1) {
     issues.push(`地图 ID 重复：${record.id}`);
   }
   if (!record.name) {
@@ -7625,7 +6714,7 @@ function hasMapEventTarget(type, targetId) {
   }
   switch (type) {
     case "map":
-      return state.formRecords.some((record) => record?.id === targetId) ||
+      return state.records.some((record) => record?.id === targetId) ||
         hasDefinition("maps", targetId);
     case "story":
       return hasDefinition("story", targetId);
@@ -7800,261 +6889,7 @@ function isSectFile() {
   return state.currentPath === "sects.json";
 }
 
-function renderShopFormView() {
-  if (!SHOP_PRODUCT_FILTERS.some((filter) => filter.value === state.formFilter)) {
-    state.formFilter = "all";
-  }
-
-  const recordPanel = document.createElement("aside");
-  recordPanel.className = "record-panel character-record-panel shop-record-panel";
-
-  const recordHeader = document.createElement("div");
-  recordHeader.className = "record-panel-header";
-  const headerTitle = document.createElement("div");
-  headerTitle.className = "record-panel-title";
-  headerTitle.textContent = "商店";
-  const headerSubtitle = document.createElement("div");
-  headerSubtitle.className = "record-panel-subtitle";
-  recordHeader.append(headerTitle, headerSubtitle);
-
-  const recordSearch = document.createElement("input");
-  recordSearch.className = "record-search";
-  recordSearch.type = "search";
-  recordSearch.placeholder = "搜索商店 id、名称、商品";
-  recordSearch.value = state.formSearch;
-  bindImeSafeInput(recordSearch, (value) => {
-    state.formSearch = value;
-    renderShopRecordCards(recordList, headerSubtitle);
-  });
-
-  const filterRow = document.createElement("div");
-  filterRow.className = "character-filter-row";
-  for (const filter of SHOP_PRODUCT_FILTERS) {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = "character-filter-button";
-    button.classList.toggle("active", state.formFilter === filter.value);
-    button.textContent = filter.label;
-    button.addEventListener("click", () => {
-      state.formFilter = filter.value;
-      renderFormView();
-    });
-    filterRow.appendChild(button);
-  }
-
-  const recordList = document.createElement("div");
-  recordList.className = "record-list";
-  renderShopRecordCards(recordList, headerSubtitle);
-
-  recordPanel.append(recordHeader, recordSearch, filterRow, recordList);
-
-  const detail = document.createElement("section");
-  detail.className = "form-detail character-form-detail shop-form-detail";
-  renderShopDetail(detail);
-
-  elements.formView.append(recordPanel, detail);
-}
-
-function renderShopRecordCards(parent, subtitleNode) {
-  parent.replaceChildren();
-  const query = state.formSearch.trim().toLowerCase();
-  let visibleCount = 0;
-
-  state.formRecords.forEach((record, index) => {
-    ensureShopShape(record);
-    if (!matchesShopSearch(record, query) || !matchesShopFilter(record, state.formFilter)) {
-      return;
-    }
-
-    visibleCount += 1;
-    const card = document.createElement("button");
-    card.type = "button";
-    card.className = "record-card character-record-card shop-record-card";
-    card.dataset.recordIndex = String(index);
-    card.classList.toggle("active", index === state.selectedRecordIndex);
-    card.addEventListener("click", () => {
-      selectFormRecord(index);
-    });
-
-    const stats = getShopRecordStats(record);
-    const text = document.createElement("div");
-    text.className = "character-record-text";
-
-    const titleRow = document.createElement("div");
-    titleRow.className = "character-record-title-row";
-    const title = document.createElement("div");
-    title.className = "record-title";
-    title.textContent = record.name || record.id || `#${index + 1}`;
-    const badge = document.createElement("span");
-    badge.className = "character-role-badge shop-badge";
-    badge.textContent = `${stats.effectiveProducts}/${stats.products}`;
-    titleRow.append(title, badge);
-
-    const subtitle = document.createElement("div");
-    subtitle.className = "record-subtitle";
-    subtitle.textContent = record.id || `#${index + 1}`;
-
-    const meta = document.createElement("div");
-    meta.className = "character-record-meta";
-    meta.textContent = [
-      `${stats.products} 商品`,
-      `${stats.limitedProducts} 限购`,
-      `${stats.premiumProducts} 元宝价`,
-      stats.ignoredProducts > 0 ? `${stats.ignoredProducts} 兼容忽略` : "无忽略",
-      stats.missingProducts > 0 ? `${stats.missingProducts} 缺引用` : "引用正常",
-    ].join(" · ");
-
-    text.append(titleRow, subtitle, meta);
-    card.append(createRecordThumb(record), text);
-    parent.appendChild(card);
-  });
-
-  subtitleNode.textContent = `${visibleCount} / ${state.formRecords.length} 条`;
-
-  if (visibleCount === 0) {
-    const empty = document.createElement("div");
-    empty.className = "record-empty";
-    empty.textContent = "没有匹配的商店";
-    parent.appendChild(empty);
-  }
-}
-
-function renderShopDetail(parent) {
-  const record = state.formRecords[state.selectedRecordIndex];
-  if (!record) {
-    parent.innerHTML = `<div class="form-error">未选择商店。</div>`;
-    return;
-  }
-
-  ensureShopShape(record);
-  const stats = getShopRecordStats(record);
-
-  const shell = document.createElement("div");
-  shell.className = "character-detail-shell shop-detail-shell";
-
-  const summaryCard = document.createElement("section");
-  summaryCard.className = "character-summary-card shop-summary-card";
-  const background = createShopSummaryBackground(record);
-  const content = document.createElement("div");
-  content.className = "character-summary-content";
-
-  const titleRow = document.createElement("div");
-  titleRow.className = "character-summary-title-row";
-  const titleGroup = document.createElement("div");
-  const title = document.createElement("div");
-  title.className = "form-detail-title";
-  title.textContent = record.name || record.id || "未命名商店";
-  const subtitle = document.createElement("div");
-  subtitle.className = "form-detail-subtitle";
-  subtitle.textContent = record.id || `#${state.selectedRecordIndex + 1}`;
-  titleGroup.append(title, subtitle);
-  const actions = document.createElement("div");
-  actions.className = "record-actions";
-  actions.append(
-    createActionButton("新增", addRecord),
-    createActionButton("复制", duplicateRecord),
-    createActionButton("删除", deleteRecord)
-  );
-  titleRow.append(titleGroup, actions);
-
-  const badgeRow = document.createElement("div");
-  badgeRow.className = "character-summary-badges";
-  badgeRow.append(
-    createPill(`商品 ${stats.products}`),
-    createPill(`可交易 ${stats.effectiveProducts}`, "ok"),
-    createPill(`限购 ${stats.limitedProducts}`),
-    createPill(`元宝价 ${stats.premiumProducts}`),
-    createPill(stats.ignoredProducts > 0 ? `兼容忽略 ${stats.ignoredProducts}` : "无兼容忽略", stats.ignoredProducts > 0 ? "warn" : "ok"),
-    createPill(stats.missingProducts > 0 ? `缺引用 ${stats.missingProducts}` : "引用正常", stats.missingProducts > 0 ? "warn" : "ok")
-  );
-
-  content.append(titleRow, badgeRow);
-  summaryCard.append(background, content);
-  shell.appendChild(summaryCard);
-
-  const intro = document.createElement("div");
-  intro.className = "form-summary character-form-summary";
-  intro.textContent = "这里只编辑 shops.json 已支持的数据字段；标为兼容忽略的元宝和残章条目会保留在 JSON 中，但当前游戏商店界面不会展示或交易。";
-  shell.appendChild(intro);
-
-  const basicSection = createCharacterSection("基础信息", "Basic");
-  const basicGrid = document.createElement("div");
-  basicGrid.className = "character-form-grid";
-  basicGrid.append(
-    createCharacterTextField(record, "商店ID", "id", {
-      placeholder: "例如：洛阳.商店",
-      rerenderOnChange: true,
-    }),
-    createCharacterTextField(record, "显示名", "name", {
-      placeholder: "例如：洛阳.商店",
-      rerenderOnChange: true,
-    }),
-    createShopResourceField(record, "背景资源", "background", "场景"),
-    createShopResourceField(record, "音乐资源", "music", "音乐")
-  );
-  basicSection.appendChild(basicGrid);
-  shell.appendChild(basicSection);
-
-  shell.appendChild(createShopProductSection(record));
-  shell.appendChild(createShopAdvancedJsonSection(record));
-  parent.appendChild(shell);
-}
-
-function createShopSummaryBackground(record) {
-  const box = document.createElement("div");
-  box.className = "character-summary-portrait shop-summary-background";
-  const assetPath = resolveAssetPath(record.background);
-  if (assetPath && isImage(assetPath.toLowerCase())) {
-    const image = document.createElement("img");
-    image.src = `/api/assets/file?path=${encodeURIComponent(assetPath)}`;
-    image.alt = record.name || record.id || "商店背景";
-    box.appendChild(image);
-  } else {
-    const placeholder = document.createElement("div");
-    placeholder.className = "character-summary-portrait-placeholder";
-    placeholder.textContent = "商店";
-    box.appendChild(placeholder);
-  }
-  return box;
-}
-
-function createShopResourceField(record, labelCn, key, group) {
-  const field = createCharacterFieldShell(labelCn, key, true);
-  field.classList.add("shop-resource-field");
-  const input = document.createElement("input");
-  input.type = "text";
-  input.value = record[key] == null ? "" : String(record[key]);
-  input.placeholder = group === "音乐" ? "例如：音乐.城市3" : "例如：场景.商店";
-  input.setAttribute("list", ensureResourceIdDatalist(group));
-  input.addEventListener("input", () => {
-    updateRecordField(record, key, input.value.trim() || null);
-  });
-  input.addEventListener("change", () => renderFormView());
-  field.appendChild(input);
-
-  const info = getShopResourceInfo(record, key, group);
-  field.appendChild(createShopResourcePreview(info));
-
-  const actions = document.createElement("div");
-  actions.className = "shop-resource-actions";
-  const pickerButton = document.createElement("button");
-  pickerButton.type = "button";
-  pickerButton.textContent = "选择/注册";
-  pickerButton.addEventListener("click", () => openShopResourcePicker(key));
-
-  const clearButton = document.createElement("button");
-  clearButton.type = "button";
-  clearButton.textContent = "清空";
-  clearButton.disabled = !info.resourceId;
-  clearButton.addEventListener("click", () => {
-    updateRecordField(record, key, null, { rerender: true });
-  });
-  actions.append(pickerButton, clearButton);
-  field.appendChild(actions);
-  return field;
-}
-
-function createShopResourcePreview(info) {
+ function createShopResourcePreview(info) {
   const preview = document.createElement("div");
   preview.className = `shop-resource-preview ${info.status}`;
   if (info.previewPath && isImage(info.previewPath.toLowerCase())) {
@@ -8108,859 +6943,11 @@ function getShopResourceInfo(record, key, group) {
   };
 }
 
-function createShopProductSection(record) {
-  const section = createCharacterSection("商品清单", "Products");
-  const toolbar = document.createElement("div");
-  toolbar.className = "shop-product-toolbar";
-  const note = document.createElement("div");
-  note.className = "static-tool-note";
-  note.textContent = "价格留空时使用物品基础价；purchaseLimit 留空表示不限购，0 表示售罄展示。";
-  const addButton = createActionButton("新增商品", () => addShopProduct(record));
-  toolbar.append(note, addButton);
-
-  const list = document.createElement("div");
-  list.className = "item-array-list shop-product-list";
-  const products = record.products.filter((product) => matchesShopProductFilter(product, state.formFilter));
-
-  products.forEach((product) => {
-    const productIndex = record.products.indexOf(product);
-    list.appendChild(createShopProductCard(record, product, productIndex));
-  });
-
-  if (products.length === 0) {
-    const empty = document.createElement("div");
-    empty.className = "record-empty";
-    empty.textContent = "当前筛选下没有商品";
-    list.appendChild(empty);
-  }
-
-  section.append(toolbar, list);
-  return section;
-}
-
-function createShopProductCard(record, product, productIndex) {
-  ensureShopProductShape(product);
-  const info = getShopProductInfo(product);
-  const card = document.createElement("article");
-  card.className = `item-array-card shop-product-card ${info.severity}`;
-
-  const header = document.createElement("div");
-  header.className = "item-array-card-header shop-product-card-header";
-  const title = document.createElement("div");
-  title.className = "item-array-card-title";
-  title.textContent = `${productIndex + 1}. ${getShopProductTitle(product, info)}`;
-  const actions = document.createElement("div");
-  actions.className = "record-actions";
-  actions.append(
-    createActionButton("上移", () => moveShopProduct(record, productIndex, -1)),
-    createActionButton("下移", () => moveShopProduct(record, productIndex, 1)),
-    createActionButton("复制", () => duplicateShopProduct(record, productIndex)),
-    createActionButton("删除", () => deleteShopProduct(record, productIndex))
-  );
-  header.append(title, actions);
-
-  const meta = document.createElement("div");
-  meta.className = "shop-product-meta";
-  meta.append(
-    createPill(info.typeLabel),
-    createPill(info.priceText, info.priceTone),
-    createPill(info.limitText),
-    createPill(info.statusText, info.statusTone)
-  );
-
-  const body = document.createElement("div");
-  body.className = "item-array-card-body";
-  const grid = document.createElement("div");
-  grid.className = "item-array-grid shop-product-grid";
-  grid.append(
-    createShopProductContentField(product),
-    createNullableShopNumberField(product, "限购", "purchaseLimit", { placeholder: "空 = 不限购", min: 0 }),
-    createNullableShopNumberField(product, "银两价", "price", { placeholder: "空 = 物品基础价", min: 0 }),
-    createNullableShopNumberField(product, "元宝价", "premiumPrice", { placeholder: "空 = 不支持元宝价", min: 0 })
-  );
-  body.append(grid);
-
-  if (info.message) {
-    const message = document.createElement("div");
-    message.className = `shop-product-message ${info.severity}`;
-    message.textContent = info.message;
-    body.appendChild(message);
-  }
-
-  card.append(header, meta, body);
-  return card;
-}
-
-function createShopProductContentField(product) {
-  const field = createCharacterFieldShell("商品ID", "contentId", true);
-  const input = document.createElement("input");
-  input.type = "text";
-  input.value = product.contentId == null ? "" : String(product.contentId);
-  input.placeholder = "选择 items.json 中的物品 id";
-  input.setAttribute("list", ensureShopProductContentDatalist());
-  input.addEventListener("input", () => {
-    product.contentId = input.value;
-    syncFormToEditor();
-  });
-  input.addEventListener("change", () => renderFormView());
-  field.appendChild(input);
-  return field;
-}
-
-function createNullableShopNumberField(product, labelCn, key, options = {}) {
-  const field = createCharacterFieldShell(labelCn, key);
-  const input = document.createElement("input");
-  input.type = "number";
-  input.value = Number.isFinite(product[key]) ? String(product[key]) : "";
-  input.placeholder = options.placeholder || "";
-  if (Number.isFinite(options.min)) {
-    input.min = String(options.min);
-  }
-  input.addEventListener("input", () => {
-    const text = input.value.trim();
-    product[key] = text ? parseNumberInputValue(text, 0) : null;
-    syncFormToEditor();
-  });
-  input.addEventListener("change", () => renderFormView());
-  field.appendChild(input);
-  return field;
-}
-
-function addShopProduct(record) {
-  record.products.push({
-    contentId: "",
-    purchaseLimit: null,
-    price: null,
-    premiumPrice: null,
-  });
-  syncFormToEditor();
-  renderFormView();
-}
-
-function duplicateShopProduct(record, productIndex) {
-  const source = record.products[productIndex];
-  if (!source) {
-    return;
-  }
-
-  record.products.splice(productIndex + 1, 0, structuredCloneCompat(source));
-  syncFormToEditor();
-  renderFormView();
-}
-
-function deleteShopProduct(record, productIndex) {
-  const source = record.products[productIndex];
-  if (!source) {
-    return;
-  }
-
-  const title = getShopProductTitle(source, getShopProductInfo(source));
-  if (!confirmAction(`确认删除商品「${title}」？`)) {
-    return;
-  }
-
-  record.products.splice(productIndex, 1);
-  syncFormToEditor();
-  renderFormView();
-}
-
-function moveShopProduct(record, productIndex, delta) {
-  const nextIndex = productIndex + delta;
-  if (nextIndex < 0 || nextIndex >= record.products.length) {
-    return;
-  }
-
-  const [product] = record.products.splice(productIndex, 1);
-  record.products.splice(nextIndex, 0, product);
-  syncFormToEditor();
-  renderFormView();
-}
-
-function createShopAdvancedJsonSection(record) {
-  const section = createCharacterSection("高级 JSON", "Advanced");
-  section.appendChild(createLegacyAdvancedJsonDetails("展开原始商店 JSON", record, "shops"));
-  return section;
-}
-
-function matchesShopSearch(record, query) {
-  if (!query) {
-    return true;
-  }
-
-  const productText = Array.isArray(record.products)
-    ? record.products.map((product) => {
-      const item = state.contentIndex.itemsById.get(String(product?.contentId || ""));
-      return `${product?.contentId || ""} ${item?.name || ""} ${item?.type || ""}`;
-    }).join(" ")
-    : "";
-  const haystack = [
-    record.id,
-    record.name,
-    record.music,
-    record.background,
-    productText,
-  ].filter(Boolean).join(" ").toLowerCase();
-  return haystack.includes(query);
-}
-
-function matchesShopFilter(record, filter) {
-  return filter === "all" || record.products.some((product) => matchesShopProductFilter(product, filter));
-}
-
-function matchesShopProductFilter(product, filter) {
-  const info = getShopProductInfo(product);
-  switch (filter) {
-    case "limited":
-      return Number.isFinite(product?.purchaseLimit);
-    case "premium":
-      return Number.isFinite(product?.premiumPrice);
-    case "fallbackPrice":
-      return !Number.isFinite(product?.price) && !Number.isFinite(product?.premiumPrice) && Boolean(info.item);
-    case "ignored":
-      return info.ignored;
-    case "missing":
-      return info.missing;
-    case "all":
-    default:
-      return true;
-  }
-}
-
-function getShopRecordStats(record) {
-  const products = Array.isArray(record.products) ? record.products : [];
-  let limitedProducts = 0;
-  let premiumProducts = 0;
-  let ignoredProducts = 0;
-  let missingProducts = 0;
-
-  for (const product of products) {
-    const info = getShopProductInfo(product);
-    if (Number.isFinite(product?.purchaseLimit)) {
-      limitedProducts += 1;
-    }
-    if (Number.isFinite(product?.premiumPrice)) {
-      premiumProducts += 1;
-    }
-    if (info.ignored) {
-      ignoredProducts += 1;
-    }
-    if (info.missing) {
-      missingProducts += 1;
-    }
-  }
-
-  return {
-    products: products.length,
-    effectiveProducts: Math.max(0, products.length - ignoredProducts - missingProducts),
-    limitedProducts,
-    premiumProducts,
-    ignoredProducts,
-    missingProducts,
-  };
-}
-
-function getShopProductInfo(product) {
-  const contentId = String(product?.contentId || "").trim();
-  const ignored = isIgnoredShopProductContentId(contentId);
-  const item = state.contentIndex.itemsById.get(contentId) || null;
-  const missing = Boolean(contentId) && !ignored && !item;
-  const typeLabel = item ? getItemTypeShortLabel(item.type) : ignored ? "兼容条目" : "未选择物品";
-
-  let priceText = "无价格";
-  let priceTone = "warn";
-  if (Number.isFinite(product?.price)) {
-    priceText = `银两 ${product.price}`;
-    priceTone = "";
-  } else if (Number.isFinite(product?.premiumPrice)) {
-    priceText = `元宝 ${product.premiumPrice}`;
-    priceTone = "";
-  } else if (item) {
-    priceText = `基础价 ${getDisplayNumber(item.price, 0)}`;
-    priceTone = "";
-  }
-
-  const limitText = Number.isFinite(product?.purchaseLimit)
-    ? `限购 ${product.purchaseLimit}`
-    : "不限购";
-
-  let statusText = "可交易";
-  let statusTone = "ok";
-  let severity = "ok";
-  let message = "";
-
-  if (!contentId) {
-    statusText = "未选择";
-    statusTone = "warn";
-    severity = "warn";
-    message = "请填写 contentId。";
-  } else if (ignored) {
-    statusText = "运行时忽略";
-    statusTone = "warn";
-    severity = "warn";
-    message = "当前游戏商店界面会保留但过滤此兼容条目，不会展示或交易。";
-  } else if (missing) {
-    statusText = "引用缺失";
-    statusTone = "warn";
-    severity = "warn";
-    message = "items.json 中找不到这个商品 id，内容校验会失败。";
-  } else if (Number.isFinite(product?.price) && Number.isFinite(product?.premiumPrice)) {
-    statusText = "双货币";
-    statusTone = "warn";
-    severity = "warn";
-    message = "当前 UI 默认优先显示银两价；如要元宝价商品，建议清空 price。";
-  }
-
-  return {
-    contentId,
-    item,
-    ignored,
-    missing,
-    typeLabel,
-    priceText,
-    priceTone,
-    limitText,
-    statusText,
-    statusTone,
-    severity,
-    message,
-  };
-}
-
-function getShopProductTitle(product, info) {
-  if (info.item) {
-    return `${info.item.name || info.item.id}（${info.item.id}）`;
-  }
-
-  return info.contentId || "未选择商品";
-}
-
-function isIgnoredShopProductContentId(contentId) {
-  return contentId === "元宝" || contentId.endsWith("残章");
-}
-
-function ensureShopShape(record) {
-  if (!Array.isArray(record.products)) {
-    record.products = [];
-  }
-
-  record.products = record.products.map((product) => (
-    product && typeof product === "object" && !Array.isArray(product)
-      ? product
-      : {
-        contentId: "",
-        purchaseLimit: null,
-        price: null,
-        premiumPrice: null,
-      }
-  ));
-
-  if (typeof record.id !== "string") {
-    record.id = "";
-  }
-
-  if (typeof record.name !== "string") {
-    record.name = record.id || "";
-  }
-}
-
-function ensureShopProductShape(product) {
-  if (typeof product.contentId !== "string") {
-    product.contentId = "";
-  }
-
-  for (const key of ["purchaseLimit", "price", "premiumPrice"]) {
-    if (!Number.isFinite(product[key])) {
-      product[key] = null;
-    }
-  }
-}
-
-function ensureShopProductContentDatalist() {
-  const id = "shopProductContentOptions";
-  const existing = document.getElementById(id);
-  if (existing) {
-    existing.remove();
-  }
-
-  const datalist = document.createElement("datalist");
-  datalist.id = id;
-  const options = new Map();
-
-  for (const item of Array.from(state.contentIndex.itemsById.values())) {
-    if (typeof item.id !== "string") {
-      continue;
-    }
-
-    options.set(item.id, `${item.name || item.id} · ${getItemTypeShortLabel(item.type)} · 基础价 ${getDisplayNumber(item.price, 0)}`);
-  }
-
-  for (const shop of state.formRecords) {
-    for (const product of Array.isArray(shop.products) ? shop.products : []) {
-      const contentId = typeof product?.contentId === "string" ? product.contentId.trim() : "";
-      if (contentId && !options.has(contentId)) {
-        options.set(contentId, isIgnoredShopProductContentId(contentId) ? "兼容保留，运行时忽略" : "当前 items.json 中不存在");
-      }
-    }
-  }
-
-  if (!options.has("元宝")) {
-    options.set("元宝", "兼容保留，运行时忽略");
-  }
-
-  for (const [value, label] of Array.from(options.entries()).sort((left, right) => left[0].localeCompare(right[0], "zh-Hans-CN"))) {
-    const option = document.createElement("option");
-    option.value = value;
-    option.label = label;
-    datalist.appendChild(option);
-  }
-
-  document.body.appendChild(datalist);
-  return id;
-}
-
-function isItemFile() {
+ function isItemFile() {
   return state.currentPath === "items.json";
 }
 
-function renderItemFormView() {
-  if (!getItemFilters().some((filter) => filter.value === state.formFilter)) {
-    state.formFilter = "all";
-  }
-
-  if (!["requirements", "effects", "affixes"].includes(state.itemTab)) {
-    state.itemTab = "requirements";
-  }
-
-  const recordPanel = document.createElement("aside");
-  recordPanel.className = "record-panel character-record-panel";
-
-  const recordHeader = document.createElement("div");
-  recordHeader.className = "record-panel-header";
-  const headerTitle = document.createElement("div");
-  headerTitle.className = "record-panel-title";
-  headerTitle.textContent = "物品";
-  const headerSubtitle = document.createElement("div");
-  headerSubtitle.className = "record-panel-subtitle";
-  recordHeader.append(headerTitle, headerSubtitle);
-
-  const recordSearch = document.createElement("input");
-  recordSearch.className = "record-search";
-  recordSearch.type = "search";
-  recordSearch.placeholder = "搜索 id、名称、图片、类型、分类";
-  recordSearch.value = state.formSearch;
-  bindImeSafeInput(recordSearch, (value) => {
-    state.formSearch = value;
-    renderItemRecordCards(recordList, headerSubtitle);
-  });
-
-  const filterRow = document.createElement("div");
-  filterRow.className = "character-filter-row";
-  for (const filter of getItemFilters()) {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = "character-filter-button";
-    button.classList.toggle("active", state.formFilter === filter.value);
-    button.textContent = filter.label;
-    button.addEventListener("click", () => {
-      state.formFilter = filter.value;
-      renderFormView();
-    });
-    filterRow.appendChild(button);
-  }
-
-  const recordList = document.createElement("div");
-  recordList.className = "record-list";
-  renderItemRecordCards(recordList, headerSubtitle);
-
-  recordPanel.append(recordHeader, recordSearch, filterRow, recordList);
-
-  const detail = document.createElement("section");
-  detail.className = "form-detail character-form-detail";
-  renderItemDetail(detail);
-
-  elements.formView.append(recordPanel, detail);
-}
-
-function getItemFilters() {
-  return [
-    { value: "all", label: "全部" },
-    { value: "consumable", label: "消耗/强化" },
-    { value: "equipment", label: "装备" },
-    { value: "books", label: "秘籍" },
-    { value: "talentBook", label: "天赋书" },
-    { value: "quest", label: "剧情物品" },
-    { value: "missingPicture", label: "缺图片" },
-    { value: "incomplete", label: "配置待补" },
-  ];
-}
-
-function matchesItemSearch(record, query) {
-  if (!query) {
-    return true;
-  }
-
-  const haystack = [
-    record.id,
-    record.name,
-    record.picture,
-    record.type,
-    record.category,
-    record.slotType,
-    record.description,
-    JSON.stringify(record),
-  ].filter(Boolean).join(" ").toLowerCase();
-
-  return haystack.includes(query);
-}
-
-function matchesItemFilter(record, filter) {
-  const pictureInfo = getItemPictureInfo(record);
-  const issues = getItemValidationIssues(record);
-
-  switch (filter) {
-    case "consumable":
-      return ["consumable", "booster", "utility"].includes(record.type);
-    case "equipment":
-      return record.type === "equipment";
-    case "books":
-      return ["skill_book", "special_skill_book"].includes(record.type);
-    case "talentBook":
-      return record.type === "talent_book";
-    case "quest":
-      return record.type === "quest_item";
-    case "missingPicture":
-      return !pictureInfo.resourceExists || !pictureInfo.assetExists;
-    case "incomplete":
-      return issues.length > 0;
-    case "all":
-    default:
-      return true;
-  }
-}
-
-function renderItemRecordCards(parent, subtitleNode) {
-  parent.replaceChildren();
-  const query = state.formSearch.trim().toLowerCase();
-  let visibleCount = 0;
-
-  state.formRecords.forEach((record, index) => {
-    if (!matchesItemSearch(record, query) || !matchesItemFilter(record, state.formFilter)) {
-      return;
-    }
-
-    visibleCount += 1;
-    const card = document.createElement("button");
-    card.type = "button";
-    card.className = "record-card character-record-card item-record-card";
-    card.dataset.recordIndex = String(index);
-    card.classList.toggle("active", index === state.selectedRecordIndex);
-    card.addEventListener("click", () => {
-      selectFormRecord(index);
-    });
-
-    const pictureInfo = getItemPictureInfo(record);
-    const issues = getItemValidationIssues(record);
-
-    const text = document.createElement("div");
-    text.className = "character-record-text";
-
-    const titleRow = document.createElement("div");
-    titleRow.className = "character-record-title-row";
-    const title = document.createElement("div");
-    title.className = "record-title";
-    title.textContent = typeof record.name === "string" && record.name.trim() ? record.name.trim() : (record.id || `#${index + 1}`);
-    const badge = document.createElement("span");
-    badge.className = `character-role-badge item-type-badge ${record.type || "unknown"}`;
-    badge.textContent = getItemTypeShortLabel(record.type);
-    titleRow.append(title, badge);
-
-    const subtitle = document.createElement("div");
-    subtitle.className = "record-subtitle";
-    subtitle.textContent = typeof record.id === "string" && record.id.trim() ? record.id.trim() : `#${index + 1}`;
-
-    const meta = document.createElement("div");
-    meta.className = "character-record-meta";
-    meta.textContent = [
-      `Lv.${getDisplayNumber(record.level, 1)}`,
-      getItemCategoryLabel(record.category),
-      pictureInfo.assetExists ? "有图片" : pictureInfo.pictureId ? "缺图片" : "无 picture",
-      issues.length > 0 ? `${issues.length} 项待处理` : "配置正常",
-    ].join(" · ");
-
-    text.append(titleRow, subtitle, meta);
-    card.append(createRecordThumb(record), text);
-    parent.appendChild(card);
-  });
-
-  subtitleNode.textContent = `${visibleCount} / ${state.formRecords.length} 条`;
-
-  if (visibleCount === 0) {
-    const empty = document.createElement("div");
-    empty.className = "record-empty";
-    empty.textContent = "没有匹配的物品";
-    parent.appendChild(empty);
-  }
-}
-
-function renderItemDetail(parent) {
-  const record = state.formRecords[state.selectedRecordIndex];
-  if (!record) {
-    parent.innerHTML = `<div class="form-error">未选择物品。</div>`;
-    return;
-  }
-
-  ensureItemShape(record);
-  const pictureInfo = getItemPictureInfo(record);
-  const issues = getItemValidationIssues(record);
-
-  const shell = document.createElement("div");
-  shell.className = "character-detail-shell item-detail-shell";
-
-  const summaryCard = document.createElement("section");
-  summaryCard.className = "character-summary-card item-summary-card";
-
-  const picture = createItemSummaryPicture(record, pictureInfo);
-  const content = document.createElement("div");
-  content.className = "character-summary-content";
-
-  const titleRow = document.createElement("div");
-  titleRow.className = "character-summary-title-row";
-  const titleGroup = document.createElement("div");
-  const title = document.createElement("div");
-  title.className = "form-detail-title";
-  title.textContent = typeof record.name === "string" && record.name.trim() ? record.name.trim() : (record.id || "未命名物品");
-  const subtitle = document.createElement("div");
-  subtitle.className = "form-detail-subtitle";
-  subtitle.textContent = typeof record.id === "string" && record.id.trim() ? record.id.trim() : `#${state.selectedRecordIndex + 1}`;
-  titleGroup.append(title, subtitle);
-  const actions = document.createElement("div");
-  actions.className = "record-actions";
-  actions.append(
-    createActionButton("新增", addRecord),
-    createActionButton("复制", duplicateRecord),
-    createActionButton("删除", deleteRecord)
-  );
-  titleRow.append(titleGroup, actions);
-
-  const badgeRow = document.createElement("div");
-  badgeRow.className = "character-summary-badges";
-  badgeRow.append(
-    createPill(`类型 ${getItemTypeShortLabel(record.type)}`),
-    createPill(`分类 ${getItemCategoryLabel(record.category)}`),
-    createPill(`等级 Lv.${getDisplayNumber(record.level, 1)}`),
-    createPill(`价格 ${getDisplayNumber(record.price, 0)}`),
-    createPill(record.canDrop === true ? "可掉落" : "不可掉落", record.canDrop === true ? "ok" : ""),
-    createPill(issues.length > 0 ? `待处理 ${issues.length}` : "配置正常", issues.length > 0 ? "warn" : "ok")
-  );
-
-  content.append(titleRow, badgeRow);
-  summaryCard.append(picture, content);
-  shell.appendChild(summaryCard);
-
-  if (issues.length > 0) {
-    shell.appendChild(createCharacterIssueSummary(issues));
-  }
-
-  const intro = document.createElement("div");
-  intro.className = "form-summary character-form-summary";
-  intro.textContent = "底层仍保存原 JSON；这里把物品常用字段整理成更容易理解的专用界面。复杂结构仍可在“高级 JSON”里直接调整。";
-  shell.appendChild(intro);
-
-  const basicSection = createCharacterSection("基础信息", "Basic");
-  const basicGrid = document.createElement("div");
-  basicGrid.className = "character-form-grid";
-  basicGrid.append(
-    createItemCategoryField(record),
-    createItemTypeField(record),
-    createCharacterTextField(record, "物品ID", "id", {
-      placeholder: "例如：止血草",
-      rerenderOnChange: true,
-    }),
-    createCharacterTextField(record, "显示名", "name", {
-      placeholder: "例如：止血草",
-      rerenderOnChange: true,
-    }),
-    createCharacterNumberField(record, "等级", "level", {
-      min: 1,
-      fallback: 1,
-      rerenderOnChange: true,
-    }),
-    createCharacterNumberField(record, "价格", "price", {
-      fallback: 0,
-      rerenderOnChange: true,
-    }),
-    createCharacterNumberField(record, "冷却", "cooldown", {
-      min: 0,
-      fallback: 0,
-      rerenderOnChange: true,
-    }),
-    createCharacterCheckboxField(record, "可掉落", "canDrop", "canDrop"),
-    createCharacterTextField(record, "图片资源", "picture", {
-      list: ensureResourceIdDatalist("物品"),
-      placeholder: "例如：物品.止血草",
-      rerenderOnChange: true,
-    }),
-    createItemSlotTypeField(record),
-    createItemTextareaField(record, "描述", "description")
-  );
-  basicSection.appendChild(basicGrid);
-  shell.appendChild(basicSection);
-
-  const pictureSection = createCharacterSection("图片", "Picture");
-  pictureSection.appendChild(createItemPictureSection(record, pictureInfo));
-  shell.appendChild(pictureSection);
-
-  const configSection = createCharacterSection("使用与配置", "Logic");
-  configSection.appendChild(createItemTabBar(record));
-  configSection.appendChild(createItemTabContent(record));
-  shell.appendChild(configSection);
-
-  shell.appendChild(createItemAdvancedJsonSection(record));
-  parent.appendChild(shell);
-}
-
-function getItemTypeLabel(type) {
-  return ITEM_TYPE_CHOICES.find((choice) => choice.value === type)?.label || `${type || "unknown"} 未知类型`;
-}
-
-function getItemTypeShortLabel(type) {
-  const label = getItemTypeLabel(type);
-  return label.split(" ").slice(1).join(" ") || label;
-}
-
-function getItemCategoryLabel(category) {
-  return ITEM_CATEGORY_CHOICES.find((choice) => choice.value === category)?.label.split(" ").slice(1).join(" ") || (category || "未分类");
-}
-
-function createItemSummaryPicture(record, pictureInfo) {
-  const box = document.createElement("div");
-  box.className = "character-summary-portrait item-summary-picture";
-  if (pictureInfo.previewPath) {
-    const image = document.createElement("img");
-    image.src = `/api/assets/file?path=${encodeURIComponent(pictureInfo.previewPath)}`;
-    image.alt = typeof record.name === "string" ? record.name : (record.id || "物品图片");
-    box.appendChild(image);
-  } else {
-    const placeholder = document.createElement("div");
-    placeholder.className = "character-summary-portrait-placeholder";
-    placeholder.textContent = "无图片";
-    box.appendChild(placeholder);
-  }
-  return box;
-}
-
-function createItemTextareaField(record, labelCn, key) {
-  const field = createCharacterFieldShell(labelCn, key, true);
-  const textarea = document.createElement("textarea");
-  textarea.value = record[key] == null ? "" : String(record[key]);
-  textarea.rows = 4;
-  textarea.addEventListener("input", () => updateRecordField(record, key, textarea.value));
-  field.appendChild(textarea);
-  return field;
-}
-
-function createItemCategoryField(record) {
-  return createCharacterSelectField(record, "物品分类", "category", ITEM_CATEGORY_CHOICES);
-}
-
-function createItemTypeField(record) {
-  const field = createCharacterFieldShell("物品类型", "type");
-  const select = document.createElement("select");
-  for (const choice of ITEM_TYPE_CHOICES) {
-    const option = document.createElement("option");
-    option.value = choice.value;
-    option.textContent = choice.label;
-    option.selected = String(record.type ?? "") === choice.value;
-    select.appendChild(option);
-  }
-
-  select.addEventListener("change", () => {
-    applyItemTypeDefaults(record, select.value);
-    syncFormToEditor();
-    renderFormView();
-  });
-
-  field.appendChild(select);
-  return field;
-}
-
-function createItemSlotTypeField(record) {
-  const field = createCharacterFieldShell("装备部位", "slotType");
-  const select = document.createElement("select");
-  const placeholder = document.createElement("option");
-  placeholder.value = "";
-  placeholder.textContent = record.type === "equipment" ? "请选择部位" : "仅装备类型需要";
-  placeholder.selected = !record.slotType;
-  select.appendChild(placeholder);
-
-  for (const choice of ITEM_SLOT_TYPE_CHOICES) {
-    const option = document.createElement("option");
-    option.value = choice.value;
-    option.textContent = choice.label;
-    option.selected = String(record.slotType ?? "") === choice.value;
-    select.appendChild(option);
-  }
-
-  select.disabled = record.type !== "equipment";
-  select.addEventListener("change", () => {
-    updateRecordField(record, "slotType", select.value || null, { rerender: true });
-  });
-
-  field.appendChild(select);
-  return field;
-}
-
-function applyItemTypeDefaults(record, type) {
-  record.type = type;
-  ensureItemShape(record);
-
-  if (type === "equipment") {
-    record.category = "equipment";
-    if (!record.slotType) {
-      record.slotType = "weapon";
-    }
-  } else {
-    if (record.category === "equipment") {
-      record.category = "normal";
-    }
-    if (!record.useEffects) {
-      record.useEffects = [];
-    }
-  }
-}
-
-function ensureItemShape(record) {
-  if (!Array.isArray(record.requirements)) {
-    record.requirements = [];
-  }
-  if (!Array.isArray(record.useEffects)) {
-    record.useEffects = [];
-  }
-  if (record.type === "equipment" && !Array.isArray(record.affixes)) {
-    record.affixes = [];
-  }
-
-  if (!Number.isFinite(record.level)) {
-    record.level = 1;
-  }
-  if (!Number.isFinite(record.price)) {
-    record.price = 0;
-  }
-  if (!Number.isFinite(record.cooldown)) {
-    record.cooldown = 0;
-  }
-  if (typeof record.canDrop !== "boolean") {
-    record.canDrop = false;
-  }
-  if (typeof record.description !== "string") {
-    record.description = "";
-  }
-  if (typeof record.category !== "string" || !record.category.trim()) {
-    record.category = record.type === "equipment" ? "equipment" : "normal";
-  }
-}
-
-function getItemPictureInfo(record) {
+ function getItemPictureInfo(record) {
   const pictureId = typeof record.picture === "string" ? record.picture.trim() : "";
   const resource = pictureId ? state.contentIndex.resourcesById.get(pictureId) : null;
   const resourceExists = Boolean(resource);
@@ -8981,52 +6968,6 @@ function getItemPictureInfo(record) {
     detectedAssetPath,
     previewPath,
   };
-}
-
-function getAssetImageInfo(path) {
-  if (!path || !isImage(path.toLowerCase())) {
-    return null;
-  }
-
-  const cached = state.assetImageInfo.get(path);
-  if (cached) {
-    return cached;
-  }
-
-  const loading = { status: "loading" };
-  state.assetImageInfo.set(path, loading);
-  loadImage(`/api/assets/file?path=${encodeURIComponent(path)}&v=${Date.now()}`)
-    .then((image) => {
-      state.assetImageInfo.set(path, {
-        status: "ready",
-        width: image.naturalWidth,
-        height: image.naturalHeight,
-      });
-      renderFormView();
-    })
-    .catch(() => {
-      state.assetImageInfo.set(path, { status: "error" });
-      renderFormView();
-    });
-
-  return loading;
-}
-
-function formatAssetImageInfo(info) {
-  if (!info) {
-    return "无图片";
-  }
-
-  if (info.status === "ready") {
-    const suffix = info.width === 512 && info.height === 512 ? " · 标准 512" : "";
-    return `${info.width} x ${info.height}${suffix}`;
-  }
-
-  if (info.status === "error") {
-    return "读取失败";
-  }
-
-  return "读取中...";
 }
 
 function detectItemPictureAssetValue(id, name, pictureId = "") {
@@ -9198,7 +7139,7 @@ function appendItemEffectIssues(issues, effects) {
       continue;
     }
 
-    if (!ITEM_EFFECT_TYPE_CHOICES.some((choice) => choice.value === effectType)) {
+    if (!effectTypes.some(([value]) => value === effectType)) {
       issues.push(createCharacterIssue("warn", `未识别的 useEffect 类型：${effectType || "空"}`));
     }
   }
@@ -9213,7 +7154,7 @@ function appendItemAffixIssues(issues, affixes) {
   for (const affix of affixes) {
     switch (affix?.type) {
       case "stat_modifier":
-        if (!ITEM_AFFIX_STAT_CHOICES.some((choice) => choice.value === affix.stat)) {
+        if (!statChoices.some(([value]) => value === affix.stat)) {
           issues.push(createCharacterIssue("error", `装备词缀属性不存在：${affix.stat || "空"}`));
         }
         if (!Number.isFinite(affix?.value?.delta)) {
@@ -9242,7 +7183,7 @@ function appendItemAffixIssues(issues, affixes) {
         }
         break;
       case "weapon_bonus_modifier":
-        if (!ITEM_WEAPON_TYPE_CHOICES.some((choice) => choice.value === affix.weaponType)) {
+        if (!weaponTypes.some(([value]) => value === affix.weaponType)) {
           issues.push(createCharacterIssue("error", `武学类别不存在：${affix.weaponType || "空"}`));
         }
         if (!Number.isFinite(affix?.value?.delta)) {
@@ -9262,790 +7203,10 @@ function appendItemAffixIssues(issues, affixes) {
 }
 
 function isKnownCharacterStatId(statId) {
-  return CHARACTER_STAT_FIELDS.some((stat) => stat.key === statId);
+  return characterStatFields.some(([key]) => key === statId);
 }
 
-function createItemPictureSection(record, pictureInfo) {
-  const wrapper = document.createElement("div");
-  wrapper.className = "character-portrait-section";
-  const imageInfo = getAssetImageInfo(pictureInfo.previewPath);
-
-  const preview = document.createElement("div");
-  preview.className = `character-portrait-preview item-picture-preview ${pictureInfo.assetExists ? "ok" : "missing"}`;
-
-  if (pictureInfo.previewPath) {
-    const image = document.createElement("img");
-    image.src = `/api/assets/file?path=${encodeURIComponent(pictureInfo.previewPath)}`;
-    image.alt = pictureInfo.pictureId || "物品图片";
-    preview.appendChild(image);
-  } else {
-    const empty = document.createElement("div");
-    empty.className = "character-portrait-preview-empty";
-    empty.textContent = "缺图";
-    preview.appendChild(empty);
-  }
-
-  const meta = document.createElement("div");
-  meta.className = "character-portrait-meta";
-  meta.append(
-    createCharacterMetaRow("图片资源", pictureInfo.pictureId || "未填写"),
-    createCharacterMetaRow("真实图片", pictureInfo.assetPath || "未找到"),
-    createCharacterMetaRow("当前尺寸", formatAssetImageInfo(imageInfo)),
-    createCharacterMetaRow("自动检测路径", pictureInfo.detectedAssetValue || "未检测到"),
-    createCharacterMetaRow("资源状态", pictureInfo.resourceExists ? "已存在" : "resources.json 中不存在"),
-  );
-
-  if (!pictureInfo.assetExists) {
-    const warning = document.createElement("div");
-    warning.className = "character-portrait-warning";
-    warning.textContent = pictureInfo.pictureId
-      ? `缺图提示：${pictureInfo.pictureId} 还没有可用图片。`
-      : "缺图提示：当前物品还没有填写 picture。";
-    meta.appendChild(warning);
-  }
-
-  const actions = document.createElement("div");
-  actions.className = "character-portrait-actions";
-  const uploadInput = document.createElement("input");
-  uploadInput.type = "file";
-  uploadInput.accept = ".png,.jpg,.jpeg,.webp,image/png,image/jpeg,image/webp";
-  uploadInput.hidden = true;
-  uploadInput.addEventListener("change", async () => {
-    const [file] = Array.from(uploadInput.files || []);
-    uploadInput.value = "";
-    if (!file) {
-      return;
-    }
-
-    uploadButton.disabled = true;
-    try {
-      const pictureId = getBindableItemPictureId(record);
-      const result = await uploadItemImageAndBind(record, file, pictureId);
-      if (!result) return;
-      await loadAssetFiles();
-      await loadDataFiles();
-      await rebuildContentIndex();
-      record.picture = result.pictureId;
-      syncFormToEditor();
-      showValidation(result.validation.ok, `已上传并绑定：${result.pictureId} -> ${result.assetPath}`);
-      renderFormView();
-    } catch (error) {
-      showValidation(false, error instanceof Error ? error.message : String(error));
-    } finally {
-      uploadButton.disabled = false;
-    }
-  });
-
-  const pickerButton = document.createElement("button");
-  pickerButton.type = "button";
-  pickerButton.className = "primary";
-  pickerButton.textContent = "从图库选择";
-  pickerButton.addEventListener("click", () => {
-    openItemPicturePicker(pictureInfo.previewPath);
-  });
-
-  const openButton = document.createElement("button");
-  openButton.type = "button";
-  openButton.textContent = "打开图片";
-  openButton.disabled = !pictureInfo.previewPath;
-  openButton.addEventListener("click", () => {
-    if (!pictureInfo.previewPath) {
-      return;
-    }
-
-    setMode("assets");
-    openAssetFile(pictureInfo.previewPath);
-  });
-
-  const normalizeButton = document.createElement("button");
-  normalizeButton.type = "button";
-  normalizeButton.textContent = "手动规范512";
-  normalizeButton.disabled = !pictureInfo.previewPath || !pictureInfo.previewPath.toLowerCase().endsWith(".png");
-  normalizeButton.addEventListener("click", async () => {
-    normalizeButton.disabled = true;
-    try {
-      await normalizePortraitAsset(pictureInfo.previewPath);
-      await loadAssetFiles();
-      renderFormView();
-      showValidation(true, `已规范化图片：${pictureInfo.previewPath}`);
-    } catch (error) {
-      showValidation(false, formatNormalizePortraitError(error));
-    } finally {
-      normalizeButton.disabled = !pictureInfo.previewPath || !pictureInfo.previewPath.toLowerCase().endsWith(".png");
-    }
-  });
-
-  const uploadButton = document.createElement("button");
-  uploadButton.type = "button";
-  uploadButton.className = "primary";
-  uploadButton.textContent = "上传图片并绑定当前物品";
-  uploadButton.addEventListener("click", () => {
-    uploadInput.click();
-  });
-
-  const createResourceButton = document.createElement("button");
-  createResourceButton.type = "button";
-  createResourceButton.className = "primary";
-  createResourceButton.textContent = "一键创建物品资源";
-  createResourceButton.disabled = pictureInfo.resourceExists || !pictureInfo.pictureId || !pictureInfo.detectedAssetValue;
-  createResourceButton.addEventListener("click", async () => {
-    createResourceButton.disabled = true;
-    try {
-      const result = await createItemResource(pictureInfo.pictureId, pictureInfo.detectedAssetValue);
-      await loadDataFiles();
-      await rebuildContentIndex();
-      showValidation(result.validation.ok, result.validation.message);
-      renderFormView();
-    } catch (error) {
-      showValidation(false, error instanceof Error ? error.message : String(error));
-    } finally {
-      createResourceButton.disabled = pictureInfo.resourceExists || !pictureInfo.pictureId || !pictureInfo.detectedAssetValue;
-    }
-  });
-
-  actions.append(pickerButton, uploadButton, openButton, normalizeButton, createResourceButton, uploadInput);
-  preview.append(meta, actions);
-  wrapper.appendChild(preview);
-  return wrapper;
-}
-
-function createItemTabBar(record) {
-  const tabBar = document.createElement("div");
-  tabBar.className = "character-tab-bar";
-  const tabs = [
-    { value: "requirements", label: "使用条件" },
-    { value: "effects", label: "使用效果" },
-    { value: "affixes", label: record.type === "equipment" ? "装备词缀" : "装备词缀（仅装备）" },
-  ];
-
-  for (const tab of tabs) {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = "character-tab-button";
-    button.classList.toggle("active", state.itemTab === tab.value);
-    button.textContent = tab.label;
-    button.addEventListener("click", () => {
-      state.itemTab = tab.value;
-      renderFormView();
-    });
-    tabBar.appendChild(button);
-  }
-
-  return tabBar;
-}
-
-function createItemTabContent(record) {
-  const wrapper = document.createElement("div");
-  wrapper.className = "character-tab-content";
-
-  switch (state.itemTab) {
-    case "effects":
-      wrapper.appendChild(createItemUseEffectEditor(record));
-      break;
-    case "affixes":
-      wrapper.appendChild(createItemAffixEditor(record));
-      break;
-    case "requirements":
-    default:
-      wrapper.appendChild(createItemRequirementEditor(record));
-      break;
-  }
-
-  return wrapper;
-}
-
-function createItemRequirementEditor(record) {
-  ensureItemShape(record);
-  const wrapper = document.createElement("div");
-  wrapper.className = "character-table-editor";
-
-  const summary = document.createElement("div");
-  summary.className = "character-list-summary";
-  summary.textContent = record.requirements.length > 0
-    ? record.requirements.map(formatItemRequirementSummary).join(" / ")
-    : "未配置使用条件";
-
-  const list = document.createElement("div");
-  list.className = "item-array-list";
-  for (const requirement of record.requirements) {
-    list.appendChild(createItemRequirementCard(record, requirement));
-  }
-
-  const addRow = document.createElement("div");
-  addRow.className = "character-add-row";
-  const addStat = document.createElement("button");
-  addStat.type = "button";
-  addStat.textContent = "+ 属性要求";
-  addStat.addEventListener("click", () => {
-    record.requirements.push(createDefaultItemRequirement("stat"));
-    syncFormToEditor();
-    renderFormView();
-  });
-  const addTalent = document.createElement("button");
-  addTalent.type = "button";
-  addTalent.textContent = "+ 天赋要求";
-  addTalent.addEventListener("click", () => {
-    record.requirements.push(createDefaultItemRequirement("talent"));
-    syncFormToEditor();
-    renderFormView();
-  });
-  addRow.append(addStat, addTalent);
-
-  wrapper.append(summary, list, addRow);
-  return wrapper;
-}
-
-function createItemRequirementCard(record, requirement) {
-  normalizeItemRequirement(requirement);
-  const card = createItemArrayCard(record.requirements, requirement, formatItemRequirementSummary(requirement));
-  const grid = document.createElement("div");
-  grid.className = "item-array-grid";
-  grid.append(
-    createNestedSelectField(requirement, "条件类型", "type", ITEM_REQUIREMENT_TYPE_CHOICES, {
-      rerenderOnChange: true,
-      onAfterChange: () => {
-        replacePlainObject(requirement, createDefaultItemRequirement(requirement.type));
-      },
-    })
-  );
-
-  if (requirement.type === "talent") {
-    grid.append(
-      createNestedTextField(requirement, "天赋", "talentId", {
-        list: ensureDefinitionIdDatalist("talents"),
-        placeholder: "例如：毒圣",
-      })
-    );
-  } else {
-    grid.append(
-      createNestedSelectField(requirement, "属性", "statId", CHARACTER_STAT_FIELDS.map((stat) => ({
-        value: stat.key,
-        label: `${stat.key} ${stat.label}`,
-      }))),
-      createNestedNumberField(requirement, "要求值", "value", {
-        fallback: 0,
-      })
-    );
-  }
-
-  card.body.appendChild(grid);
-  return card.root;
-}
-
-function createItemUseEffectEditor(record) {
-  ensureItemShape(record);
-  const wrapper = document.createElement("div");
-  wrapper.className = "character-table-editor";
-
-  const summary = document.createElement("div");
-  summary.className = "character-list-summary";
-  summary.textContent = record.useEffects.length > 0
-    ? record.useEffects.map(formatItemEffectSummary).join(" / ")
-    : "未配置使用效果";
-
-  const list = document.createElement("div");
-  list.className = "item-array-list";
-  for (const effect of record.useEffects) {
-    list.appendChild(createItemUseEffectCard(record, effect));
-  }
-
-  const addRow = document.createElement("div");
-  addRow.className = "character-add-row";
-  const addButton = document.createElement("button");
-  addButton.type = "button";
-  addButton.textContent = "+ 添加效果";
-  addButton.addEventListener("click", () => {
-    record.useEffects.push(createDefaultItemEffect("add_hp"));
-    syncFormToEditor();
-    renderFormView();
-  });
-  addRow.appendChild(addButton);
-
-  wrapper.append(summary, list, addRow);
-  return wrapper;
-}
-
-function createItemUseEffectCard(record, effect) {
-  normalizeItemEffect(effect);
-  const card = createItemArrayCard(record.useEffects, effect, formatItemEffectSummary(effect));
-  const grid = document.createElement("div");
-  grid.className = "item-array-grid";
-  grid.append(
-    createNestedSelectField(effect, "效果类型", "type", ITEM_EFFECT_TYPE_CHOICES, {
-      rerenderOnChange: true,
-      onAfterChange: () => {
-        replacePlainObject(effect, createDefaultItemEffect(effect.type));
-      },
-    })
-  );
-
-  switch (effect.type) {
-    case "external_skill":
-      grid.append(
-        createNestedTextField(effect, "外功", "skillId", {
-          list: ensureDefinitionIdDatalist("external-skills"),
-          placeholder: "例如：罗汉拳",
-        }),
-        createNestedNumberField(effect, "等级", "level", { fallback: 1 })
-      );
-      break;
-    case "internal_skill":
-      grid.append(
-        createNestedTextField(effect, "内功", "skillId", {
-          list: ensureDefinitionIdDatalist("internal-skills"),
-          placeholder: "例如：基本内功",
-        }),
-        createNestedNumberField(effect, "等级", "level", { fallback: 1 })
-      );
-      break;
-    case "special_skill":
-      grid.append(
-        createNestedTextField(effect, "绝技", "skillId", {
-          list: ensureDefinitionIdDatalist("special-skills"),
-          placeholder: "例如：笑傲江湖曲",
-        })
-      );
-      break;
-    case "grant_talent":
-      grid.append(
-        createNestedTextField(effect, "天赋", "talentId", {
-          list: ensureDefinitionIdDatalist("talents"),
-          placeholder: "例如：毒圣",
-        })
-      );
-      break;
-    case "add_buff":
-      grid.append(
-        createNestedTextField(effect, "Buff", "buffId", {
-          list: ensureDefinitionIdDatalist("buffs"),
-          placeholder: "例如：中毒",
-        }),
-        createNestedNumberField(effect, "持续时间", "duration", { fallback: 1 })
-      );
-      break;
-    case "detoxify":
-      if (!Array.isArray(effect.values)) {
-        effect.values = [0, 0];
-      }
-      grid.append(
-        createArrayValueNumberField(effect.values, 0, "数值 1"),
-        createArrayValueNumberField(effect.values, 1, "数值 2")
-      );
-      break;
-    default:
-      grid.append(createNestedNumberField(effect, "数值", "value", { fallback: 0 }));
-      break;
-  }
-
-  card.body.appendChild(grid);
-  return card.root;
-}
-
-function createItemAffixEditor(record) {
-  ensureItemShape(record);
-  const wrapper = document.createElement("div");
-  wrapper.className = "character-table-editor";
-
-  if (record.type !== "equipment") {
-    const note = document.createElement("div");
-    note.className = "form-summary character-form-summary";
-    note.textContent = "当前物品不是 equipment，装备词缀区域仅在装备类型下生效。切换 type 为 equipment 后可直接编辑 slotType 与 affixes。";
-    wrapper.appendChild(note);
-    return wrapper;
-  }
-
-  const summary = document.createElement("div");
-  summary.className = "character-list-summary";
-  summary.textContent = record.affixes.length > 0
-    ? record.affixes.map(formatItemAffixSummary).join(" / ")
-    : "未配置装备词缀";
-
-  const list = document.createElement("div");
-  list.className = "item-array-list";
-  for (const affix of record.affixes) {
-    list.appendChild(createItemAffixCard(record, affix));
-  }
-
-  const addRow = document.createElement("div");
-  addRow.className = "character-add-row";
-  const addButton = document.createElement("button");
-  addButton.type = "button";
-  addButton.textContent = "+ 添加词缀";
-  addButton.addEventListener("click", () => {
-    record.affixes.push(createDefaultItemAffix("stat_modifier"));
-    syncFormToEditor();
-    renderFormView();
-  });
-  addRow.appendChild(addButton);
-
-  wrapper.append(summary, list, addRow);
-  return wrapper;
-}
-
-function createItemAffixCard(record, affix) {
-  normalizeItemAffix(affix);
-  const card = createItemArrayCard(record.affixes, affix, formatItemAffixSummary(affix));
-  const grid = document.createElement("div");
-  grid.className = "item-array-grid";
-  grid.append(
-    createNestedSelectField(affix, "词缀类型", "type", ITEM_AFFIX_TYPE_CHOICES, {
-      rerenderOnChange: true,
-      onAfterChange: () => {
-        replacePlainObject(affix, createDefaultItemAffix(affix.type));
-      },
-    })
-  );
-
-  switch (affix.type) {
-    case "grant_talent":
-      grid.append(createNestedTextField(affix, "天赋", "talentId", {
-        list: ensureDefinitionIdDatalist("talents"),
-        placeholder: "例如：刀系装备",
-      }));
-      break;
-    case "grant_model":
-      grid.append(
-        createNestedTextField(affix, "模型", "modelId", {
-          placeholder: "例如：fanseng",
-        }),
-        createNestedNumberField(affix, "优先级", "priority", { fallback: 0 }),
-        createNestedTextField(affix, "描述", "description", {
-          placeholder: "例如：血刀门弟子",
-        })
-      );
-      break;
-    case "skill_bonus_modifier":
-      grid.append(
-        createNestedTextField(affix, "外功", "skillId", {
-          list: ensureDefinitionIdDatalist("external-skills"),
-          placeholder: "例如：八卦刀法",
-        }),
-        createNestedNumberField(affix.value, "加成", "delta", { fallback: 0 })
-      );
-      break;
-    case "weapon_bonus_modifier":
-      grid.append(
-        createNestedSelectField(affix, "武学类别", "weaponType", ITEM_WEAPON_TYPE_CHOICES),
-        createNestedNumberField(affix.value, "加成", "delta", { fallback: 0 })
-      );
-      break;
-    case "legend_skill_chance_modifier":
-      grid.append(
-        createNestedTextField(affix, "传奇招式", "skillId", {
-          list: ensureDefinitionIdDatalist("legend-skills"),
-          placeholder: "例如：小人物的愤怒",
-        }),
-        createNestedNumberField(affix.value, "触发率加成", "delta", { fallback: 0 })
-      );
-      break;
-    case "stat_modifier":
-    default:
-      grid.append(
-        createNestedSelectField(affix, "属性", "stat", ITEM_AFFIX_STAT_CHOICES),
-        createNestedNumberField(affix.value, "数值", "delta", { fallback: 0 })
-      );
-      break;
-  }
-
-  card.body.appendChild(grid);
-  return card.root;
-}
-
-function createItemArrayCard(collection, entry, summaryText) {
-  const root = document.createElement("div");
-  root.className = "item-array-card";
-  const header = document.createElement("div");
-  header.className = "item-array-card-header";
-  const title = document.createElement("div");
-  title.className = "item-array-card-title";
-  title.textContent = summaryText;
-  const remove = document.createElement("button");
-  remove.type = "button";
-  remove.textContent = "删除";
-  remove.addEventListener("click", () => {
-    const index = collection.indexOf(entry);
-    if (index >= 0) {
-      collection.splice(index, 1);
-      syncFormToEditor();
-      renderFormView();
-    }
-  });
-  header.append(title, remove);
-  const body = document.createElement("div");
-  body.className = "item-array-card-body";
-  root.append(header, body);
-  return { root, body };
-}
-
-function createNestedTextField(target, labelCn, key, options = {}) {
-  const field = createCharacterFieldShell(labelCn, key, options.full === true);
-  const input = document.createElement("input");
-  input.type = "text";
-  input.value = target[key] == null ? "" : String(target[key]);
-  input.placeholder = options.placeholder || "";
-  if (options.list) {
-    input.setAttribute("list", options.list);
-  }
-
-  input.addEventListener("input", () => {
-    target[key] = input.value;
-    syncFormToEditor();
-    renderCharacterCheckTool();
-  });
-  if (options.rerenderOnChange) {
-    input.addEventListener("change", () => renderFormView());
-  }
-
-  field.appendChild(input);
-  return field;
-}
-
-function createNestedNumberField(target, labelCn, key, options = {}) {
-  const field = createCharacterFieldShell(labelCn, key, options.full === true);
-  const input = document.createElement("input");
-  input.type = "number";
-  input.value = Number.isFinite(target[key]) ? String(target[key]) : String(options.fallback ?? 0);
-  input.addEventListener("input", () => {
-    target[key] = parseNumberInputValue(input.value, options.fallback ?? 0);
-    syncFormToEditor();
-    renderCharacterCheckTool();
-  });
-  if (options.rerenderOnChange) {
-    input.addEventListener("change", () => renderFormView());
-  }
-  field.appendChild(input);
-  return field;
-}
-
-function createNestedSelectField(target, labelCn, key, choices, options = {}) {
-  const field = createCharacterFieldShell(labelCn, key, options.full === true);
-  const select = document.createElement("select");
-  for (const choice of choices) {
-    const option = document.createElement("option");
-    option.value = choice.value;
-    option.textContent = choice.label;
-    option.selected = String(target[key] ?? "") === choice.value;
-    select.appendChild(option);
-  }
-  select.addEventListener("change", () => {
-    target[key] = select.value;
-    if (typeof options.onAfterChange === "function") {
-      options.onAfterChange();
-    }
-    syncFormToEditor();
-    if (options.rerenderOnChange) {
-      renderFormView();
-    } else {
-      renderCharacterCheckTool();
-    }
-  });
-  field.appendChild(select);
-  return field;
-}
-
-function createArrayValueNumberField(values, index, labelCn) {
-  const field = createCharacterFieldShell(labelCn, `values[${index}]`);
-  const input = document.createElement("input");
-  input.type = "number";
-  input.value = Number.isFinite(values[index]) ? String(values[index]) : "0";
-  input.addEventListener("input", () => {
-    values[index] = parseNumberInputValue(input.value, 0);
-    syncFormToEditor();
-    renderCharacterCheckTool();
-  });
-  field.appendChild(input);
-  return field;
-}
-
-function replacePlainObject(target, next) {
-  for (const key of Object.keys(target)) {
-    delete target[key];
-  }
-  Object.assign(target, next);
-}
-
-function createDefaultItemRequirement(type) {
-  return type === "talent"
-    ? { type: "talent", talentId: "" }
-    : { type: "stat", statId: "wuxing", value: 10 };
-}
-
-function normalizeItemRequirement(requirement) {
-  if (!requirement || typeof requirement !== "object") {
-    return;
-  }
-
-  if (requirement.type === "talent") {
-    if (typeof requirement.talentId !== "string") {
-      requirement.talentId = "";
-    }
-    return;
-  }
-
-  requirement.type = "stat";
-  if (!isKnownCharacterStatId(requirement.statId)) {
-    requirement.statId = "wuxing";
-  }
-  if (!Number.isFinite(requirement.value)) {
-    requirement.value = 10;
-  }
-}
-
-function formatItemRequirementSummary(requirement) {
-  if (requirement?.type === "talent") {
-    return `需天赋 ${requirement.talentId || "未填写"}`;
-  }
-
-  const statLabel = CHARACTER_STAT_FIELDS.find((stat) => stat.key === requirement?.statId)?.label || requirement?.statId || "属性";
-  return `${statLabel} >= ${getDisplayNumber(requirement?.value, 0)}`;
-}
-
-function createDefaultItemEffect(type) {
-  switch (type) {
-    case "external_skill":
-      return { type, skillId: "", level: 1 };
-    case "internal_skill":
-      return { type, skillId: "", level: 1 };
-    case "special_skill":
-      return { type, skillId: "" };
-    case "grant_talent":
-      return { type, talentId: "" };
-    case "add_buff":
-      return { type, buffId: "", duration: 1 };
-    case "detoxify":
-      return { type, values: [5, 5] };
-    default:
-      return { type, value: 0 };
-  }
-}
-
-function normalizeItemEffect(effect) {
-  if (!effect || typeof effect !== "object") {
-    return;
-  }
-
-  const normalized = createDefaultItemEffect(effect.type || "add_hp");
-  for (const [key, value] of Object.entries(normalized)) {
-    if (effect[key] == null || (Array.isArray(value) && !Array.isArray(effect[key]))) {
-      effect[key] = structuredCloneCompat(value);
-    }
-  }
-}
-
-function formatItemEffectSummary(effect) {
-  switch (effect?.type) {
-    case "external_skill":
-      return `外功 ${effect.skillId || "未填写"} Lv${getDisplayNumber(effect.level, 1)}`;
-    case "internal_skill":
-      return `内功 ${effect.skillId || "未填写"} Lv${getDisplayNumber(effect.level, 1)}`;
-    case "special_skill":
-      return `绝技 ${effect.skillId || "未填写"}`;
-    case "grant_talent":
-      return `获得天赋 ${effect.talentId || "未填写"}`;
-    case "add_buff":
-      return `Buff ${effect.buffId || "未填写"} ${getDisplayNumber(effect.duration, 1)} 回合`;
-    case "detoxify":
-      return `解毒 ${Array.isArray(effect.values) ? effect.values.join(" / ") : "未填写"}`;
-    default:
-      return `${effect?.type || "效果"} ${getDisplayNumber(effect?.value, 0)}`;
-  }
-}
-
-function createDefaultItemAffix(type) {
-  switch (type) {
-    case "grant_talent":
-      return { type, talentId: "" };
-    case "grant_model":
-      return { type, modelId: "", priority: 0, description: "" };
-    case "skill_bonus_modifier":
-      return { type, skillId: "", value: { op: "add", delta: 0 } };
-    case "weapon_bonus_modifier":
-      return { type, weaponType: "qimen", value: { op: "add", delta: 0 } };
-    case "legend_skill_chance_modifier":
-      return { type, skillId: "", value: { op: "add", delta: 0 } };
-    case "stat_modifier":
-    default:
-      return { type: "stat_modifier", stat: "attack", value: { op: "add", delta: 0 } };
-  }
-}
-
-function normalizeItemAffix(affix) {
-  if (!affix || typeof affix !== "object") {
-    return;
-  }
-
-  const normalized = createDefaultItemAffix(affix.type || "stat_modifier");
-  for (const [key, value] of Object.entries(normalized)) {
-    if (affix[key] == null || (typeof value === "object" && value !== null && (typeof affix[key] !== "object" || affix[key] === null))) {
-      affix[key] = structuredCloneCompat(value);
-    }
-  }
-
-  if (!affix.value || typeof affix.value !== "object" || Array.isArray(affix.value)) {
-    affix.value = { op: "add", delta: 0 };
-  }
-  if (typeof affix.value.op !== "string") {
-    affix.value.op = "add";
-  }
-  if (!Number.isFinite(affix.value.delta)) {
-    affix.value.delta = 0;
-  }
-}
-
-function formatItemAffixSummary(affix) {
-  switch (affix?.type) {
-    case "grant_talent":
-      return `赋予天赋 ${affix.talentId || "未填写"}`;
-    case "grant_model":
-      return `模型 ${affix.modelId || "未填写"}`;
-    case "skill_bonus_modifier":
-      return `外功加成 ${affix.skillId || "未填写"} +${getDisplayNumber(affix?.value?.delta, 0)}`;
-    case "weapon_bonus_modifier":
-      return `类别加成 ${affix.weaponType || "未填写"} +${getDisplayNumber(affix?.value?.delta, 0)}`;
-    case "legend_skill_chance_modifier":
-      return `传奇招式 ${affix.skillId || "未填写"} +${getDisplayNumber(affix?.value?.delta, 0)}`;
-    case "stat_modifier":
-    default:
-      return `${affix.stat || "属性"} +${getDisplayNumber(affix?.value?.delta, 0)}`;
-  }
-}
-
-function createItemAdvancedJsonSection(record) {
-  const section = createCharacterSection("高级 JSON", "Advanced");
-  section.appendChild(createLegacyAdvancedJsonDetails("展开原始物品 JSON", record, "items"));
-  return section;
-}
-
-function getCharacterFilters() {
-  return [
-    { value: "all", label: "全部" },
-    { value: "dialogue", label: "仅对白" },
-    { value: "joinable", label: "可入队" },
-    { value: "battle", label: "可战斗" },
-    { value: "missingPortrait", label: "缺头像" },
-    { value: "incomplete", label: "配置不完整" },
-  ];
-}
-
-function matchesCharacterSearch(record, query) {
-  if (!query) {
-    return true;
-  }
-
-  const haystack = [
-    record.id,
-    record.name,
-    record.portrait,
-    record.model,
-    record.growTemplate,
-    record.gender,
-    JSON.stringify(record),
-  ].filter(Boolean).join(" ").toLowerCase();
-
-  return haystack.includes(query);
-}
-
-function matchesCharacterFilter(record, filter) {
+  function matchesCharacterFilter(record, filter) {
   const classification = getCharacterUiClassification(record);
   const issues = getCharacterValidationIssues(record);
   const portraitInfo = getCharacterPortraitInfo(record);
@@ -10102,99 +7263,11 @@ function createCharacterTextField(record, labelCn, key, options = {}) {
     updateRecordField(record, key, options.nullable && !value ? null : input.value);
   });
   if (options.rerenderOnChange) {
-    input.addEventListener("change", () => renderFormView());
+    input.addEventListener("change", () => renderMapWorkspaceView());
   }
 
   field.appendChild(input);
   return field;
-}
-
-function createCharacterNumberField(record, labelCn, key, options = {}) {
-  const field = createCharacterFieldShell(labelCn, key, options.full === true);
-  const input = document.createElement("input");
-  input.type = "number";
-  input.value = String(getDisplayNumber(record[key], options.fallback ?? 0));
-  if (Number.isFinite(options.min)) {
-    input.min = String(options.min);
-  }
-  if (Number.isFinite(options.max)) {
-    input.max = String(options.max);
-  }
-
-  input.addEventListener("input", () => {
-    updateRecordField(record, key, parseNumberInputValue(input.value, options.fallback ?? 0));
-  });
-  if (options.rerenderOnChange) {
-    input.addEventListener("change", () => renderFormView());
-  }
-
-  field.appendChild(input);
-  return field;
-}
-
-function createCharacterSelectField(record, labelCn, key, choices) {
-  const field = createCharacterFieldShell(labelCn, key);
-  const select = document.createElement("select");
-  for (const choice of choices) {
-    const option = document.createElement("option");
-    option.value = choice.value;
-    option.textContent = choice.label;
-    option.selected = String(record[key] ?? "") === choice.value;
-    select.appendChild(option);
-  }
-
-  select.addEventListener("change", () => {
-    updateRecordField(record, key, select.value, { rerender: true });
-  });
-
-  field.appendChild(select);
-  return field;
-}
-
-function createCharacterCheckboxField(record, labelCn, key, displayKey) {
-  const field = createCharacterFieldShell(labelCn, displayKey || key);
-  const wrapper = document.createElement("label");
-  wrapper.className = "character-checkbox";
-  const input = document.createElement("input");
-  input.type = "checkbox";
-  input.checked = record[key] === true;
-  const text = document.createElement("span");
-  text.textContent = record[key] === true ? "是" : "否";
-  input.addEventListener("change", () => {
-    text.textContent = input.checked ? "是" : "否";
-    updateRecordField(record, key, input.checked, { rerender: true });
-  });
-  wrapper.append(input, text);
-  field.appendChild(wrapper);
-  return field;
-}
-
-function ensureCharacterShape(record) {
-  if (!record.stats || typeof record.stats !== "object" || Array.isArray(record.stats)) {
-    record.stats = {};
-  }
-
-  for (const stat of CHARACTER_STAT_FIELDS) {
-    if (!Number.isFinite(record.stats[stat.key])) {
-      record.stats[stat.key] = stat.key.startsWith("max_") ? 100 : 10;
-    }
-  }
-
-  if (!Array.isArray(record.talentIds)) {
-    record.talentIds = [];
-  }
-  if (!Array.isArray(record.specialSkillIds)) {
-    record.specialSkillIds = [];
-  }
-  if (!Array.isArray(record.equipmentIds)) {
-    record.equipmentIds = [];
-  }
-  if (!Array.isArray(record.externalSkills)) {
-    record.externalSkills = [];
-  }
-  if (!Array.isArray(record.internalSkills)) {
-    record.internalSkills = [];
-  }
 }
 
 function createCharacterPortraitHero(record, portraitInfo) {
@@ -10314,9 +7387,9 @@ function getCharacterValidationIssues(record) {
     issues.push(createCharacterIssue("error", `成长模板不存在：${record.growTemplate}`, record.growTemplate, ["grow-templates"]));
   }
 
-  for (const stat of CHARACTER_STAT_FIELDS) {
-    if (!Number.isFinite(stats[stat.key])) {
-      issues.push(createCharacterIssue("error", `数值字段不是数字：${stat.label} ${stat.key}`));
+  for (const [key, label] of characterStatFields) {
+    if (!Number.isFinite(stats[key])) {
+      issues.push(createCharacterIssue("error", `数值字段不是数字：${label} ${key}`));
     }
   }
 
@@ -10389,129 +7462,7 @@ function isEquipmentId(id) {
   return Boolean(item && item.type === "equipment");
 }
 
-function createCharacterIssueSummary(issues) {
-  const box = document.createElement("div");
-  box.className = "character-issue-summary";
-  const title = document.createElement("div");
-  title.className = "character-issue-summary-title";
-  title.textContent = "实时提示";
-  const list = document.createElement("div");
-  list.className = "character-inline-issue-list";
-  for (const issue of issues.slice(0, 6)) {
-    const row = document.createElement("div");
-    row.className = `character-inline-issue ${issue.severity || "warn"}`;
-    row.textContent = issue.message;
-    list.appendChild(row);
-  }
-  box.append(title, list);
-  return box;
-}
-
-function createCharacterPortraitSection(record, portraitInfo) {
-  const wrapper = document.createElement("div");
-  wrapper.className = "character-portrait-section";
-
-  const preview = document.createElement("div");
-  preview.className = `character-portrait-preview ${portraitInfo.assetExists ? "ok" : "missing"}`;
-
-  if (portraitInfo.previewPath) {
-    const image = document.createElement("img");
-    image.src = `/api/assets/file?path=${encodeURIComponent(portraitInfo.previewPath)}`;
-    image.alt = portraitInfo.portraitId || "角色头像";
-    preview.appendChild(image);
-  } else {
-    const empty = document.createElement("div");
-    empty.className = "character-portrait-preview-empty";
-    empty.textContent = "缺图";
-    preview.appendChild(empty);
-  }
-
-  const meta = document.createElement("div");
-  meta.className = "character-portrait-meta";
-  meta.append(
-    createCharacterMetaRow("头像资源", portraitInfo.portraitId || "未填写"),
-    createCharacterMetaRow("真实图片", portraitInfo.assetPath || "未找到"),
-    createCharacterMetaRow("自动检测路径", portraitInfo.detectedAssetValue || "未检测到"),
-    createCharacterMetaRow("资源状态", portraitInfo.resourceExists ? "已存在" : "resources.json 中不存在"),
-  );
-
-  if (!portraitInfo.assetExists) {
-    const warning = document.createElement("div");
-    warning.className = "character-portrait-warning";
-    warning.textContent = portraitInfo.portraitId
-      ? `缺图红色提示：${portraitInfo.portraitId} 还没有可用图片。`
-      : "缺图红色提示：当前角色还没有填写 portrait。";
-    meta.appendChild(warning);
-  }
-
-  const actions = document.createElement("div");
-  actions.className = "character-portrait-actions";
-
-  const pickerButton = document.createElement("button");
-  pickerButton.type = "button";
-  pickerButton.className = "primary";
-  pickerButton.textContent = "从图库选择";
-  pickerButton.addEventListener("click", () => {
-    openPortraitPicker(portraitInfo.previewPath);
-  });
-
-  const openButton = document.createElement("button");
-  openButton.type = "button";
-  openButton.textContent = "打开图片";
-  openButton.disabled = !portraitInfo.previewPath;
-  openButton.addEventListener("click", () => {
-    if (!portraitInfo.previewPath) {
-      return;
-    }
-
-    setMode("assets");
-    openAssetFile(portraitInfo.previewPath);
-  });
-
-  const normalizeButton = document.createElement("button");
-  normalizeButton.type = "button";
-  normalizeButton.textContent = "规范化512";
-  normalizeButton.disabled = !portraitInfo.previewPath || !portraitInfo.previewPath.toLowerCase().endsWith(".png");
-  normalizeButton.addEventListener("click", async () => {
-    normalizeButton.disabled = true;
-    try {
-      await normalizePortraitAsset(portraitInfo.previewPath);
-      await loadAssetFiles();
-      renderFormView();
-    } catch (error) {
-      showValidation(false, formatNormalizePortraitError(error));
-    } finally {
-      normalizeButton.disabled = false;
-    }
-  });
-
-  const createResourceButton = document.createElement("button");
-  createResourceButton.type = "button";
-  createResourceButton.className = "primary";
-  createResourceButton.textContent = "一键创建头像资源";
-  createResourceButton.disabled = portraitInfo.resourceExists || !portraitInfo.portraitId || !portraitInfo.detectedAssetValue;
-  createResourceButton.addEventListener("click", async () => {
-    createResourceButton.disabled = true;
-    try {
-      const result = await createPortraitResource(portraitInfo.portraitId, portraitInfo.detectedAssetValue);
-      await loadDataFiles();
-      await rebuildContentIndex();
-      showValidation(result.validation.ok, result.validation.message);
-      renderFormView();
-    } catch (error) {
-      showValidation(false, error.message);
-    } finally {
-      createResourceButton.disabled = portraitInfo.resourceExists || !portraitInfo.portraitId || !portraitInfo.detectedAssetValue;
-    }
-  });
-
-  actions.append(pickerButton, openButton, normalizeButton, createResourceButton);
-  preview.append(meta, actions);
-  wrapper.appendChild(preview);
-  return wrapper;
-}
-
-function createCharacterMetaRow(label, value) {
+ function createCharacterMetaRow(label, value) {
   const row = document.createElement("div");
   row.className = "character-meta-row";
   const labelNode = document.createElement("span");
@@ -10522,579 +7473,36 @@ function createCharacterMetaRow(label, value) {
   return row;
 }
 
-function createCharacterStatField(record, stat) {
-  ensureCharacterShape(record);
-  const field = createCharacterFieldShell(stat.label, stat.key);
-  const input = document.createElement("input");
-  input.type = "number";
-  input.value = String(getDisplayNumber(record.stats[stat.key], stat.key.startsWith("max_") ? 100 : 10));
-  input.addEventListener("input", () => {
-    record.stats[stat.key] = parseNumberInputValue(input.value, 0);
-    syncFormToEditor();
-  });
-  field.appendChild(input);
-  return field;
-}
-
-function createCharacterTabBar() {
-  const tabBar = document.createElement("div");
-  tabBar.className = "character-tab-bar";
-  for (const tab of [
-    { value: "talents", label: "天赋" },
-    { value: "externalSkills", label: "外功" },
-    { value: "internalSkills", label: "内功" },
-    { value: "specialSkills", label: "绝技" },
-    { value: "equipment", label: "装备" },
-  ]) {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = "character-tab-button";
-    button.classList.toggle("active", state.characterTab === tab.value);
-    button.textContent = tab.label;
-    button.addEventListener("click", () => {
-      state.characterTab = tab.value;
-      renderFormView();
-    });
-    tabBar.appendChild(button);
-  }
-  return tabBar;
-}
-
-function createCharacterTabContent(record) {
-  const wrapper = document.createElement("div");
-  wrapper.className = "character-tab-content";
-
-  switch (state.characterTab) {
-    case "externalSkills":
-      wrapper.appendChild(createExternalSkillEditor(record));
-      break;
-    case "internalSkills":
-      wrapper.appendChild(createInternalSkillEditor(record));
-      break;
-    case "specialSkills":
-      wrapper.appendChild(createStringChipEditor(record, "specialSkillIds", "绝技", ensureDefinitionIdDatalist("special-skills")));
-      break;
-    case "equipment":
-      wrapper.appendChild(createEquipmentEditor(record));
-      break;
-    case "talents":
-    default:
-      wrapper.appendChild(createStringChipEditor(record, "talentIds", "天赋", ensureDefinitionIdDatalist("talents")));
-      break;
-  }
-
-  return wrapper;
-}
-
-function createStringChipEditor(record, key, labelCn, datalistId) {
-  ensureCharacterShape(record);
-  const wrapper = document.createElement("div");
-  wrapper.className = "character-chip-editor";
-
-  const summary = document.createElement("div");
-  summary.className = "character-list-summary";
-  summary.textContent = Array.isArray(record[key]) && record[key].length > 0
-    ? record[key].join(" / ")
-    : `未配置${labelCn}`;
-
-  const chips = document.createElement("div");
-  chips.className = "character-chip-list";
-  for (const id of record[key]) {
-    const chip = document.createElement("span");
-    const valid = key === "equipmentIds" ? isEquipmentId(id) : hasDefinitionInTypes(id, [key === "talentIds" ? "talents" : "special-skills"]);
-    chip.className = `character-chip ${valid ? "" : "invalid"}`.trim();
-    chip.textContent = id;
-
-    const remove = document.createElement("button");
-    remove.type = "button";
-    remove.textContent = "x";
-    remove.addEventListener("click", () => {
-      record[key] = record[key].filter((entry) => entry !== id);
-      syncFormToEditor();
-      renderFormView();
-    });
-
-    chip.appendChild(remove);
-    chips.appendChild(chip);
-  }
-
-  const addRow = document.createElement("div");
-  addRow.className = "character-add-row";
-  const input = document.createElement("input");
-  input.type = "text";
-  input.className = "tool-input";
-  input.placeholder = `搜索并添加${labelCn} id`;
-  input.setAttribute("list", datalistId);
-  const addButton = document.createElement("button");
-  addButton.type = "button";
-  addButton.textContent = `+ 添加${labelCn}`;
-  addButton.addEventListener("click", () => {
-    const value = input.value.trim();
-    if (!value || record[key].includes(value)) {
-      return;
-    }
-
-    record[key].push(value);
-    input.value = "";
-    syncFormToEditor();
-    renderFormView();
-  });
-  addRow.append(input, addButton);
-
-  wrapper.append(summary, chips, addRow);
-  return wrapper;
-}
-
-function createExternalSkillEditor(record) {
-  ensureCharacterShape(record);
-  const wrapper = document.createElement("div");
-  wrapper.className = "character-table-editor";
-  wrapper.appendChild(createSkillSummary(record.externalSkills, "外功"));
-
-  const table = document.createElement("div");
-  table.className = "character-skill-table";
-  table.appendChild(createSkillTableHeader(["武功ID", "等级", "上限", "操作"]));
-
-  for (const entry of record.externalSkills) {
-    table.appendChild(createExternalSkillRow(record, entry));
-  }
-
-  const addButton = document.createElement("button");
-  addButton.type = "button";
-  addButton.textContent = "+ 添加外功";
-  addButton.addEventListener("click", () => {
-    record.externalSkills.push({ id: "", level: 1, maxLevel: 10 });
-    syncFormToEditor();
-    renderFormView();
-  });
-
-  wrapper.append(table, addButton);
-  return wrapper;
-}
-
-function createExternalSkillRow(record, entry) {
-  const row = document.createElement("div");
-  row.className = "character-skill-row";
-  row.append(
-    createRowTextInput(entry, "id", ensureDefinitionIdDatalist("external-skills"), "外功 id"),
-    createRowNumberInput(entry, "level", 1),
-    createRowNumberInput(entry, "maxLevel", 10, true),
-  );
-
-  const actions = document.createElement("div");
-  actions.className = "character-row-actions";
-  const remove = document.createElement("button");
-  remove.type = "button";
-  remove.textContent = "删除";
-  remove.addEventListener("click", () => {
-    record.externalSkills = record.externalSkills.filter((candidate) => candidate !== entry);
-    syncFormToEditor();
-    renderFormView();
-  });
-  actions.appendChild(remove);
-  row.appendChild(actions);
-  return row;
-}
-
-function createInternalSkillEditor(record) {
-  ensureCharacterShape(record);
-  const wrapper = document.createElement("div");
-  wrapper.className = "character-table-editor";
-  wrapper.appendChild(createSkillSummary(record.internalSkills, "内功"));
-
-  const table = document.createElement("div");
-  table.className = "character-skill-table";
-  table.appendChild(createSkillTableHeader(["内功ID", "等级", "上限", "已装备", "操作"]));
-
-  for (const entry of record.internalSkills) {
-    table.appendChild(createInternalSkillRow(record, entry));
-  }
-
-  const addButton = document.createElement("button");
-  addButton.type = "button";
-  addButton.textContent = "+ 添加内功";
-  addButton.addEventListener("click", () => {
-    record.internalSkills.push({ id: "", level: 1, maxLevel: 10, equipped: false });
-    syncFormToEditor();
-    renderFormView();
-  });
-
-  wrapper.append(table, addButton);
-  return wrapper;
-}
-
-function createInternalSkillRow(record, entry) {
-  const row = document.createElement("div");
-  row.className = "character-skill-row internal";
-  row.append(
-    createRowTextInput(entry, "id", ensureDefinitionIdDatalist("internal-skills"), "内功 id"),
-    createRowNumberInput(entry, "level", 1),
-    createRowNumberInput(entry, "maxLevel", 10, true),
-  );
-
-  const equipped = document.createElement("label");
-  equipped.className = "character-row-toggle";
-  const input = document.createElement("input");
-  input.type = "checkbox";
-  input.checked = entry.equipped === true;
-  input.addEventListener("change", () => {
-    entry.equipped = input.checked;
-    syncFormToEditor();
-    renderCharacterCheckTool();
-  });
-  equipped.append(input, document.createTextNode(input.checked ? "是" : "否"));
-  input.addEventListener("change", () => {
-    equipped.lastChild.textContent = input.checked ? "是" : "否";
-  });
-  row.appendChild(equipped);
-
-  const actions = document.createElement("div");
-  actions.className = "character-row-actions";
-  const remove = document.createElement("button");
-  remove.type = "button";
-  remove.textContent = "删除";
-  remove.addEventListener("click", () => {
-    record.internalSkills = record.internalSkills.filter((candidate) => candidate !== entry);
-    syncFormToEditor();
-    renderFormView();
-  });
-  actions.appendChild(remove);
-  row.appendChild(actions);
-  return row;
-}
-
-function createEquipmentEditor(record) {
-  ensureCharacterShape(record);
-  const wrapper = document.createElement("div");
-  wrapper.className = "character-table-editor";
-
-  const summary = document.createElement("div");
-  summary.className = "character-list-summary";
-  summary.textContent = record.equipmentIds.length > 0
-    ? record.equipmentIds.map((id) => `${id}${getEquipmentSlotLabel(id) ? ` (${getEquipmentSlotLabel(id)})` : ""}`).join(" / ")
-    : "未配置装备";
-
-  const list = document.createElement("div");
-  list.className = "character-equipment-list";
-  for (const id of record.equipmentIds) {
-    const row = document.createElement("div");
-    row.className = "character-equipment-row";
-    const text = document.createElement("div");
-    text.className = "character-equipment-row-text";
-    text.textContent = id;
-    const meta = document.createElement("div");
-    meta.className = "character-equipment-row-meta";
-    meta.textContent = getEquipmentSlotLabel(id) || "未知部位";
-    const remove = document.createElement("button");
-    remove.type = "button";
-    remove.textContent = "删除";
-    remove.addEventListener("click", () => {
-      record.equipmentIds = record.equipmentIds.filter((entry) => entry !== id);
-      syncFormToEditor();
-      renderFormView();
-    });
-    row.append(text, meta, remove);
-    list.appendChild(row);
-  }
-
-  const addRow = document.createElement("div");
-  addRow.className = "character-add-row";
-  const input = document.createElement("input");
-  input.type = "text";
-  input.className = "tool-input";
-  input.placeholder = "搜索并添加装备 id";
-  input.setAttribute("list", ensureDefinitionIdDatalist("equipment"));
-  const addButton = document.createElement("button");
-  addButton.type = "button";
-  addButton.textContent = "+ 添加装备";
-  addButton.addEventListener("click", () => {
-    const value = input.value.trim();
-    if (!value || record.equipmentIds.includes(value)) {
-      return;
-    }
-
-    record.equipmentIds.push(value);
-    input.value = "";
-    syncFormToEditor();
-    renderFormView();
-  });
-  addRow.append(input, addButton);
-
-  wrapper.append(summary, list, addRow);
-  return wrapper;
-}
-
-function createSkillSummary(entries, label) {
-  const summary = document.createElement("div");
-  summary.className = "character-list-summary";
-  summary.textContent = Array.isArray(entries) && entries.length > 0
-    ? entries.map((entry) => {
-      const level = Number.isFinite(entry?.level) ? entry.level : 1;
-      const maxLevel = Number.isFinite(entry?.maxLevel) ? entry.maxLevel : "?";
-      const equipped = entry?.equipped === true ? " 已装备" : "";
-      return `${entry?.id || "未命名"} Lv${level}/${maxLevel}${equipped}`;
-    }).join(" / ")
-    : `未配置${label}`;
-  return summary;
-}
-
-function createSkillTableHeader(labels) {
-  const header = document.createElement("div");
-  header.className = "character-skill-row header";
-  for (const label of labels) {
-    const cell = document.createElement("div");
-    cell.className = "character-skill-header";
-    cell.textContent = label;
-    header.appendChild(cell);
-  }
-  return header;
-}
-
-function createRowTextInput(target, key, datalistId, placeholder) {
-  const input = document.createElement("input");
-  input.type = "text";
-  input.className = "tool-input";
-  input.value = target[key] == null ? "" : String(target[key]);
-  input.placeholder = placeholder;
-  if (datalistId) {
-    input.setAttribute("list", datalistId);
-  }
-  input.addEventListener("input", () => {
-    target[key] = input.value;
-    syncFormToEditor();
-    renderCharacterCheckTool();
-  });
-  return input;
-}
-
-function createRowNumberInput(target, key, fallback, nullable = false) {
-  const input = document.createElement("input");
-  input.type = "number";
-  input.className = "tool-input";
-  const value = target[key];
-  input.value = Number.isFinite(value) ? String(value) : String(fallback);
-  input.addEventListener("input", () => {
-    const trimmed = input.value.trim();
-    target[key] = nullable && !trimmed ? null : parseNumberInputValue(trimmed, fallback);
-    syncFormToEditor();
-    renderCharacterCheckTool();
-  });
-  return input;
-}
-
-function createCharacterAdvancedJsonSection(record) {
-  const section = createCharacterSection("高级 JSON", "Advanced");
-  section.appendChild(createLegacyAdvancedJsonDetails("展开原始角色 JSON", record, "characters"));
-  return section;
-}
-
-function createLegacyAdvancedJsonDetails(label, record, modelPrefix) {
-  const details = document.createElement("details");
-  details.className = "character-advanced-json";
-  const summary = document.createElement("summary");
-  summary.textContent = label;
-  const editor = createEmbeddedJsonEditor({
-    value: record,
-    modelPath: `${modelPrefix}/${record.id || "record"}`,
-    validate: (value) => {
-      if (!value || Array.isArray(value) || typeof value !== "object") throw new Error("记录 JSON 必须是对象");
-    },
-    onApply: (parsed) => {
-      state.formRecords[state.selectedRecordIndex] = parsed;
-      syncFormToEditor();
-      renderFormView();
-    },
-  });
-  details.append(summary, editor);
-  return details;
-}
-
-function getEquipmentSlotLabel(id) {
-  const item = state.contentIndex.itemsById.get(id);
-  if (!item || item.type !== "equipment") {
-    return "";
-  }
-
-  switch (item.slotType) {
-    case "weapon":
-      return "武器";
-    case "armor":
-      return "护甲";
-    case "accessory":
-      return "饰品";
-    default:
-      return item.slotType || "";
-  }
-}
-
-function ensureDefinitionIdDatalist(kind) {
-  const id = `definitionOptions-${kind}`;
-  const existing = document.getElementById(id);
-  if (existing) {
-    existing.remove();
-  }
-
-  const datalist = document.createElement("datalist");
-  datalist.id = id;
-  const options = getDefinitionOptions(kind);
-  for (const option of options) {
-    const node = document.createElement("option");
-    node.value = option.id;
-    node.label = option.label;
-    datalist.appendChild(node);
-  }
-
-  document.body.appendChild(datalist);
-  return id;
-}
-
-function getDefinitionOptions(kind) {
-  if (kind === "equipment") {
-    return Array.from(state.contentIndex.itemsById.values())
-      .filter((item) => item.type === "equipment" && typeof item.id === "string")
-      .sort((left, right) => String(left.id).localeCompare(String(right.id), "zh-Hans-CN"))
-      .map((item) => ({
-        id: item.id,
-        label: `${item.name || item.id} ${getEquipmentSlotLabel(item.id) || ""}`.trim(),
-      }));
-  }
-
-  const options = [];
-  for (const definitions of state.contentIndex.definitionsById.values()) {
-    for (const definition of definitions) {
-      if (definition.type !== kind) {
-        continue;
-      }
-
-      options.push({
-        id: definition.id,
-        label: definition.displayName || definition.id,
-      });
-    }
-  }
-
-  return options.sort((left, right) => left.id.localeCompare(right.id, "zh-Hans-CN"));
-}
-
-function createActionButton(label, action) {
+ function createActionButton(label, action) {
   return createButton({ label, onClick: action });
 }
 
-function createFieldEditor(record, key, value) {
-  const field = document.createElement("div");
-  const complex = value !== null && typeof value === "object";
-  const longText = typeof value === "string" && value.length > 80;
-  field.className = `form-field ${complex || longText ? "full" : ""}`;
-
-  const label = document.createElement("label");
-  label.textContent = key;
-  field.appendChild(label);
-
-  if (typeof value === "boolean") {
-    const input = document.createElement("input");
-    input.type = "checkbox";
-    input.checked = value;
-    input.addEventListener("change", () => updateRecordField(record, key, input.checked));
-    field.appendChild(input);
-    return field;
-  }
-
-  if (typeof value === "number") {
-    const input = document.createElement("input");
-    input.type = "number";
-    input.value = String(value);
-    input.addEventListener("input", () => updateRecordField(record, key, Number(input.value)));
-    field.appendChild(input);
-    return field;
-  }
-
-  if (state.currentPath === "resources.json" && key === "group") {
-    const input = document.createElement("input");
-    input.value = value === null ? "" : String(value);
-    input.setAttribute("list", ensureResourceGroupDatalist());
-    input.addEventListener("input", () => updateRecordField(record, key, input.value.trim() || null));
-    field.appendChild(input);
-    return field;
-  }
-
-  if (state.currentPath === "characters.json" && key === "portrait") {
-    const input = document.createElement("input");
-    input.value = value === null ? "" : String(value);
-    input.setAttribute("list", ensureResourceIdDatalist("头像"));
-    input.addEventListener("input", () => updateRecordField(record, key, input.value));
-    field.appendChild(input);
-
-    const assetPath = resolveAssetPath(input.value);
-    if (assetPath) {
-      field.appendChild(createInlineAssetPreview(assetPath, input.value));
-    }
-
-    return field;
-  }
-
-  if (complex) {
-    field.appendChild(createEmbeddedJsonEditor({
-      value,
-      modelPath: `${state.currentPath}/${record.id || state.selectedRecordIndex}/${key}`,
-      compact: true,
-      onApply: (parsed) => updateRecordField(record, key, parsed, { rerender: true }),
-    }));
-    return field;
-  }
-
-  const input = longText ? document.createElement("textarea") : document.createElement("input");
-  input.value = value === null ? "" : String(value);
-  if (!longText && isResourceReferenceField(key)) {
-    input.setAttribute("list", ensureResourceIdDatalist(getResourceGroupForField(key)));
-  } else if (!longText && isAssetField(key, input.value)) {
-    input.setAttribute("list", ensureAssetDatalist());
-  }
-  input.addEventListener("input", () => updateRecordField(record, key, input.value));
-  field.appendChild(input);
-
-  const assetPath = resolveAssetPath(input.value);
-  if (assetPath) {
-    field.appendChild(createInlineAssetPreview(assetPath, input.value));
-  }
-
-  return field;
-}
-
-function updateRecordField(record, key, value, options = {}) {
+ function updateRecordField(record, key, value, options = {}) {
   record[key] = value;
-  syncFormToEditor();
-  if (options.rerender) {
-    if (state.mode === "characters") {
-      renderCharacterWorkspaceView();
-    } else if (state.mode === "maps") {
-      renderMapWorkspaceView();
-    } else if (state.mode === "growth") {
-      renderGrowthWorkspaceView();
-    } else if (state.mode === "sects") {
-      renderSectWorkspaceView();
-    } else if (state.mode === "items") {
-      renderItemWorkspaceView();
-    } else if (state.mode === "shops") {
-      renderShopWorkspaceView();
-    } else {
-      renderFormView();
-    }
-  }
+  syncRecordsToEditor();
+  if (!options.rerender) return;
+
+  if (state.mode === "characters") renderCharacterWorkspaceView();
+  else if (state.mode === "maps") renderMapWorkspaceView();
+  else if (state.mode === "growth") renderGrowthWorkspaceView();
+  else if (state.mode === "sects") renderSectWorkspaceView();
+  else if (state.mode === "items") renderItemWorkspaceView();
+  else if (state.mode === "shops") renderShopWorkspaceView();
 }
 
-function addRecord() {
-  const record = createRecordTemplate();
-  const insertionIndex = state.formRecords.length === 0
+function addMapRecord() {
+  const record = createMapDefinition(createUniqueId("新地图"));
+  const insertionIndex = state.records.length === 0
     ? 0
-    : Math.min(state.selectedRecordIndex + 1, state.formRecords.length);
-  state.formRecords.splice(insertionIndex, 0, record);
+    : Math.min(state.selectedRecordIndex + 1, state.records.length);
+  state.records.splice(insertionIndex, 0, record);
   state.selectedRecordIndex = insertionIndex;
-  syncFormToEditor();
-  renderFormView();
+  syncRecordsToEditor();
+  renderMapWorkspaceView();
 }
 
-function duplicateRecord() {
-  const current = state.formRecords[state.selectedRecordIndex];
+function duplicateMapRecord() {
+  const current = state.records[state.selectedRecordIndex];
   if (!current) {
     return;
   }
@@ -11108,114 +7516,32 @@ function duplicateRecord() {
     record.name = `${record.name} 副本`;
   }
 
-  state.formRecords.splice(state.selectedRecordIndex + 1, 0, record);
+  state.records.splice(state.selectedRecordIndex + 1, 0, record);
   state.selectedRecordIndex += 1;
-  syncFormToEditor();
-  renderFormView();
+  syncRecordsToEditor();
+  renderMapWorkspaceView();
 }
 
-function deleteRecord() {
-  if (state.formRecords.length === 0) {
+function deleteMapRecord() {
+  if (state.records.length === 0) {
     return;
   }
 
-  const current = state.formRecords[state.selectedRecordIndex];
+  const current = state.records[state.selectedRecordIndex];
   const title = current ? getRecordTitle(current, state.selectedRecordIndex) : "当前条目";
   if (!confirmAction(`确认删除「${title}」？`)) {
     return;
   }
 
-  state.formRecords.splice(state.selectedRecordIndex, 1);
-  state.selectedRecordIndex = Math.max(0, Math.min(state.selectedRecordIndex, state.formRecords.length - 1));
-  syncFormToEditor();
-  renderFormView();
-}
-
-function createRecordTemplate() {
-  if (state.currentPath === "resources.json") {
-    return { id: createUniqueId("新资源"), group: null, value: "" };
-  }
-
-  if (state.currentPath === "characters.json") {
-    const id = createUniqueId("新角色");
-    return {
-      id,
-      name: id,
-      level: 1,
-      portrait: `头像.${id}`,
-      gender: "neutral",
-      arenaEnabled: false,
-      talentIds: [],
-      stats: {
-        bili: 10,
-        dingli: 10,
-        fuyuan: 10,
-        gengu: 10,
-        jianfa: 10,
-        daofa: 10,
-        quanzhang: 10,
-        qimen: 10,
-        shenfa: 10,
-        wuxing: 10,
-        wuxue: 10,
-        max_hp: 100,
-        max_mp: 100,
-      },
-      specialSkillIds: [],
-      internalSkills: [],
-      equipmentIds: [],
-      externalSkills: [],
-    };
-  }
-
-  if (state.currentPath === "maps.json") {
-    const id = createUniqueId("新地图");
-    return createMapDefinition(id);
-  }
-
-  if (state.currentPath === "items.json") {
-    const id = createUniqueId("新物品");
-    return {
-      category: "normal",
-      id,
-      name: id,
-      type: "consumable",
-      level: 1,
-      price: 0,
-      cooldown: 0,
-      canDrop: false,
-      description: "",
-      picture: `物品.${id}`,
-      requirements: [],
-      useEffects: [],
-    };
-  }
-
-  if (state.currentPath === "shops.json") {
-    const id = createUniqueId("新商店");
-    return {
-      id,
-      name: id,
-      music: null,
-      background: null,
-      products: [],
-    };
-  }
-
-  if (state.currentPath === "sects.json") {
-    return createSectDefinition(createUniqueId("新门派"));
-  }
-
-  if (state.currentPath === "game-tips.json") {
-    return { id: createUniqueId("小贴士.新"), text: "" };
-  }
-
-  return { id: createUniqueId("新条目") };
+  state.records.splice(state.selectedRecordIndex, 1);
+  state.selectedRecordIndex = Math.max(0, Math.min(state.selectedRecordIndex, state.records.length - 1));
+  syncRecordsToEditor();
+  renderMapWorkspaceView();
 }
 
 function createUniqueId(baseId) {
   const existing = new Set(
-    state.formRecords
+    state.records
       .map((record) => typeof record.id === "string" ? record.id : "")
       .filter(Boolean)
   );
@@ -11241,10 +7567,10 @@ function structuredCloneCompat(value) {
   return JSON.parse(JSON.stringify(value));
 }
 
-function syncFormToEditor() {
-  setEditorValue(`${JSON.stringify(state.formRecords, null, 2)}\n`);
+function syncRecordsToEditor() {
+  setEditorValue(`${JSON.stringify(state.records, null, 2)}\n`);
   dirtyStateController.markDirty({ render: false });
-  elements.saveState.textContent = "表单已修改，尚未保存";
+  elements.saveState.textContent = "结构化内容已修改，尚未保存";
   updateSearchMatches();
   renderEditorOutline();
   renderDirtyState();
@@ -11256,12 +7582,6 @@ function syncFormToEditor() {
 
 function getRecordTitle(record, index) {
   return String(record.name || record.id || record.text || `#${index + 1}`);
-}
-
-function getRecordSubtitle(record, index) {
-  const id = record.id ? String(record.id) : `#${index + 1}`;
-  const type = record.type ? ` · ${record.type}` : "";
-  return `${id}${type}`;
 }
 
 function createRecordThumb(record) {
@@ -11327,56 +7647,6 @@ function findAssetPath(value, options = {}) {
   return findCatalogAssetPath(value, state.assetFilePathSet, options);
 }
 
-function isAssetField(key, value) {
-  const lowerKey = key.toLowerCase();
-  return ["value", "portrait", "icon", "model", "avatar", "image", "music", "audio", "background"]
-    .some((part) => lowerKey.includes(part)) || resolveAssetPath(value) !== "";
-}
-
-function isResourceReferenceField(key) {
-  return ["portrait", "picture", "background", "music", "musics", "image", "icon"].includes(key);
-}
-
-function getResourceGroupForField(key) {
-  if (key === "portrait") {
-    return "头像";
-  }
-
-  if (key === "music" || key === "musics") {
-    return "音乐";
-  }
-
-  if (key === "background" || key === "picture" || key === "image") {
-    return null;
-  }
-
-  return null;
-}
-
-function createInlineAssetPreview(path, label) {
-  const wrapper = document.createElement("div");
-  wrapper.className = "inline-asset";
-  const lower = path.toLowerCase();
-
-  if (isImage(lower)) {
-    const image = document.createElement("img");
-    image.src = `/api/assets/file?path=${encodeURIComponent(path)}`;
-    image.alt = label;
-    wrapper.appendChild(image);
-  } else if (isAudio(lower)) {
-    const audio = document.createElement("audio");
-    audio.controls = true;
-    audio.src = `/api/assets/file?path=${encodeURIComponent(path)}`;
-    wrapper.appendChild(audio);
-  }
-
-  const text = document.createElement("div");
-  text.className = "inline-asset-path";
-  text.textContent = path;
-  wrapper.appendChild(text);
-  return wrapper;
-}
-
 function ensureAssetDatalist() {
   const id = "assetPathOptions";
   if (document.getElementById(id)) {
@@ -11420,32 +7690,6 @@ function ensureResourceIdDatalist(group) {
     const option = document.createElement("option");
     option.value = resource.id;
     option.label = typeof resource.value === "string" ? resource.value : "";
-    datalist.appendChild(option);
-  }
-
-  document.body.appendChild(datalist);
-  return id;
-}
-
-function ensureResourceGroupDatalist() {
-  const id = "resourceGroupOptions";
-  const existing = document.getElementById(id);
-  if (existing) {
-    existing.remove();
-  }
-
-  const groups = new Set();
-  for (const record of state.formRecords) {
-    if (typeof record.group === "string" && record.group.length > 0) {
-      groups.add(record.group);
-    }
-  }
-
-  const datalist = document.createElement("datalist");
-  datalist.id = id;
-  for (const group of Array.from(groups).sort((a, b) => a.localeCompare(b, "zh-Hans-CN"))) {
-    const option = document.createElement("option");
-    option.value = group;
     datalist.appendChild(option);
   }
 
@@ -11932,7 +8176,7 @@ function renderSpeakerTool(target = null) {
       if (state.currentPath === "characters.json" || state.currentPath === "resources.json") {
         await openDataFile(state.currentPath);
         if (state.mode === "characters" && state.currentPath === "characters.json") {
-          const index = state.formRecords.findIndex((record) => record?.id === result.id);
+          const index = state.records.findIndex((record) => record?.id === result.id);
           if (index >= 0) state.selectedRecordIndex = index;
           renderCharacterWorkspaceView();
         }
@@ -12485,7 +8729,7 @@ function renderCharacterCheckTool() {
     return;
   }
 
-  if (!isCharacterFile() || state.formRecords.length === 0) {
+  if (!isCharacterFile() || state.records.length === 0) {
     const empty = document.createElement("div");
     empty.className = "static-tool-note";
     empty.textContent = "选择 characters.json 中的角色后，这里会显示当前角色的引用和配置检查。";
@@ -12493,7 +8737,7 @@ function renderCharacterCheckTool() {
     return;
   }
 
-  const record = state.formRecords[state.selectedRecordIndex];
+  const record = state.records[state.selectedRecordIndex];
   if (!record) {
     const empty = document.createElement("div");
     empty.className = "static-tool-note";
@@ -12552,7 +8796,7 @@ function renderCharacterCheckTool() {
 }
 
 function renderItemCheckTool() {
-  if (state.formRecords.length === 0) {
+  if (state.records.length === 0) {
     const empty = document.createElement("div");
     empty.className = "static-tool-note";
     empty.textContent = "选择 items.json 中的物品后，这里会显示当前物品的图片和引用检查。";
@@ -12560,7 +8804,7 @@ function renderItemCheckTool() {
     return;
   }
 
-  const record = state.formRecords[state.selectedRecordIndex];
+  const record = state.records[state.selectedRecordIndex];
   if (!record) {
     const empty = document.createElement("div");
     empty.className = "static-tool-note";
@@ -12746,7 +8990,7 @@ function getCurrentCharacterRecord() {
     return null;
   }
 
-  return state.formRecords[state.selectedRecordIndex] || null;
+  return state.records[state.selectedRecordIndex] || null;
 }
 
 function getCurrentCharacterPortraitAssetPath() {
@@ -12777,7 +9021,7 @@ function getCurrentItemRecord() {
     return null;
   }
 
-  return state.formRecords[state.selectedRecordIndex] || null;
+  return state.records[state.selectedRecordIndex] || null;
 }
 
 function getCurrentItemPictureAssetPath() {
@@ -12810,7 +9054,7 @@ function closeShopResourcePicker() {
 }
 
 function openMapResourcePicker(context) {
-  const record = isMapFile() ? state.formRecords[state.selectedRecordIndex] : null;
+  const record = isMapFile() ? state.records[state.selectedRecordIndex] : null;
   const location = record?.locations?.[context.locationIndex];
   const owner = context.eventIndex >= 0 ? location?.events?.[context.eventIndex] : location;
   if (!owner || (context.field !== "picture" && context.field !== "image")) {
@@ -12849,7 +9093,7 @@ function getCurrentMapResourcePickerTarget() {
     return null;
   }
   const picker = state.mapEditor.resourcePicker;
-  const record = state.formRecords[state.selectedRecordIndex];
+  const record = state.records[state.selectedRecordIndex];
   const location = record?.locations?.[picker.locationIndex];
   const owner = picker.eventIndex >= 0 ? location?.events?.[picker.eventIndex] : location;
   if (!record || !location || !owner || (picker.field !== "picture" && picker.field !== "image")) {
@@ -12890,9 +9134,9 @@ function useMapResource(resourceId) {
     return;
   }
   target.owner[target.picker.field] = resourceId || null;
-  syncFormToEditor();
+  syncRecordsToEditor();
   closeMapResourcePicker();
-  renderFormView();
+  renderMapWorkspaceView();
 }
 
 function getCurrentShopRecord() {
@@ -12900,7 +9144,7 @@ function getCurrentShopRecord() {
     return null;
   }
 
-  return state.formRecords[state.selectedRecordIndex] || null;
+  return state.records[state.selectedRecordIndex] || null;
 }
 
 function getCurrentShopResourceAssetPath(field) {
@@ -13131,11 +9375,11 @@ async function createAndUsePortraitLibraryResource(record, portraitId, entry, bu
   try {
     const result = await createPortraitResource(value, entry.assetValue);
     record.portrait = value;
-    syncFormToEditor();
+    syncRecordsToEditor();
     await loadDataFiles();
     await rebuildContentIndex();
     showValidation(result.validation.ok, result.validation.message);
-    state.mode === "characters" ? renderCharacterWorkspaceView() : renderFormView();
+    renderCharacterWorkspaceView();
   } catch (error) {
     showValidation(false, error instanceof Error ? error.message : String(error));
   } finally {
@@ -13151,11 +9395,11 @@ async function updateAndUsePortraitLibraryResource(record, portraitId, entry, ex
   try {
     const result = await updatePortraitResource(portraitId, entry.assetValue, existingResource.value || "");
     record.portrait = portraitId;
-    syncFormToEditor();
+    syncRecordsToEditor();
     await loadDataFiles();
     await rebuildContentIndex();
     showValidation(result.validation.ok, result.validation.message);
-    state.mode === "characters" ? renderCharacterWorkspaceView() : renderFormView();
+    renderCharacterWorkspaceView();
   } catch (error) {
     showValidation(false, error instanceof Error ? error.message : String(error));
   } finally {
@@ -13189,12 +9433,12 @@ async function createAndUseItemPictureLibraryResource(record, pictureId, entry, 
   try {
     const result = await createItemResource(value, entry.assetValue);
     record.picture = value;
-    syncFormToEditor();
+    syncRecordsToEditor();
     await loadDataFiles();
     await rebuildContentIndex();
     closeItemPicturePicker();
     showValidation(result.validation.ok, result.validation.message);
-    state.mode === "items" ? renderItemWorkspaceView() : renderFormView();
+    renderItemWorkspaceView();
   } catch (error) {
     showValidation(false, error instanceof Error ? error.message : String(error));
   } finally {
@@ -13213,12 +9457,12 @@ async function createAndUseShopResource(record, field, resourceId, entry, button
   try {
     const result = await createGenericResource(value, getShopResourceGroup(field), entry.assetValue);
     record[field] = result.id || value;
-    syncFormToEditor();
+    syncRecordsToEditor();
     await loadDataFiles();
     await rebuildContentIndex();
     closeShopResourcePicker();
     showValidation(result.validation.ok, result.validation.message);
-    state.mode === "shops" ? renderShopWorkspaceView() : renderFormView();
+    renderShopWorkspaceView();
   } catch (error) {
     showValidation(false, error instanceof Error ? error.message : String(error));
   } finally {
@@ -14250,7 +10494,7 @@ function getSelectedLookupText() {
 async function revealDefinition(definition) {
   if (definition.path === "characters.json" || definition.type === "characters") {
     await openCharacterWorkspace();
-    const index = state.formRecords.findIndex((record) => record?.id === definition.id);
+    const index = state.records.findIndex((record) => record?.id === definition.id);
     if (index >= 0) {
       state.selectedRecordIndex = index;
       state.characterWorkspace.tab = "overview";
@@ -14385,12 +10629,6 @@ function handleGlobalKeydown(event) {
     event.preventDefault();
     setContextDrawerOpen(false);
     elements.inspectorToggleButton.focus({ preventScroll: true });
-    return;
-  }
-
-  if (event.key === "Escape" && state.mapEditor.focusMode) {
-    event.preventDefault();
-    setMapFocusMode(false);
     return;
   }
 

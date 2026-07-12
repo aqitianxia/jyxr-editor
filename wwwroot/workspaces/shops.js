@@ -77,15 +77,15 @@ function renderShopList(parent, context) {
   const workspace = state.shopWorkspace;
   const header = el("div", "shop-column-header");
   const title = el("div");
-  title.append(el("strong", "", "商店"), el("small", "", `${state.formRecords.length} 条定义`));
+  title.append(el("strong", "", "商店"), el("small", "", `${state.records.length} 条定义`));
   header.append(title, button("＋ 新建", "button primary", onCreate));
   parent.append(header,
     input(workspace.search, onSearch, { type: "search", placeholder: "搜索名称、ID 或资源…", live: true }),
     select(workspace.filter, shopFilters, onFilter));
 
-  const matches = state.formRecords.map((record, index) => ({ record, index, stats: getShopStats(record, itemMap) }))
+  const matches = state.records.map((record, index) => ({ record, index, stats: getShopStats(record, itemMap) }))
     .filter(({ record }) => matchesShopSearch(record, workspace.search) && matchesShopFilter(record, workspace.filter, itemMap));
-  parent.appendChild(el("div", "shop-list-summary", `显示 ${matches.length} / ${state.formRecords.length}`));
+  parent.appendChild(el("div", "shop-list-summary", `显示 ${matches.length} / ${state.records.length}`));
   const list = el("div", "shop-record-list");
   for (const { record, index, stats } of matches) {
     const row = button("", "shop-record-row", () => onSelectShop(index));
@@ -282,7 +282,7 @@ function renderReferences(parent, context, record) {
 
 function renderAdvanced(parent, context, record) {
   const section = el("section", "shop-editor-section shop-advanced-json");
-  section.append(el("h3", "", "商店 JSON"), el("p", "shop-section-note", "用于编辑尚未表单化的字段。应用时会整体替换当前商店，但不会主动删除未知字段。"));
+  section.append(el("h3", "", "商店 JSON"), el("p", "shop-section-note", "用于编辑结构化控件尚未覆盖的字段。应用时会整体替换当前商店，但不会主动删除未知字段。"));
   section.appendChild(createEmbeddedJsonEditor({
     value: record,
     modelPath: `shops/${record.id || "record"}`,
@@ -329,7 +329,7 @@ export function renderShopWorkspace(container, context) {
   shell.append(shops, products, detail);
   container.appendChild(shell);
   renderShopList(shops, context);
-  const record = context.state.formRecords[context.state.selectedRecordIndex];
+  const record = context.state.records[context.state.selectedRecordIndex];
   if (!record) {
     empty(products, "没有商店", "创建第一间商店后即可配置商品。");
     empty(detail, "没有可编辑内容", "从左侧创建或选择商店。");

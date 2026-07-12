@@ -134,14 +134,14 @@ function renderList(parent, options) {
   const workspace = state.itemWorkspace;
   const header = el("div", "item-list-header");
   const copy = el("div");
-  copy.append(el("strong", "", "物品列表"), el("small", "", `${state.formRecords.length} 条定义`));
+  copy.append(el("strong", "", "物品列表"), el("small", "", `${state.records.length} 条定义`));
   header.append(copy, button("＋ 新建", "button primary", onCreate));
   parent.appendChild(header);
   const search = input(workspace.search, onSearch, { type: "search", placeholder: "搜索 ID、名称、描述、图片…", live: true });
   search.classList.add("item-list-search");
   parent.append(search, select(workspace.filter, itemFilters, onFilter));
 
-  const matches = state.formRecords.map((record, index) => {
+  const matches = state.records.map((record, index) => {
     const issues = getIssues(record);
     const picture = getPictureInfo(record);
     return { record, index, issues, picture };
@@ -150,7 +150,7 @@ function renderList(parent, options) {
       issueCount: issues.length,
       pictureMissing: !picture?.resourceExists || !picture?.assetExists,
     }));
-  parent.appendChild(el("div", "item-list-summary", `显示 ${matches.length} / ${state.formRecords.length}`));
+  parent.appendChild(el("div", "item-list-summary", `显示 ${matches.length} / ${state.records.length}`));
   const list = el("div", "item-record-list");
   for (const entry of matches) {
     const card = button("", "item-record-card", () => onSelect(entry.index));
@@ -535,7 +535,7 @@ function renderReferences(parent, context) {
 
 function renderAdvanced(parent, context) {
   const notice = el("div", "item-advanced-notice");
-  notice.append(el("strong", "", "高级 JSON 与表单编辑同一条内存记录"), el("p", "", "未识别字段会保留。应用后仍需点击顶部“保存”写入 items.json。"),
+  notice.append(el("strong", "", "高级 JSON 与结构化编辑共享同一条内存记录"), el("p", "", "未识别字段会保留。应用后仍需点击顶部“保存”写入 items.json。"),
     button("在高级数据中打开 items.json", "button ghost", context.onOpenAdvancedData));
   parent.appendChild(notice);
   parent.appendChild(createEmbeddedJsonEditor({
@@ -556,7 +556,7 @@ function structuredClone(value) {
 
 function renderDetail(parent, options) {
   const { state, getIssues, getPictureInfo, onMutate, onReplaceRecord, onDuplicate, onDelete, onTab } = options;
-  const record = state.formRecords[state.selectedRecordIndex];
+  const record = state.records[state.selectedRecordIndex];
   if (!record) {
     renderEmpty(parent, "没有可编辑的物品", "点击左侧“新建”创建第一条物品定义。" );
     return;

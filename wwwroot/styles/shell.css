@@ -554,27 +554,6 @@ body.story-mode .statusbar {
   display: none;
 }
 
-body.map-focus-mode .topbar {
-  min-height: var(--topbar-height);
-  padding: 0 var(--space-4);
-}
-
-body.map-focus-mode .brand {
-  font-size: 16px;
-}
-
-body.map-focus-mode .workspace-grid {
-  grid-template-columns: minmax(0, 1fr);
-}
-
-body.map-focus-mode .sidebar {
-  display: none;
-}
-
-body.map-focus-mode .editor-pane {
-  grid-template-rows: auto auto minmax(0, 1fr);
-}
-
 @media (max-width: 1180px) {
   :root {
     --sidebar-width: 276px;

@@ -230,7 +230,7 @@ function renderUsage(parent, context, record) {
 function renderAdvanced(parent, context, record) {
   const issues = getIssues(context, record);
   const section = el("section", "growth-section");
-  section.append(el("h3", "", "静态检查"), el("p", "growth-section-note", "高级 JSON 用于编辑尚未表单化的自定义字段，应用时整体替换当前模板。"));
+  section.append(el("h3", "", "静态检查"), el("p", "growth-section-note", "高级 JSON 用于编辑结构化控件尚未覆盖的自定义字段，应用时整体替换当前模板。"));
   if (!issues.length) section.appendChild(el("div", "growth-callout ok", "当前模板未发现可静态识别的问题。"));
   else {
     const list = el("ul", "growth-issues");

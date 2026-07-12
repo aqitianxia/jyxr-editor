@@ -596,7 +596,7 @@ function renderResourcePicker(root, context) {
     card.append(media, copy);
     gallery.appendChild(card);
   }
-  if (!entries.length) empty(gallery, "没有匹配资源", "更换搜索词后再试。自定义 PCK 图标仍可在表单中手动填写 ID。 ");
+  if (!entries.length) empty(gallery, "没有匹配资源", "更换搜索词后再试。自定义 PCK 图标仍可在结构化编辑区手动填写 ID。 ");
   const detail = el("aside", "martial-resource-picker-detail");
   if (!selected) empty(detail, "请选择一项", isAudio ? "选择音效后可先试听，再决定是否使用。" : "选择图标后可查看大图。 ");
   else {
@@ -735,7 +735,7 @@ function renderReferences(parent, context, record, kind) {
 }
 
 function renderAdvanced(parent, context, record, kind) {
-  const node = section(parent, "当前定义 JSON", "用于编辑尚未表单化的字段。应用时只替换当前定义，未知字段会原样保留。");
+  const node = section(parent, "当前定义 JSON", "用于编辑结构化控件尚未覆盖的字段。应用时只替换当前定义，未知字段会原样保留。");
   node.appendChild(createEmbeddedJsonEditor({
     value: record,
     modelPath: `${kind}-skills/${record.id || context.state.martialArtsWorkspace.selectedIndex}.json`,
