@@ -130,7 +130,7 @@ function renderEmpty(parent, title, detail) {
 }
 
 function renderList(parent, options) {
-  const { state, getIssues, getPictureInfo, onCreate, onSelect, onSearch, onFilter } = options;
+  const { state, getIssues, getPictureInfo, onCreate, onSelect, onSearch, onFilter, onLoadMore } = options;
   const workspace = state.itemWorkspace;
   const header = el("div", "item-list-header");
   const copy = el("div");
@@ -150,9 +150,13 @@ function renderList(parent, options) {
       issueCount: issues.length,
       pictureMissing: !picture?.resourceExists || !picture?.assetExists,
     }));
-  parent.appendChild(el("div", "item-list-summary", `显示 ${matches.length} / ${state.formRecords.length}`));
+  const visibleLimit = Math.max(60, Number(workspace.visibleLimit) || 60);
+  const shown = matches.slice(0, visibleLimit);
+  const selected = matches.find((entry) => entry.index === state.selectedRecordIndex);
+  if (selected && !shown.includes(selected)) shown.unshift(selected);
+  parent.appendChild(el("div", "item-list-summary", `显示 ${shown.length} / ${matches.length}，全部 ${state.formRecords.length}`));
   const list = el("div", "item-record-list");
-  for (const entry of matches) {
+  for (const entry of shown) {
     const card = button("", "item-record-card", () => onSelect(entry.index));
     card.classList.toggle("active", entry.index === state.selectedRecordIndex);
     const thumb = el("span", "item-record-thumb");
@@ -171,6 +175,7 @@ function renderList(parent, options) {
     card.append(thumb, body, meta);
     list.appendChild(card);
   }
+  if (visibleLimit < matches.length) list.appendChild(button(`再加载 ${Math.min(60, matches.length - visibleLimit)} 条`, "button secondary item-list-more", onLoadMore));
   if (!matches.length) renderEmpty(list, "没有匹配的物品", "清除搜索词或切换筛选条件后再试。");
   parent.appendChild(list);
   bindScrollMemory(list, state.workspaceScrollPositions, "items:list");

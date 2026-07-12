@@ -2,6 +2,8 @@ import { bindImeSafeInput } from "../core/input-composition.js?v=20260711-core-1
 import { isAudioAsset, isImageAsset, resourceKinds } from "../domain/resource-catalog.js?v=20260711-stage5b-1";
 import { bindScrollMemory } from "../ui/scroll-memory.js?v=20260711-scroll-1";
 
+const resourcePageSize = 60;
+
 const el = (tag, className = "", text = "") => {
   const node = document.createElement(tag);
   if (className) node.className = className;
@@ -98,29 +100,40 @@ export function renderResourcesWorkspace(container, { state, catalog, assets, on
   }
   container.appendChild(tools);
   const query = ws.search.trim().toLocaleLowerCase("zh-CN");
+  const visibleLimit = Math.max(resourcePageSize, Number(ws.visibleLimit) || resourcePageSize);
   const layout = el("div", "resource-workspace-layout"); const list = el("div", "resource-workspace-list"); const detail = el("aside", "resource-workspace-detail");
   if (ws.tab === "resources") {
     const visible = catalog.filter((item) => (ws.group === "all" || item.group === ws.group) && (ws.status === "all" || statusOf(item).value === ws.status)
       && (!query || [item.id, item.group, item.value, item.assetPath, ...item.references.flatMap((ref) => [ref.path, ref.fieldPath, ref.ownerDefinitionId])].join(" ").toLocaleLowerCase("zh-CN").includes(query)));
-    const shown = visible.slice(0, 400); const summary = el("div", "resource-list-summary", `显示 ${shown.length} / ${visible.length}，全部 ${catalog.length}`); list.appendChild(summary);
+    const shown = visible.slice(0, visibleLimit); const summary = el("div", "resource-list-summary", `显示 ${shown.length} / ${visible.length}，全部 ${catalog.length}`); list.appendChild(summary);
     for (const item of shown) {
       const key = `${item.id}\u0000${item.sourceIndex}`; const row = el("button", "resource-list-row"); row.type = "button"; row.classList.toggle("active", ws.selectedKey === key);
       row.append(preview(item.assetExists ? item.assetPath : "", item.kind, item.id, "resource-list-preview"));
       const copy = el("span", "resource-list-copy"); copy.append(el("strong", "", item.id || `未命名 #${item.sourceIndex + 1}`), el("small", "", `${item.group || "未分组"} · ${item.value || "未设置 value"}`)); row.append(copy);
       const status = statusOf(item); row.append(el("span", `resource-status ${status.tone}`, status.label)); row.addEventListener("click", () => onChange("selectedKey", key)); list.appendChild(row);
     }
+    if (shown.length < visible.length) list.appendChild(createLoadMoreButton(shown.length, visible.length, onChange));
     if (!shown.length) list.appendChild(el("div", "resource-empty", "没有符合筛选条件的资源。"));
     const selected = catalog.find((item) => `${item.id}\u0000${item.sourceIndex}` === ws.selectedKey) || shown[0]; renderResourceDetail(detail, selected, onOpenDefinition);
   } else {
-    const visible = assets.filter((item) => !query || `${item.name} ${item.path}`.toLocaleLowerCase("zh-CN").includes(query)).slice(0, 400);
-    list.appendChild(el("div", "resource-list-summary", `显示 ${visible.length} / ${assets.length}`));
+    const filtered = assets.filter((item) => !query || `${item.name} ${item.path}`.toLocaleLowerCase("zh-CN").includes(query));
+    const visible = filtered.slice(0, visibleLimit);
+    list.appendChild(el("div", "resource-list-summary", `显示 ${visible.length} / ${filtered.length}，全部 ${assets.length}`));
     for (const item of visible) {
       const row = el("button", "resource-list-row"); row.type = "button"; row.classList.toggle("active", ws.selectedKey === item.path);
       const kind = isImageAsset(item.path) ? resourceKinds.image : isAudioAsset(item.path) ? resourceKinds.audio : resourceKinds.unknown;
       row.append(preview(item.path, kind, item.name, "resource-list-preview")); const copy = el("span", "resource-list-copy"); copy.append(el("strong", "", item.name), el("small", "", item.path)); row.append(copy, el("span", `resource-status ${item.resourceIds.length ? "ok" : "muted"}`, item.resourceIds.length ? `${item.resourceIds.length} 条资源` : "未注册")); row.addEventListener("click", () => onChange("selectedKey", item.path)); list.appendChild(row);
     }
+    if (visible.length < filtered.length) list.appendChild(createLoadMoreButton(visible.length, filtered.length, onChange));
     if (!visible.length) list.appendChild(el("div", "resource-empty", "没有符合搜索条件的资产。")); renderAssetDetail(detail, assets.find((item) => item.path === ws.selectedKey) || visible[0]);
   }
   layout.append(list, detail); container.appendChild(layout);
   bindScrollMemory(list, state.workspaceScrollPositions, `resources:list:${ws.tab}`);
+}
+
+function createLoadMoreButton(shownCount, totalCount, onChange) {
+  const button = el("button", "button secondary resource-list-more", `再加载 ${Math.min(resourcePageSize, totalCount - shownCount)} 条`);
+  button.type = "button";
+  button.addEventListener("click", () => onChange("visibleLimit", shownCount + resourcePageSize));
+  return button;
 }
