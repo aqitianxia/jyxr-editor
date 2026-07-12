@@ -5,13 +5,17 @@ It should stay small, explicit, and content-author friendly.
 
 ## Current Scope
 
-The editor currently focuses on static JSON data and light validation:
+The editor currently focuses on task-oriented static content authoring and validation:
 
 - Discover MODs from `mods/*/mod.json` and route reads/writes through the active MOD id.
 - Browse and edit JSON files under the selected MOD data directory.
 - Preview assets under root `assets`.
 - Validate content through `Game.Content.Loading.JsonContentLoader`.
-- Build a story graph for `story/*.story.json` with grouped segment lists, entrypoints, outgoing/incoming flow, and diagnostics.
+- Merge `.story` and paired `.story.json` files into one story document with a single writable source.
+- Provide DSL, JSON, and read-only flow projections for story authoring.
+- Build story flow projections from the current unsaved draft with neighborhood, group, file, and repository scopes.
+- Provide contextual Story DSL completions from the current MOD content index.
+- Reject JSON-to-DSL conversion unless JSON -> DSL -> JSON is structurally lossless.
 - Build a lightweight client-side index from:
   - top-level `id` records
   - story `segments[].name`
@@ -26,6 +30,10 @@ It is not a Godot scene editor, PCK builder, external mod manager, or general fi
 Resource and asset semantics shared by workspaces live in `wwwroot/domain/resource-catalog.js`. Keep that module free of DOM and global editor state so its path resolution, group contracts, and conflict summaries remain testable with `npm test`.
 
 Resource picker search, selection fallback, draft confirmation/cancellation, and directional navigation live in `wwwroot/domain/resource-picker.js`. Domain-specific pickers may keep different layouts, previews, and actions; they should reuse this kernel instead of duplicating search state rules.
+
+Story document pairing, draft graph extraction, graph filtering, overview aggregation, and JSON round-trip comparison live in `wwwroot/domain/story-workspace.js`. Keep these operations independent of DOM and Cytoscape so they remain covered by `tests/story-workspace.test.js`.
+
+The Cytoscape adapter lives in `wwwroot/ui/story-graph.js`. It is a read-only renderer: it may manage layout, focus, zoom, and selection, but it must not serialize graph state or rewrite story content.
 
 Direct resource writes must use `Services/ResourceWritePolicy.cs` or an equally explicit preflight decision. A write flow must distinguish create, reuse, and conflict; complete validation before backups and writes; and use an expected-state token or expected old value when a confirmation and write are separate requests.
 
@@ -52,6 +60,10 @@ Important endpoints:
 - `GET /api/story/graph?modId=...`
   - Builds a read-only story graph for the selected MOD.
   - Reports segment counts, grouped branches, entrypoints, edge diagnostics, and static story references.
+- `POST /api/story/source/from-json`
+  - Creates a `.story` source from a JSON-only story after the frontend lossless preflight succeeds.
+  - Refuses to overwrite an existing source file.
+  - Keeps the compiled `.story.json` synchronized and uses the existing backup/validation flow.
 - `GET /api/static/portraits/check?modId=...`
   - Checks dialogue portrait wiring without modifying files.
   - Scans `characters.json`, `resources.json`, `story/*.story.json`, and root `assets/art`.
@@ -74,11 +86,27 @@ The frontend is plain HTML/CSS/JavaScript:
 - `wwwroot/index.html`
   - Layout and inspector sections.
 - `wwwroot/app.js`
-  - State, MOD switching, file loading, form rendering, content index, story graph rendering, helpers.
+  - Application orchestration, MOD switching, file loading, workspace composition, content index, and Monaco integration.
+- `wwwroot/domain/story-workspace.js`
+  - Pure story document, draft graph, filtering, aggregation, and JSON comparison rules.
+- `wwwroot/ui/story-graph.js`
+  - Lazy Cytoscape initialization and read-only graph interaction.
+- `wwwroot/styles/stage12.css`
+  - Story workspace layout and responsive desktop rules.
 - `wwwroot/styles.css`
-  - Dense desktop tool styling.
+  - Legacy/base desktop tool styling while staged styles continue to migrate.
 
-There is no build step and no package manager. Keep dependencies at zero unless there is a very strong reason.
+There is no frontend build step or npm runtime dependency. Cytoscape.js 3.34.0 and cytoscape-dagre 4.0.0 are vendored as ESM files under `wwwroot/vendor` with their licenses and loaded only when the flow view opens. New browser dependencies require the same explicit version, license, local vendoring, and lazy-loading discipline.
+
+## Story Workspace Rules
+
+- Keep `DSL / JSON / Flow` as the only story views. Do not reintroduce the removed form/card editor.
+- A paired story document has exactly one writable source. DSL source compiles JSON; JSON-only source preserves JSON fields directly.
+- Flow is a projection of the current draft. Never write node coordinates, zoom, scope, filters, or selection into MOD data.
+- JSON-to-DSL conversion must pass `findJsonDifferences` after a full decompile/recompile round trip. Do not add a force-convert bypass.
+- File scope is capped at 500 segment nodes. Large repositories must use neighborhood, group, or overview projections.
+- Overview uses a force-directed layout with hidden edge labels and weighted aggregate edges. Segment-level flows use left-to-right Dagre layout.
+- Desktop width below 1024px is out of scope unless product requirements change.
 
 ## MOD Package Policy
 
@@ -174,8 +202,8 @@ These are known rough edges in the tool:
 
 - Form view is generic and not schema-aware enough.
 - Complex fields are still edited as raw JSON text.
-- Story graph is read-only and not yet an editable step/card workflow.
-- Story grouping and diagnostics are first-pass heuristics and still need better authoring affordances.
+- Story grouping and backend diagnostics are still heuristic and can over-report entryless segments as informational issues.
+- Flow layout is intentionally read-only; direct visual graph editing is not supported.
 - No static check for missing `log` clues in story segments.
 - No batch image normalization for portraits.
 - Save always formats the entire JSON file.
@@ -183,32 +211,11 @@ These are known rough edges in the tool:
 
 ## Recommended Next Steps
 
-Prioritize static data quality before story authoring:
+Follow `REFACTORING_PLAN.md` section 20. The current order is:
 
-1. **Resource Manager**
-   - Dedicated view for `resources.json`.
-   - Group filters such as `头像`, `音乐`, `地图`, `UI`.
-   - Inline asset preview.
-   - Missing asset warnings.
-
-2. **Character Manager**
-   - Better form for `characters.json`.
-   - Portrait picker.
-   - Gender/grow template dropdowns.
-   - Skill/equipment/talent reference pickers.
-
-3. **Item Manager**
-   - Type-specific fields for books, equipment, consumables, story items.
-   - Picture picker and preview.
-   - Validation for referenced skills/equipment.
-
-4. **Story Tools**
-   - Editable segment list and step cards.
-   - Speaker portrait warnings.
-   - Jump target picker.
-   - Branch graph layout improvements and clearer trigger/source grouping.
-   - Log clue checker.
-   - Diff view between author/base content and `jyxr-expansion`.
+1. Equipment random-affix workspace and remaining static-data review.
+2. Help, usability, legacy-code cleanup, and backend responsibility cleanup.
+3. Story follow-ups should stay text-first: richer diagnostics, command documentation/hover, log clue checks, and author/base diffing. Do not add a second writable story model.
 
 ## Design Principles
 
@@ -225,9 +232,12 @@ Light checks for tool work:
 
 ```bash
 node --check tools/JsonEditor/wwwroot/app.js
+cd tools/JsonEditor && npm test
 dotnet build tools/JsonEditor/JsonEditor.csproj --no-restore
 dotnet test
 ```
+
+Story UI changes must also be checked at 1024px and 1440px desktop widths. Confirm that the flow canvas is non-empty, the toolbar does not overflow, and the browser console has no errors.
 
 Light checks for data work:
 

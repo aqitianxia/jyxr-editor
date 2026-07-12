@@ -123,8 +123,8 @@ dotnet build engine-free-rpg.csproj
 
 1. 启动服务并打开 `http://localhost:5127`。
 2. 在右上角“当前 MOD”选择要编辑的内容包。
-3. 在左侧切换“数据 / 剧情 / 资产”。
-4. 选择 JSON 文件后，可以用“JSON”直接编辑，也可以用“表单”编辑顶层数组记录；文本编辑区使用 Monaco，支持行号、缩略代码地图、JSON/DSL 高亮、错误标记和光标定位。
+3. 在左侧进入角色、地图、剧情、物品、商店、资源或高级数据等工作区。
+4. 专用工作区提供对应的结构化创作流程；高级数据继续保留原始 JSON。文本编辑区使用 Monaco，支持行号、缩略代码地图、JSON/DSL 高亮、错误标记和光标定位。
 5. 修改后点击“格式化”检查 JSON 格式。
 6. 点击“校验”运行内容校验。
 7. 确认无误后点击“保存”。
@@ -156,16 +156,29 @@ dotnet build engine-free-rpg.csproj
 - 对象和数组字段会保留为 JSON 文本，避免隐藏丢字段。
 - JSON 视图仍是最终来源，保存时以当前编辑内容为准。
 
-## 剧情视图
+## 剧情与任务工作区
 
-“剧情”页读取 `story/*.story.json`，展示轻量剧情图：
+“剧情与任务”把同名 `.story` 与 `.story.json` 合并为一个剧情文档，并提供三个平级视图：
 
-- 分组和 segment 列表。
-- 入口段。
-- 跳转关系。
-- 静态诊断信息。
+- `DSL`：面向创作的 Story DSL 文本。
+- `JSON`：游戏运行时读取的 Story JSON。
+- `流程`：从当前草稿实时投影的只读流程图。
 
-剧情图目前偏只读分析，复杂剧情仍建议在 JSON 视图中编辑。
+每个文档只有一种可写源：
+
+- 存在 `.story` 时，DSL 是可写源，JSON 是实时编译的只读预览。
+- 只有 `.story.json` 时，JSON 是可写源，DSL 是实时反编译的只读预览。
+- JSON-only 文档可以显式“转换为 DSL 源”。转换前会执行 JSON → DSL → JSON 深度比较；未知字段、数组顺序、字段缺失、值或类型发生变化时会阻止转换，不允许强制覆盖。
+
+流程视图支持：
+
+- 当前段落邻域、当前剧情线、当前文件和全库聚合四种范围。
+- 全部、问题、入口和孤立节点筛选。
+- 选中节点后强调直接上下游，点击画布空白清除聚焦。
+- 从全库剧情线下钻到段落，再定位回 DSL 或 JSON 源码。
+- 当前文件最多绘制 500 个 segment，并明确显示截断状态。
+
+流程布局、缩放、选择和筛选都只存在编辑器内存，不写入 MOD JSON，也不会改变游戏剧情 schema。
 
 ## Story DSL 编辑
 
@@ -175,15 +188,15 @@ dotnet build engine-free-rpg.csproj
 mods/jyxr-expansion/data/story/book-shujian.story
 ```
 
-在“数据”页打开 `.story` 文件时，编辑器会切换为 `DSL / JSON`：
+在“剧情与任务”打开 `.story` 文件时：
 
 - `DSL` 是可编辑源文件。
 - `JSON` 是只读编译预览。
-- 顶部“跳转剧情段”下拉会读取当前文件里的段名，选择后直接跳到对应行。
-- 左侧如果同时存在 `.story` 和同名 `.story.json`，点击生成的 `.story.json` 会优先打开源 `.story`，避免误改生成物。
+- 左侧文档目录会把 `.story` 和同名 `.story.json` 合并，段落目录可按 segment id 搜索和定位。
 - 保存 `.story` 时会先编译 DSL，再生成同名 `.story.json`，例如 `book-shujian.story.json`。
 - 游戏运行时仍只读取 `.story.json`。
 - DSL 会做轻量静态检查：`jump` 目标剧情段、`battle` 战斗、`map` 地图、`shop` 商店，以及 `item` / `cost_item` / `random_item` 物品引用不存在时会在右侧显示错误。
+- Monaco 会补全结构片段、正式剧情命令、已有说话人，以及当前 MOD 的剧情段、角色、物品、地图、商店、战斗、门派、成长模板和技能引用。
 - 如果 Monaco 静态资源加载失败，页面会退回普通文本框，仍可编辑和保存。
 
 DSL 支持剧情段、对白、命令、选择、条件、战斗分支和跳转：
@@ -284,7 +297,7 @@ DSL 的普通命令会编译为 story JSON 的 `kind: "command"`，实际执行�
 | 状态 | `set_flag` / `clear_flag` / `daode` / `haogan` / `rank` / `menpai` | `set_flag 初遇南贤` |
 | 角色 | `join` / `follow` / `leave` / `leave_follow` / `leave_all` | `join 郭靖` |
 | 成长 | `upgrade` / `grant_point` / `get_exp` / `levelup` / `maxlevel` | `grant_exp 主角 100` |
-| 技能 | `learn` / `remove` / `growtemplate` | `learn 主角 野球拳` |
+| 技能 | `learn` / `remove` / `growtemplate` | `learn skill 主角 野球拳 1` |
 | 档案 | `nick` | `nick 武林新星` |
 | 流程 | `map` / `shop` / `battle` / `jump` | `map 洛阳` |
 | 宿主表现 | `music` / `effect` / `background` / `suggest` / `toast` / `shake` / `head` / `animation` | `music music/main` |

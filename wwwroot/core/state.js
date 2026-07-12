@@ -41,6 +41,15 @@ export function createEditorState() {
       diagnostics: [],
       kind: "",
     },
+    storyWorkspace: {
+      search: "",
+      view: "dsl",
+      graphScope: "neighbors",
+      graphFilter: "all",
+      selectedDocumentPath: "",
+      selectedSegmentId: "",
+      selectedGraphNodeId: "",
+    },
     characterTab: "talents",
     characterWorkspace: {
       search: "",

@@ -52,6 +52,15 @@ import { renderResourcesWorkspace } from "./workspaces/resources.js?v=20260711-s
 import { createResourcePickerModel } from "./domain/resource-picker.js?v=20260711-stage5c-1";
 import { bindResourcePickerKeyboard, restoreResourcePickerKeyboardFocus } from "./ui/resource-picker-keyboard.js?v=20260711-stage5c-1";
 import { bindScrollMemory } from "./ui/scroll-memory.js?v=20260711-scroll-1";
+import {
+  buildDraftStoryGraph,
+  buildStoryDocuments,
+  buildStoryGraphProjection,
+  findJsonDifferences,
+  matchesStoryDocument,
+  mergeDraftStoryGraph,
+} from "./domain/story-workspace.js?v=20260712-stage12-2";
+import { destroyStoryGraph, fitStoryGraph, focusStoryGraph, renderStoryGraph } from "./ui/story-graph.js?v=20260712-stage12-2";
 
 const dataFileDisplayNames = new Map([
   ["battles.json", "战斗"],
@@ -166,6 +175,7 @@ const monacoState = {
   language: "json",
   suppressChange: false,
 };
+let storyGraphRenderVersion = 0;
 
 const preferences = createPreferences();
 const recentItemsStore = createRecentItemsStore({
@@ -372,12 +382,198 @@ function registerStoryDslMonacoLanguage() {
       ],
     },
   });
+  monaco.languages.registerCompletionItemProvider("storydsl", {
+    triggerCharacters: [" ", "：", ":", "#", "-"],
+    provideCompletionItems(model, position) {
+      const line = model.getLineContent(position.lineNumber).slice(0, position.column - 1);
+      if (line.trimStart().startsWith("//")) return { suggestions: [] };
+      const currentToken = /[^\s]*$/u.exec(line)?.[0] || "";
+      const range = new monaco.Range(
+        position.lineNumber,
+        Math.max(1, position.column - currentToken.length),
+        position.lineNumber,
+        position.column,
+      );
+      const completedText = line.slice(0, line.length - currentToken.length).trim();
+      const completedParts = completedText ? completedText.split(/\s+/u) : [];
+      const command = completedParts[0] || "";
+      const argumentIndex = completedParts.length - 1;
+
+      if (command === "jump") return storySegmentCompletionItems(range);
+      const argumentItems = storyCommandArgumentCompletionItems(command, argumentIndex, range);
+      if (argumentItems.length > 0) return { suggestions: argumentItems };
+      if (completedParts.length > 0) return { suggestions: [] };
+
+      const suggestions = [
+        createStorySnippetCompletion("剧情段", "# ${1:segment_id}\n${2:旁白：剧情内容}", "创建新的剧情段", range),
+        createStorySnippetCompletion("对话", "${1:旁白}：${2:对白内容}", "添加一行对白", range),
+        createStorySnippetCompletion("选择分支", "${1:旁白}：${2:请选择}\n- ${3:选项一}\n  jump ${4:target}\n- ${5:选项二}\n  jump ${6:target}", "添加选择及跳转", range),
+        createStorySnippetCompletion("条件分支", "if ${1:$flag == true}\n  ${2:jump target}\nelif ${3:$flag == false}\n  ${4:jump other}\nelse\n  ${5:jump fallback}", "添加 if / elif / else", range),
+        createStorySnippetCompletion("战斗结果", "battle ${1:battle_id}\n- win\n  ${2:jump win_target}\n- lose\n  ${3:jump lose_target}", "添加战斗胜负分支", range),
+        ...getStoryDslCommandNames().map((name) => ({
+          label: name,
+          kind: monaco.languages.CompletionItemKind.Function,
+          insertText: `${name} `,
+          detail: "剧情命令",
+          range,
+        })),
+        ...["jump", "if", "elif", "else", "battle"].map((name) => ({
+          label: name,
+          kind: monaco.languages.CompletionItemKind.Keyword,
+          insertText: `${name} `,
+          range,
+        })),
+        ...Array.from(state.contentIndex.storySpeakers.keys()).map((speaker) => ({
+          label: speaker,
+          kind: monaco.languages.CompletionItemKind.Value,
+          insertText: `${speaker}：`,
+          detail: "已有说话人",
+          range,
+        })),
+      ];
+      return { suggestions };
+    },
+  });
+}
+
+const storyDslCommandNames = [
+  "animation", "arena", "background", "clear_flag", "clear_time_key", "cost_day", "cost_item", "cost_money",
+  "daode", "effect", "follow", "game", "gamefin", "gameover", "get_exp", "get_money", "get_point", "grant_exp",
+  "grant_point", "growtemplate", "haogan", "head", "input_name", "item", "join", "learn", "leave",
+  "leave_all", "leave_follow", "levelup", "log", "mainmenu", "map", "maxlevel", "menpai", "minus_maxpoints",
+  "music", "newbie", "nextzhoumu", "nick", "random_item", "rank", "remove", "restart", "roll_stats",
+  "select_head", "select_menpai", "select_sect", "set_flag", "set_game_mode", "set_map", "set_round", "set_time_key",
+  "shake", "shop", "suggest", "toast", "touch", "tower", "trial", "tutorial", "upgrade", "world_trigger",
+  "xilian", "yuanbao", "zhenlongqiju", "huashan",
+];
+
+function getStoryDslCommandNames() {
+  return [...new Set([
+    ...storyDslCommandNames,
+    ...(state.storyGraph?.commands || []).map((command) => command.name),
+  ])].sort((left, right) => left.localeCompare(right));
+}
+
+function createStorySnippetCompletion(label, insertText, detail, range) {
+  return {
+    label,
+    kind: monaco.languages.CompletionItemKind.Snippet,
+    insertText,
+    insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+    detail,
+    range,
+  };
+}
+
+function storySegmentCompletionItems(range) {
+  const ids = new Set((state.storyGraph?.nodes || []).map((node) => node.id));
+  if (state.storySource.kind === "source") {
+    for (const entry of getStoryDslOutlineEntries(getEditorValue())) ids.add(entry.title);
+  }
+  return {
+    suggestions: [...ids].sort((left, right) => left.localeCompare(right, "zh-Hans-CN")).map((id) => ({
+      label: id,
+      kind: monaco.languages.CompletionItemKind.Reference,
+      insertText: id,
+      detail: "剧情段",
+      range,
+    })),
+  };
+}
+
+function storyCommandArgumentCompletionItems(command, argumentIndex, range) {
+  let options = [];
+  if (["item", "cost_item", "random_item"].includes(command) && argumentIndex === 0) {
+    options = Array.from(state.contentIndex.itemsById.values()).map((item) => ({ id: item.id, name: item.name, type: "物品" }));
+  } else if (["join", "follow", "leave", "leave_follow", "grant_point", "get_point", "grant_exp", "get_exp", "levelup", "minus_maxpoints", "growtemplate", "animation", "input_name", "select_head"].includes(command) && argumentIndex === 0) {
+    options = uniqueStoryCharacters();
+  } else if (["learn", "remove"].includes(command) && argumentIndex === 0) {
+    options = ["skill", "external", "internal", "special", "talent"].map((id) => ({ id, type: "技能类型" }));
+  } else if (command === "upgrade" && argumentIndex === 0) {
+    options = [
+      "stat", "skill", "external", "internal", "quanzhang", "jianfa", "daofa", "qimen", "bili", "shenfa",
+      "wuxing", "fuyuan", "gengu", "dingli", "wuxue", "max_hp", "max_mp", "attack", "defence", "evasion",
+      "accuracy", "crit_chance", "crit_mult", "anti_crit_chance", "lifesteal", "anti_debuff", "speed", "movement",
+    ].map((id) => ({ id, type: "成长类型或属性" }));
+  } else if (["learn", "remove", "upgrade"].includes(command) && argumentIndex === 1) {
+    options = uniqueStoryCharacters();
+  } else if (["learn", "remove", "upgrade"].includes(command) && argumentIndex === 2) {
+    options = storySkillCompletionOptions(completedStoryCommandArgument(command, 0));
+  } else if (command === "maxlevel" && argumentIndex === 0) {
+    options = storySkillCompletionOptions("skill");
+  } else if (command === "growtemplate" && argumentIndex === 1) {
+    options = storyDefinitionCompletionOptions("grow-templates");
+  } else if (command === "menpai" && argumentIndex === 0) {
+    options = storyDefinitionCompletionOptions("sects");
+  } else if (command === "set_game_mode" && argumentIndex === 0) {
+    options = ["normal", "hard", "crazy"].map((id) => ({ id, type: "难度" }));
+  } else if (["toast", "world_trigger"].includes(command) && argumentIndex === 0) {
+    options = ["on", "off"].map((id) => ({ id, type: "开关" }));
+  } else if (command === "set_time_key" && argumentIndex === 2) {
+    return storySegmentCompletionItems(range).suggestions;
+  } else {
+    const typeByCommand = { map: "maps", set_map: "maps", tutorial: "maps", shop: "shops", battle: "battles" };
+    if (typeByCommand[command] && argumentIndex === 0) options = storyDefinitionCompletionOptions(typeByCommand[command]);
+  }
+  return options
+    .filter((option) => option.id)
+    .sort((left, right) => String(left.name || left.id).localeCompare(String(right.name || right.id), "zh-Hans-CN"))
+    .map((option) => ({
+      label: option.name && option.name !== option.id ? `${option.name} (${option.id})` : option.id,
+      filterText: `${option.id} ${option.name || ""}`,
+      kind: monaco.languages.CompletionItemKind.Reference,
+      insertText: option.id,
+      detail: option.type || "内容引用",
+      range,
+    }));
+}
+
+function completedStoryCommandArgument(command, argumentIndex) {
+  const line = monacoState.editor?.getPosition()?.lineNumber;
+  if (!line) return "";
+  const text = monacoState.editor.getModel()?.getLineContent(line).trim() || "";
+  const parts = text.split(/\s+/u);
+  return parts[0] === command ? parts[argumentIndex + 1] || "" : "";
+}
+
+function storySkillCompletionOptions(kind) {
+  const typesByKind = {
+    external: ["external-skills"],
+    internal: ["internal-skills"],
+    special: ["special-skills"],
+    talent: ["talents"],
+    skill: ["external-skills", "internal-skills", "special-skills"],
+  };
+  return (typesByKind[kind] || []).flatMap(storyDefinitionCompletionOptions);
+}
+
+function storyDefinitionCompletionOptions(type) {
+  const options = [];
+  for (const definitions of state.contentIndex.definitionsById.values()) {
+    for (const definition of definitions) {
+      if (definition.type === type) options.push({ id: definition.id, name: definition.displayName, type });
+    }
+  }
+  return options;
+}
+
+function uniqueStoryCharacters() {
+  const seen = new Set();
+  const characters = [];
+  for (const character of state.contentIndex.charactersByIdOrName.values()) {
+    if (!character?.id || seen.has(character.id)) continue;
+    seen.add(character.id);
+    characters.push({ id: character.id, name: character.name, type: "角色" });
+  }
+  return characters;
 }
 
 function handleTextEditorInput() {
   dirtyStateController.markDirty({ render: false });
   if (isStorySourceFile() && state.viewMode === "dsl") {
     updateStoryDslAnalysis({ showSuccess: false });
+  } else if (isStoryJsonDslFile() && state.viewMode === "json") {
+    state.storySource.jsonText = getEditorValue();
   }
   updateSearchMatches();
   renderEditorOutline();
@@ -690,6 +886,15 @@ async function switchMod(modId) {
     diagnostics: [],
     kind: "",
   };
+  state.storyWorkspace = {
+    search: "",
+    view: "dsl",
+    graphScope: "neighbors",
+    graphFilter: "all",
+    selectedDocumentPath: "",
+    selectedSegmentId: "",
+    selectedGraphNodeId: "",
+  };
   state.selectedStoryGroupId = "";
   state.selectedStoryNodeId = "";
   setEditorValue("");
@@ -749,6 +954,10 @@ function setMode(mode) {
   const isMartial = mode === "martial";
   const isResources = mode === "assets";
 
+  if (!isStory) {
+    restoreStoryEditorPlacement();
+  }
+
   document.body.classList.toggle("story-mode", isStory);
   document.body.classList.toggle("characters-mode", isCharacters);
   document.body.classList.toggle("maps-mode", isMaps);
@@ -782,17 +991,18 @@ function setMode(mode) {
   elements.shopWorkspaceView.classList.toggle("hidden", !isShops);
   elements.martialWorkspaceView.classList.toggle("hidden", !isMartial);
   elements.resourceWorkspaceView.classList.toggle("hidden", !isResources);
-  elements.workspacePaneHeader.classList.toggle("hidden", isOverview || isCharacters || isMaps || isGrowth || isSects || isItems || isShops || isMartial || isResources);
+  elements.workspacePaneHeader.classList.toggle("hidden", isOverview || isStory || isCharacters || isMaps || isGrowth || isSects || isItems || isShops || isMartial || isResources);
   elements.editorTools.classList.toggle("hidden", isOverview || isStory || isCharacters || isMaps || isGrowth || isSects || isItems || isShops || isMartial || isResources);
   elements.editorStatusbar.classList.toggle("hidden", isOverview || isStory || isCharacters || isMaps || isGrowth || isSects || isItems || isShops || isMartial || isResources);
 
   elements.fileSearch.value = "";
   elements.fileSearch.placeholder = isStory
-    ? "搜索剧情线"
+    ? "搜索剧情文档"
     : mode === "assets"
       ? "搜索资产"
       : "搜索文件";
-  elements.saveButton.disabled = mode !== "data" && !isCharacters && !isMaps && !isGrowth && !isSects && !isItems && !isShops && !isMartial;
+  const canSaveStory = isStory && (isStorySourceFile() || isStoryJsonFile());
+  elements.saveButton.disabled = mode !== "data" && !canSaveStory && !isCharacters && !isMaps && !isGrowth && !isSects && !isItems && !isShops && !isMartial;
   elements.formatButton.disabled = mode !== "data";
 
   if (mode === "home") {
@@ -867,14 +1077,12 @@ function setMode(mode) {
     setTextEditorVisible(false);
     renderResourceWorkspaceView();
   } else if (isStory) {
-    elements.currentPath.textContent = "剧情图谱";
-    elements.saveState.textContent = "";
-    elements.assetPreview.textContent = "剧情视图不预览资产";
+    elements.currentPath.textContent = state.currentPath || "剧情与任务";
+    elements.assetPreview.textContent = "流程视图由当前剧情草稿生成";
     elements.formModeButton.disabled = true;
     elements.jsonModeButton.disabled = true;
     elements.saveStorySourceButton.classList.add("hidden");
     elements.formView.classList.add("hidden");
-    setTextEditorVisible(false);
     elements.storyView.classList.remove("hidden");
     renderDirtyState();
     renderStoryView();
@@ -1069,7 +1277,9 @@ async function requestWorkspaceChange(mode) {
     await openShopWorkspace();
   } else if (mode === "martial") {
     await openMartialWorkspace();
-  } else if (mode === "data" || mode === "story" || mode === "assets") {
+  } else if (mode === "story") {
+    await openStoryWorkspace();
+  } else if (mode === "data" || mode === "assets") {
     await openWorkspaceMode(mode);
   } else {
     setMode(mode);
@@ -1096,6 +1306,26 @@ async function openWorkspaceMode(mode) {
       await openDataFile(state.dataFiles[0].path);
     }
   }
+}
+
+async function openStoryWorkspace() {
+  const documents = buildStoryDocuments(state.dataFiles, state.storyGraph);
+  if (documents.length === 0) {
+    setMode("story");
+    return;
+  }
+
+  const selectedPath = state.storyWorkspace.selectedDocumentPath;
+  const currentPath = isStorySourceFile(state.currentPath) || isStoryJsonFile(state.currentPath)
+    ? state.currentPath
+    : "";
+  const document = documents.find((item) => item.path === selectedPath)
+    || documents.find((item) => item.path === currentPath)
+    || documents[0];
+  await openDataFile(document.path);
+  state.storyWorkspace.selectedDocumentPath = document.path;
+  state.storyWorkspace.view = document.sourceKind;
+  setMode("story");
 }
 
 function renderResourceWorkspaceView(options = {}) {
@@ -2753,18 +2983,20 @@ function updateStorySourceButton() {
 function renderFileList() {
   const query = elements.fileSearch.value.trim().toLowerCase();
   if (state.mode === "story") {
-    renderStoryGroupList(query);
+    renderStoryDocumentList(query);
     bindScrollMemory(elements.fileList, state.workspaceScrollPositions, "sidebar:story");
     return;
   }
 
   if (state.mode === "data") {
+    elements.browserTitle.textContent = "数据文件";
     renderDataFileGroupList(query);
     bindScrollMemory(elements.fileList, state.workspaceScrollPositions, "sidebar:data");
     return;
   }
 
   const files = state.assetFiles;
+  elements.browserTitle.textContent = "资产文件";
   elements.fileList.replaceChildren();
 
   for (const file of files) {
@@ -2910,7 +3142,7 @@ function renderStoryGroupList(query) {
   }
 }
 
-function renderStoryView() {
+function renderLegacyStoryView() {
   elements.storyView.replaceChildren();
   const graph = state.storyGraph;
   if (!graph) {
@@ -3254,6 +3486,517 @@ function appendStoryTag(container, text, variant = "") {
   container.appendChild(tag);
 }
 
+function renderStoryDocumentList(query = "") {
+  const documents = buildStoryDocuments(state.dataFiles, state.storyGraph)
+    .filter((document) => matchesStoryDocument(document, query));
+  elements.browserTitle.textContent = "剧情文档";
+  elements.fileList.replaceChildren();
+
+  if (documents.length === 0) {
+    const empty = document.createElement("div");
+    empty.className = "file-item muted";
+    empty.textContent = query ? "没有匹配的剧情文档" : "当前 MOD 没有剧情文档";
+    elements.fileList.appendChild(empty);
+    return;
+  }
+
+  for (const documentModel of documents) {
+    const item = document.createElement("button");
+    item.type = "button";
+    item.className = "file-item";
+    item.title = documentModel.path;
+    item.classList.toggle("active", state.storyWorkspace.selectedDocumentPath === documentModel.path);
+    const title = document.createElement("div");
+    title.className = "file-title";
+    title.textContent = documentModel.title;
+    const meta = document.createElement("div");
+    meta.className = "file-meta";
+    meta.textContent = `${documentModel.sourceKind.toUpperCase()} · ${documentModel.segments.length} 段${documentModel.diagnosticCount ? ` · ${documentModel.diagnosticCount} 问题` : ""}`;
+    item.append(title, meta);
+    item.addEventListener("click", () => openStoryDocument(documentModel.path));
+    elements.fileList.appendChild(item);
+  }
+}
+
+async function openStoryDocument(path) {
+  if (path === state.currentPath && state.storyWorkspace.selectedDocumentPath === path) return;
+  await openDataFile(path);
+  if (state.currentPath !== path) return;
+  state.storyWorkspace.selectedDocumentPath = path;
+  state.storyWorkspace.selectedSegmentId = "";
+  state.storyWorkspace.selectedGraphNodeId = "";
+  state.storyWorkspace.view = isStorySourceFile(path) ? "dsl" : "json";
+  renderFileList();
+  renderStoryView();
+}
+
+function restoreStoryEditorPlacement() {
+  if (elements.editor.parentElement !== elements.editorPane) {
+    elements.editorPane.insertBefore(elements.editor, elements.editorStatusbar);
+  }
+  if (elements.monacoHost.parentElement !== elements.editorPane) {
+    elements.editorPane.insertBefore(elements.monacoHost, elements.editorStatusbar);
+  }
+}
+
+function placeStoryEditor(host) {
+  host.append(elements.editor, elements.monacoHost);
+}
+
+function renderStoryView() {
+  const previousCanvas = elements.storyView.querySelector(".story-graph-canvas");
+  if (previousCanvas) destroyStoryGraph(previousCanvas);
+  storyGraphRenderVersion += 1;
+  restoreStoryEditorPlacement();
+  elements.storyView.replaceChildren();
+
+  const documents = buildStoryDocuments(state.dataFiles, state.storyGraph);
+  const currentDocument = documents.find((item) => item.path === state.storyWorkspace.selectedDocumentPath)
+    || documents.find((item) => item.path === state.currentPath)
+    || documents[0];
+  if (!currentDocument) {
+    setTextEditorVisible(false);
+    const empty = document.createElement("div");
+    empty.className = "story-workspace-empty";
+    empty.textContent = "当前 MOD 没有可创作的 .story 或 .story.json 文档。";
+    elements.storyView.appendChild(empty);
+    return;
+  }
+
+  state.storyWorkspace.selectedDocumentPath = currentDocument.path;
+  const workspaceGraph = buildCurrentStoryWorkspaceGraph(currentDocument);
+  const segments = workspaceGraph.graph.nodes
+    .filter((node) => node.path === currentDocument.compiledPath)
+    .sort((left, right) => left.line - right.line || left.id.localeCompare(right.id, "zh-Hans-CN"));
+  if (!state.storyWorkspace.selectedSegmentId || !segments.some((segment) => segment.id === state.storyWorkspace.selectedSegmentId)) {
+    state.storyWorkspace.selectedSegmentId = segments[0]?.id || "";
+  }
+
+  const shell = document.createElement("div");
+  shell.className = "story-workspace-shell";
+  const catalog = createStorySegmentCatalog(currentDocument, segments, documents);
+  const main = document.createElement("section");
+  main.className = "story-workspace-main";
+  main.append(
+    createStoryWorkspaceHeader(currentDocument, segments.length),
+    createStoryViewbar(currentDocument),
+    createStoryWorkspaceStage(currentDocument, workspaceGraph));
+  shell.append(catalog, main);
+  elements.storyView.appendChild(shell);
+  scheduleEditorLayout();
+}
+
+function createStorySegmentCatalog(documentModel, segments, documents) {
+  const catalog = document.createElement("aside");
+  catalog.className = "story-catalog";
+  const header = document.createElement("div");
+  header.className = "story-catalog-header";
+  const title = document.createElement("div");
+  title.className = "story-catalog-title";
+  title.textContent = "剧情文档";
+  const documentSelect = document.createElement("select");
+  documentSelect.className = "story-document-select";
+  documentSelect.setAttribute("aria-label", "当前剧情文档");
+  for (const item of documents) {
+    const option = document.createElement("option");
+    option.value = item.path;
+    option.textContent = `${item.title} · ${item.sourceKind.toUpperCase()}`;
+    option.selected = item.path === documentModel.path;
+    documentSelect.appendChild(option);
+  }
+  documentSelect.addEventListener("change", () => openStoryDocument(documentSelect.value));
+  const meta = document.createElement("div");
+  meta.className = "story-catalog-meta";
+  meta.textContent = `段落目录 · ${segments.length} 个 segment`;
+  header.append(title, documentSelect, meta);
+
+  const search = document.createElement("input");
+  search.className = "story-catalog-search";
+  search.type = "search";
+  search.placeholder = "搜索段落 ID";
+  search.setAttribute("aria-label", "搜索当前剧情段落");
+  search.value = state.storyWorkspace.search;
+  bindImeSafeInput(search, (value) => {
+    state.storyWorkspace.search = value;
+    renderStoryView();
+    const nextSearch = elements.storyView.querySelector(".story-catalog-search");
+    nextSearch?.focus();
+    nextSearch?.setSelectionRange(value.length, value.length);
+  });
+
+  const normalized = state.storyWorkspace.search.trim().toLowerCase();
+  const list = document.createElement("div");
+  list.className = "story-segment-list";
+  for (const segment of segments.filter((item) => !normalized || item.id.toLowerCase().includes(normalized))) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "story-segment-item";
+    button.dataset.segmentId = segment.id;
+    button.classList.toggle("active", segment.id === state.storyWorkspace.selectedSegmentId);
+    const name = document.createElement("div");
+    name.className = "story-segment-name";
+    name.textContent = segment.id;
+    const segmentMeta = document.createElement("div");
+    segmentMeta.className = "story-segment-meta";
+    segmentMeta.textContent = `${segment.stepCount || 0} 步 · ${segment.incoming || 0} 入 / ${segment.outgoing || 0} 出`;
+    button.append(name, segmentMeta);
+    button.addEventListener("click", () => selectStorySegment(segment.id));
+    list.appendChild(button);
+  }
+  if (!list.childElementCount) {
+    const empty = document.createElement("div");
+    empty.className = "story-workspace-empty";
+    empty.textContent = "没有匹配的段落";
+    list.appendChild(empty);
+  }
+  bindScrollMemory(list, state.workspaceScrollPositions, `story:segments:${documentModel.path}`);
+  catalog.append(header, search, list);
+  return catalog;
+}
+
+function createStoryWorkspaceHeader(documentModel, segmentCount) {
+  const header = document.createElement("header");
+  header.className = "story-workspace-header";
+  const heading = document.createElement("div");
+  heading.className = "story-document-heading";
+  const title = document.createElement("div");
+  title.className = "story-document-title";
+  title.textContent = documentModel.path;
+  const meta = document.createElement("div");
+  meta.className = "story-document-meta";
+  meta.textContent = `${segmentCount} 个剧情段 · ${formatFileSize(documentModel.size)}`;
+  heading.append(title, meta);
+  const badge = document.createElement("div");
+  badge.className = "story-authority-badge";
+  badge.textContent = documentModel.sourceKind === "dsl" ? "DSL 是可写源" : "JSON 是可写源";
+  const actions = document.createElement("div");
+  actions.className = "story-document-actions";
+  actions.appendChild(badge);
+  if (documentModel.sourceKind === "json") {
+    const convert = document.createElement("button");
+    convert.type = "button";
+    convert.className = "button secondary";
+    convert.textContent = "转换为 DSL 源";
+    convert.title = "创建同名 .story，并从此由 DSL 生成 JSON";
+    convert.addEventListener("click", saveCurrentStoryJsonAsSource);
+    actions.appendChild(convert);
+  }
+  header.append(heading, actions);
+  return header;
+}
+
+function createStoryViewbar(documentModel) {
+  const bar = document.createElement("div");
+  bar.className = "story-viewbar";
+  const tabs = document.createElement("div");
+  tabs.className = "story-view-tabs";
+  for (const [id, label] of [["dsl", "DSL"], ["json", "JSON"], ["flow", "流程"]]) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "story-view-tab";
+    button.classList.toggle("active", state.storyWorkspace.view === id);
+    button.textContent = label;
+    button.addEventListener("click", () => setStoryWorkspaceView(id));
+    tabs.appendChild(button);
+  }
+  bar.appendChild(tabs);
+
+  if (state.storyWorkspace.view === "flow") {
+    const tools = document.createElement("div");
+    tools.className = "story-graph-tools";
+    for (const [id, label] of [["neighbors", "邻域"], ["group", "剧情线"], ["file", "当前文件"], ["overview", "全库"]]) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "story-scope-button";
+      button.classList.toggle("active", state.storyWorkspace.graphScope === id);
+      button.textContent = label;
+      button.addEventListener("click", () => {
+        state.storyWorkspace.graphScope = id;
+        state.storyWorkspace.selectedGraphNodeId = "";
+        renderStoryView();
+      });
+      tools.appendChild(button);
+    }
+    const filterLabel = document.createElement("label");
+    filterLabel.className = "story-graph-filter";
+    const filterText = document.createElement("span");
+    filterText.textContent = "筛选";
+    const filter = document.createElement("select");
+    filter.setAttribute("aria-label", "筛选流程节点");
+    for (const [value, label] of [["all", "全部"], ["issues", "问题"], ["entrypoints", "入口"], ["isolated", "孤立"]]) {
+      const option = document.createElement("option");
+      option.value = value;
+      option.textContent = label;
+      option.selected = state.storyWorkspace.graphFilter === value;
+      filter.appendChild(option);
+    }
+    filter.addEventListener("change", () => {
+      state.storyWorkspace.graphFilter = filter.value;
+      state.storyWorkspace.selectedGraphNodeId = "";
+      renderStoryView();
+    });
+    filterLabel.append(filterText, filter);
+    tools.appendChild(filterLabel);
+    const locate = document.createElement("button");
+    locate.type = "button";
+    locate.className = "story-graph-fit icon-button compact";
+    locate.title = "定位当前剧情段";
+    locate.setAttribute("aria-label", "定位当前剧情段");
+    locate.textContent = "⌖";
+    locate.addEventListener("click", () => {
+      const canvas = elements.storyView.querySelector(".story-graph-canvas");
+      if (canvas && !focusStoryGraph(canvas, state.storyWorkspace.selectedSegmentId)) {
+        showValidation(false, "当前筛选范围不包含所选剧情段。");
+      }
+    });
+    tools.appendChild(locate);
+    const fit = document.createElement("button");
+    fit.type = "button";
+    fit.className = "story-graph-fit icon-button compact";
+    fit.title = "适应画布";
+    fit.setAttribute("aria-label", "适应画布");
+    fit.textContent = "⊞";
+    fit.addEventListener("click", () => {
+      const canvas = elements.storyView.querySelector(".story-graph-canvas");
+      if (canvas) fitStoryGraph(canvas);
+    });
+    tools.appendChild(fit);
+    bar.appendChild(tools);
+  }
+  return bar;
+}
+
+function createStoryWorkspaceStage(documentModel, workspaceGraph) {
+  const stage = document.createElement("div");
+  stage.className = "story-workspace-stage";
+  if (state.storyWorkspace.view === "flow") {
+    setTextEditorVisible(false);
+    stage.appendChild(createStoryFlowStage(documentModel, workspaceGraph));
+    return stage;
+  }
+
+  const codeStage = document.createElement("div");
+  codeStage.className = "story-code-stage";
+  const note = document.createElement("div");
+  note.className = "story-source-note";
+  const isWritable = state.storyWorkspace.view === documentModel.sourceKind;
+  const label = document.createElement("strong");
+  label.textContent = isWritable ? "可编辑源" : "只读预览";
+  const detail = document.createElement("span");
+  detail.textContent = isWritable
+    ? "保存时只写入当前源文件"
+    : documentModel.sourceKind === "dsl" ? "由 DSL 草稿实时编译" : "由 JSON 草稿实时反编译";
+  note.append(label, detail);
+  const host = document.createElement("div");
+  host.className = "story-code-host";
+  placeStoryEditor(host);
+  codeStage.append(note, host);
+  stage.appendChild(codeStage);
+  setTextEditorVisible(true);
+  return stage;
+}
+
+function createStoryFlowStage(documentModel, workspaceGraph) {
+  const stage = document.createElement("div");
+  stage.className = "story-graph-stage";
+  const projection = buildStoryGraphProjection(workspaceGraph.graph, {
+    scope: state.storyWorkspace.graphScope,
+    filter: state.storyWorkspace.graphFilter,
+    selectedId: state.storyWorkspace.selectedSegmentId,
+    documentPath: documentModel.compiledPath,
+  });
+  const canvas = document.createElement("div");
+  canvas.className = "story-graph-canvas";
+  canvas.setAttribute("aria-label", "剧情流程图");
+  const status = document.createElement("div");
+  status.className = "story-graph-status";
+  status.textContent = projection.nodes.length === 0
+    ? "当前范围和筛选下没有可显示的节点"
+    : projection.truncated
+      ? `显示 500 / ${projection.totalNodeCount} 个节点，请缩小范围查看完整流向`
+      : `${projection.nodes.length} 个节点 · ${projection.edges.length} 条流向${workspaceGraph.usingSavedGraph ? " · 草稿无法解析，显示已保存版本" : ""}`;
+  stage.append(canvas, createStoryGraphLegend(), status);
+
+  const selectedNode = workspaceGraph.graph.nodes.find((node) => node.id === state.storyWorkspace.selectedGraphNodeId);
+  if (selectedNode) stage.appendChild(createStoryFlowDetail(selectedNode));
+
+  const renderVersion = storyGraphRenderVersion;
+  renderStoryGraph(canvas, projection, {
+    selectedId: state.storyWorkspace.selectedGraphNodeId,
+    onSelect: (nodeId) => handleStoryGraphNodeSelect(nodeId, projection, workspaceGraph.graph),
+    onBackgroundSelect: () => {
+      if (!state.storyWorkspace.selectedGraphNodeId) return;
+      state.storyWorkspace.selectedGraphNodeId = "";
+      renderStoryView();
+    },
+  }).catch((error) => {
+    if (renderVersion !== storyGraphRenderVersion || !canvas.isConnected) return;
+    status.textContent = `流程组件加载失败：${error instanceof Error ? error.message : String(error)}`;
+    canvas.classList.remove("loading");
+  });
+  return stage;
+}
+
+function createStoryGraphLegend() {
+  const legend = document.createElement("div");
+  legend.className = "story-graph-legend";
+  for (const [kind, label] of [["jump", "跳转"], ["time", "限时"], ["dynamic", "动态"], ["issue", "问题"]]) {
+    const item = document.createElement("span");
+    item.className = `story-graph-legend-item ${kind}`;
+    const marker = document.createElement("i");
+    marker.setAttribute("aria-hidden", "true");
+    item.append(marker, label);
+    legend.appendChild(item);
+  }
+  return legend;
+}
+
+function createStoryFlowDetail(node) {
+  const detail = document.createElement("aside");
+  detail.className = "story-flow-detail";
+  const header = document.createElement("div");
+  header.className = "story-flow-detail-header";
+  const title = document.createElement("div");
+  title.className = "story-flow-detail-title";
+  title.textContent = node.id;
+  const close = document.createElement("button");
+  close.type = "button";
+  close.className = "icon-button compact";
+  close.title = "关闭详情";
+  close.setAttribute("aria-label", "关闭详情");
+  close.textContent = "×";
+  close.addEventListener("click", () => {
+    state.storyWorkspace.selectedGraphNodeId = "";
+    renderStoryView();
+  });
+  header.append(title, close);
+  const grid = document.createElement("div");
+  grid.className = "story-flow-detail-grid";
+  for (const [label, value] of [["步骤", node.stepCount || 0], ["对白", node.dialogueCount || 0], ["命令", node.commandCount || 0], ["流向", node.outgoing || 0]]) {
+    const stat = document.createElement("div");
+    stat.className = "story-flow-stat";
+    stat.innerHTML = `<strong>${value}</strong>${label}`;
+    grid.appendChild(stat);
+  }
+  const open = document.createElement("button");
+  open.type = "button";
+  open.className = "button secondary";
+  open.textContent = "定位到源码";
+  open.addEventListener("click", () => openStoryGraphNode(node));
+  const actions = document.createElement("div");
+  actions.className = "story-flow-detail-actions";
+  if (state.storyWorkspace.graphScope !== "neighbors") {
+    const drilldown = document.createElement("button");
+    drilldown.type = "button";
+    drilldown.className = "button secondary";
+    drilldown.textContent = "查看邻域";
+    drilldown.addEventListener("click", () => {
+      state.storyWorkspace.graphScope = "neighbors";
+      state.storyWorkspace.selectedSegmentId = node.id;
+      state.storyWorkspace.selectedGraphNodeId = node.id;
+      renderStoryView();
+    });
+    actions.appendChild(drilldown);
+  }
+  actions.appendChild(open);
+  detail.append(header, grid, actions);
+  return detail;
+}
+
+function buildCurrentStoryWorkspaceGraph(documentModel) {
+  try {
+    const jsonText = getCurrentStoryJsonText();
+    const json = parseJsonText(jsonText);
+    const lineEntries = documentModel.sourceKind === "dsl"
+      ? getStoryDslOutlineEntries(state.storySource.text)
+      : getStoryJsonOutlineEntries(jsonText);
+    const lineBySegment = new Map(lineEntries.map((entry) => [entry.title, entry.line]));
+    const draft = buildDraftStoryGraph(json, { compiledPath: documentModel.compiledPath, lineBySegment });
+    return { graph: mergeDraftStoryGraph(state.storyGraph || {}, draft, documentModel.compiledPath), usingSavedGraph: false };
+  } catch {
+    return { graph: state.storyGraph || { nodes: [], edges: [], entrypoints: [] }, usingSavedGraph: true };
+  }
+}
+
+function getCurrentStoryJsonText() {
+  if (state.storySource.kind === "source") {
+    const sourceText = state.viewMode === "dsl" ? getEditorValue() : state.storySource.text;
+    state.storySource.text = sourceText;
+    const analysis = window.StoryDsl.analyzeStory(sourceText);
+    if (!analysis.jsonText) throw new Error("Story DSL 无法编译。");
+    state.storySource.jsonText = analysis.jsonText;
+    return analysis.jsonText;
+  }
+  if (state.storySource.kind === "json") {
+    if (state.viewMode === "json") state.storySource.jsonText = getEditorValue();
+    return state.storySource.jsonText;
+  }
+  throw new Error("当前文件不是剧情文档。");
+}
+
+function setStoryWorkspaceView(view) {
+  if (!["dsl", "json", "flow"].includes(view) || view === state.storyWorkspace.view) return;
+  if (view === "flow") {
+    try {
+      getCurrentStoryJsonText();
+    } catch {
+      // The flow view falls back to the last saved graph while the draft is invalid.
+    }
+    state.storyWorkspace.view = "flow";
+    renderStoryView();
+    return;
+  }
+  state.storyWorkspace.view = view;
+  setViewMode(view);
+  renderStoryView();
+}
+
+function selectStorySegment(segmentId) {
+  state.storyWorkspace.selectedSegmentId = segmentId;
+  state.storyWorkspace.selectedGraphNodeId = segmentId;
+  if (state.storyWorkspace.view === "flow") {
+    renderStoryView();
+    return;
+  }
+  for (const item of elements.storyView.querySelectorAll(".story-segment-item")) {
+    item.classList.toggle("active", item.dataset.segmentId === segmentId);
+  }
+  const entries = state.viewMode === "dsl"
+    ? getStoryDslOutlineEntries(getEditorValue())
+    : getStoryJsonOutlineEntries(getEditorValue());
+  const entry = entries.find((item) => item.title === segmentId);
+  if (entry) {
+    setEditorCursorToLine(entry.line, 1);
+    focusTextEditor();
+  }
+}
+
+function handleStoryGraphNodeSelect(nodeId, projection, graph) {
+  if (projection.overview) {
+    const firstNode = graph.nodes.find((node) => node.groupId === nodeId);
+    if (!firstNode) return;
+    state.storyWorkspace.graphScope = "group";
+    state.storyWorkspace.selectedSegmentId = firstNode.id;
+    state.storyWorkspace.selectedGraphNodeId = firstNode.id;
+  } else {
+    state.storyWorkspace.selectedGraphNodeId = nodeId;
+    state.storyWorkspace.selectedSegmentId = nodeId;
+  }
+  renderStoryView();
+}
+
+async function openStoryGraphNode(node) {
+  const documents = buildStoryDocuments(state.dataFiles, state.storyGraph);
+  const documentModel = documents.find((item) => item.compiledPath === node.path);
+  if (documentModel && documentModel.path !== state.currentPath) {
+    await openStoryDocument(documentModel.path);
+  }
+  state.storyWorkspace.view = documentModel?.sourceKind || (isStorySourceFile() ? "dsl" : "json");
+  setViewMode(state.storyWorkspace.view);
+  renderStoryView();
+  selectStorySegment(node.id);
+}
+
 async function openDataFile(path) {
   if (!(await confirmDiscardChanges())) {
     return;
@@ -3286,9 +4029,9 @@ async function openDataFile(path) {
       diagnostics: [],
       kind: "json",
     };
-    setEditorValue(storyDsl);
-    setViewMode("dsl");
-    updateStoryDslAnalysis({ showSuccess: true });
+    setEditorValue(file.content);
+    setViewMode("json");
+    showValidation(true, "Story JSON 已载入；JSON 是当前文档的可写源。");
   } else {
     state.storySource = {
       path: "",
@@ -3310,6 +4053,11 @@ async function openDataFile(path) {
   renderCursorState();
   renderFileList();
   renderProblemIndicators();
+  if (state.mode === "story") {
+    state.storyWorkspace.selectedDocumentPath = file.path;
+    state.storyWorkspace.view = isStorySourceFile(file.path) ? "dsl" : "json";
+    renderStoryView();
+  }
 }
 
 function openAssetFile(path) {
@@ -3383,8 +4131,12 @@ async function saveCurrentFile() {
     await saveMartialWorkspace();
     return;
   }
-  if (!state.currentPath || (state.mode !== "data" && state.mode !== "characters" && state.mode !== "maps" && state.mode !== "growth" && state.mode !== "sects" && state.mode !== "items" && state.mode !== "shops")) {
+  if (!state.currentPath || (state.mode !== "data" && state.mode !== "story" && state.mode !== "characters" && state.mode !== "maps" && state.mode !== "growth" && state.mode !== "sects" && state.mode !== "items" && state.mode !== "shops")) {
     showValidation(false, "请选择可保存的数据工作区。");
+    return;
+  }
+  if (state.mode === "story" && !isStorySourceFile() && !isStoryJsonFile()) {
+    showValidation(false, "请选择可保存的剧情文档。");
     return;
   }
 
@@ -3423,6 +4175,7 @@ async function saveCurrentFile() {
     await rebuildContentIndex();
     await loadStoryGraph();
     renderFileList();
+    if (state.mode === "story") renderStoryView();
     if (state.mode === "characters") {
       renderCharacterWorkspaceView();
     } else if (state.mode === "maps") {
@@ -3526,6 +4279,7 @@ async function saveCurrentStorySource() {
     await rebuildContentIndex();
     await loadStoryGraph();
     renderFileList();
+    if (state.mode === "story") renderStoryView();
   } catch (error) {
     showValidation(false, error.message);
   } finally {
@@ -3538,7 +4292,7 @@ function formatCurrentJson() {
     return;
   }
 
-  if (isStoryDslEditingFile()) {
+  if (isStorySourceFile()) {
     const analysis = updateStoryDslAnalysis({ showSuccess: true });
     if (analysis.jsonText) {
       state.storySource.jsonText = analysis.jsonText;
@@ -3562,32 +4316,29 @@ function formatCurrentJson() {
 }
 
 async function saveCurrentStoryJsonDsl() {
-  if (state.viewMode !== "dsl") {
-    setViewMode("dsl");
-  }
-
-  const analysis = updateStoryDslAnalysis({ showSuccess: false });
-  const errorCount = analysis.diagnostics.filter((item) => item.severity === "error").length;
-  if (errorCount > 0 || !analysis.jsonText) {
-    showValidation(false, `Story DSL 存在 ${errorCount} 个错误，未保存。`);
+  if (state.viewMode !== "json") setViewMode("json");
+  const content = getEditorValue();
+  try {
+    parseJsonText(content);
+  } catch (error) {
+    showValidation(false, formatJsonError(error));
     return;
   }
 
   elements.saveButton.disabled = true;
   try {
-    const sourceText = getEditorValue();
     const result = await requestJson("/api/data/file", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         path: state.currentPath,
-        content: analysis.jsonText,
+        content,
       }),
     });
 
-    state.storySource.text = sourceText;
     state.storySource.jsonText = result.content;
-    setEditorValue(sourceText);
+    state.storySource.text = window.StoryDsl.decompileStoryJson(parseJsonText(result.content));
+    setEditorValue(result.content);
     dirtyStateController.markClean({ render: false });
     renderDirtyState();
     renderCursorState();
@@ -3599,6 +4350,7 @@ async function saveCurrentStoryJsonDsl() {
     await rebuildContentIndex();
     await loadStoryGraph();
     renderFileList();
+    if (state.mode === "story") renderStoryView();
   } catch (error) {
     showValidation(false, error.message);
   } finally {
@@ -3612,19 +4364,31 @@ async function saveCurrentStoryJsonAsSource() {
     return;
   }
 
-  if (state.viewMode !== "dsl") {
-    setViewMode("dsl");
-  }
-
-  const analysis = updateStoryDslAnalysis({ showSuccess: false });
-  const errorCount = analysis.diagnostics.filter((item) => item.severity === "error").length;
-  if (errorCount > 0 || !analysis.jsonText) {
-    showValidation(false, `Story DSL 存在 ${errorCount} 个错误，未保存。`);
+  if (state.viewMode !== "json") setViewMode("json");
+  let sourceText;
+  let compiledJson;
+  let preflight;
+  try {
+    const json = parseJsonText(getEditorValue());
+    sourceText = window.StoryDsl.decompileStoryJson(json);
+    const analysis = window.StoryDsl.analyzeStory(sourceText);
+    if (!analysis.jsonText) {
+      throw new Error("反编译后的 DSL 无法重新编译，已阻止转换。");
+    }
+    compiledJson = analysis.jsonText;
+    preflight = findJsonDifferences(json, parseJsonText(compiledJson));
+  } catch (error) {
+    showValidation(false, error instanceof SyntaxError ? formatJsonError(error) : error.message);
     return;
   }
 
   const saveInfo = getStorySourceSaveInfo();
-  if (!(await confirmSaveStorySource(saveInfo))) {
+  if (!preflight.equal) {
+    await showStorySourceConversionBlocked(saveInfo, preflight);
+    showValidation(false, `DSL 无法无损表达当前 JSON，发现 ${preflight.total} 处结构差异，未创建源文件。`);
+    return;
+  }
+  if (!(await confirmSaveStorySource(saveInfo, preflight))) {
     elements.saveState.textContent = "已取消另存为 Story";
     return;
   }
@@ -3632,14 +4396,13 @@ async function saveCurrentStoryJsonAsSource() {
   elements.saveStorySourceButton.disabled = true;
   elements.saveButton.disabled = true;
   try {
-    const sourceText = getEditorValue();
     const result = await requestJson("/api/story/source/from-json", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         jsonPath: state.currentPath,
         content: sourceText,
-        compiledJson: analysis.jsonText,
+        compiledJson,
       }),
     });
 
@@ -3652,6 +4415,8 @@ async function saveCurrentStoryJsonAsSource() {
       kind: "source",
     };
     state.viewMode = "dsl";
+    state.storyWorkspace.selectedDocumentPath = result.path;
+    state.storyWorkspace.view = "dsl";
     dirtyStateController.markClean({ render: false });
     setEditorValue(result.content);
     setEditorReadOnly(false);
@@ -3671,6 +4436,7 @@ async function saveCurrentStoryJsonAsSource() {
     renderCursorState();
     renderEditorOutline();
     updateStorySourceButton();
+    if (state.mode === "story") renderStoryView();
   } catch (error) {
     showValidation(false, error.message);
   } finally {
@@ -3692,7 +4458,7 @@ function getStorySourceSaveInfo() {
   };
 }
 
-function confirmSaveStorySource(info) {
+function confirmSaveStorySource(info, preflight) {
   return new Promise((resolve) => {
     closeToolDialog();
 
@@ -3749,8 +4515,8 @@ function confirmSaveStorySource(info) {
     content.className = "tool-dialog-content story-source-confirm";
 
     const note = document.createElement("div");
-    note.className = "static-tool-note";
-    note.textContent = "确认后会把当前编辑器里的 DSL 保存为下面的 .story 文件；如果同名 .story 已存在，后端会拒绝写入，不会覆盖。";
+    note.className = "static-tool-note story-source-preflight-ok";
+    note.textContent = `无损预检通过：JSON → DSL → JSON 的结构和值完全一致。确认后会创建 .story；如果同名文件已存在，后端会拒绝写入。`;
 
     const details = document.createElement("dl");
     details.className = "story-source-confirm-list";
@@ -3758,6 +4524,7 @@ function confirmSaveStorySource(info) {
     appendConfirmDetail(details, "目标文件", info.sourcePath);
     appendConfirmDetail(details, "保存位置", info.absoluteSourcePath);
     appendConfirmDetail(details, "同步写回", info.absoluteJsonPath);
+    appendConfirmDetail(details, "无损预检", preflight?.equal ? "通过" : "未执行");
 
     const actions = document.createElement("div");
     actions.className = "tool-dialog-actions";
@@ -3778,6 +4545,91 @@ function confirmSaveStorySource(info) {
     document.body.appendChild(overlay);
     confirmButton.focus();
   });
+}
+
+function showStorySourceConversionBlocked(info, preflight) {
+  return new Promise((resolve) => {
+    closeToolDialog();
+    const overlay = document.createElement("div");
+    overlay.className = "tool-dialog-overlay";
+    const close = () => {
+      document.removeEventListener("keydown", handleKeydown);
+      overlay.remove();
+      resolve();
+    };
+    function handleKeydown(event) {
+      if (event.key === "Escape") close();
+    }
+    overlay.addEventListener("click", (event) => {
+      if (event.target === overlay) close();
+    });
+    document.addEventListener("keydown", handleKeydown);
+
+    const dialog = document.createElement("div");
+    dialog.className = "tool-dialog story-source-confirm-dialog";
+    const header = document.createElement("div");
+    header.className = "tool-dialog-header";
+    const titleGroup = document.createElement("div");
+    const title = document.createElement("div");
+    title.className = "tool-dialog-title";
+    title.textContent = "无法无损转换为 DSL";
+    const subtitle = document.createElement("div");
+    subtitle.className = "tool-dialog-subtitle";
+    subtitle.textContent = "当前 JSON 含有 DSL 不能完整表达的结构或值，因此不会创建或覆盖任何文件。";
+    titleGroup.append(title, subtitle);
+    const closeButton = document.createElement("button");
+    closeButton.type = "button";
+    closeButton.textContent = "关闭";
+    closeButton.addEventListener("click", close);
+    header.append(titleGroup, closeButton);
+
+    const content = document.createElement("div");
+    content.className = "tool-dialog-content story-source-confirm";
+    const note = document.createElement("div");
+    note.className = "static-tool-note story-source-preflight-blocked";
+    note.textContent = `发现 ${preflight.total} 处差异。请继续使用 JSON 作为权威源，或先手动改写这些字段。`;
+    const path = document.createElement("code");
+    path.className = "story-source-blocked-path";
+    path.textContent = info.jsonPath;
+    const list = document.createElement("div");
+    list.className = "story-source-difference-list";
+    for (const difference of preflight.differences) {
+      const row = document.createElement("div");
+      row.className = "story-source-difference";
+      const differencePath = document.createElement("code");
+      differencePath.textContent = difference.path;
+      const values = document.createElement("div");
+      values.textContent = `原值 ${formatStoryDifferenceValue(difference.original)} · 转换后 ${formatStoryDifferenceValue(difference.roundTripped)}`;
+      row.append(differencePath, values);
+      list.appendChild(row);
+    }
+    if (preflight.truncated) {
+      const more = document.createElement("div");
+      more.className = "story-source-difference-more";
+      more.textContent = `另有 ${preflight.total - preflight.differences.length} 处差异未展开。`;
+      list.appendChild(more);
+    }
+    const actions = document.createElement("div");
+    actions.className = "tool-dialog-actions";
+    const acknowledge = document.createElement("button");
+    acknowledge.type = "button";
+    acknowledge.className = "primary";
+    acknowledge.textContent = "知道了";
+    acknowledge.addEventListener("click", close);
+    actions.appendChild(acknowledge);
+    content.append(note, path, list, actions);
+    dialog.append(header, content);
+    overlay.appendChild(dialog);
+    document.body.appendChild(overlay);
+    acknowledge.focus();
+  });
+}
+
+function formatStoryDifferenceValue(value) {
+  if (value === undefined) return "<缺失>";
+  const text = JSON.stringify(value);
+  if (text === undefined) return String(value);
+  return text.length > 90 ? `${text.slice(0, 87)}...` : text;
 }
 
 function appendConfirmDetail(list, label, value) {
@@ -3835,23 +4687,22 @@ function renderCurrentFileInfo() {
 
 function getCurrentFileInfo() {
   if (state.mode === "story") {
-    const graph = state.storyGraph;
-    const group = graph?.groups?.find((item) => item.id === state.selectedStoryGroupId) || graph?.groups?.[0] || null;
-    if (!group) {
+    const documents = buildStoryDocuments(state.dataFiles, state.storyGraph);
+    const documentModel = documents.find((item) => item.path === state.storyWorkspace.selectedDocumentPath);
+    if (!documentModel) {
       return {
-        summary: "剧情图谱 · 暂无剧情段",
-        rows: [["视图", "剧情图谱"]],
+        summary: "剧情与任务 · 暂无剧情文档",
+        rows: [["工作区", "剧情与任务"]],
       };
     }
 
     return {
-      summary: `剧情图谱 · ${group.name} · ${group.nodeCount} 段 · ${group.diagnosticCount} 问题`,
+      summary: `${documentModel.title} · ${documentModel.sourceKind.toUpperCase()} 源 · ${documentModel.segments.length} 段`,
       rows: [
-        ["视图", "剧情图谱"],
-        ["当前分组", group.name],
-        ["剧情段", String(group.nodeCount)],
-        ["入口", String(group.entrypointCount)],
-        ["问题", String(group.diagnosticCount)],
+        ["可写源", documentModel.sourceKind.toUpperCase()],
+        ["当前视图", state.storyWorkspace.view === "flow" ? "流程" : state.storyWorkspace.view.toUpperCase()],
+        ["剧情段", String(documentModel.segments.length)],
+        ["问题", String(documentModel.diagnosticCount)],
       ],
     };
   }
@@ -4227,29 +5078,48 @@ function renderStoryDslStatus() {
 
 function setViewMode(mode) {
   if (isStoryDslEditingFile()) {
+    const dslIsSource = state.storySource.kind === "source";
     if (mode === "json") {
-      const analysis = updateStoryDslAnalysis({ showSuccess: false });
-      if (!analysis.jsonText) {
-        showValidation(false, "Story DSL 存在错误，无法预览 JSON。");
-        mode = "dsl";
-      } else {
-        state.storySource.text = state.viewMode === "dsl" ? getEditorValue() : state.storySource.text;
-        state.storySource.jsonText = analysis.jsonText;
-        setEditorValue(analysis.jsonText);
-        setEditorReadOnly(true);
+      if (dslIsSource) {
+        const analysis = updateStoryDslAnalysis({ showSuccess: false });
+        if (!analysis.jsonText) {
+          showValidation(false, "Story DSL 存在错误，无法预览 JSON。");
+          mode = "dsl";
+        } else {
+          state.storySource.text = state.viewMode === "dsl" ? getEditorValue() : state.storySource.text;
+          state.storySource.jsonText = analysis.jsonText;
+        }
+      } else if (state.viewMode === "json") {
+        state.storySource.jsonText = getEditorValue();
+      }
+      if (mode === "json") {
+        setEditorValue(state.storySource.jsonText);
+        setEditorReadOnly(dslIsSource);
         setEditorLanguage("json");
         resetEditorViewport();
       }
     }
 
     if (mode === "dsl") {
-      setEditorValue(state.viewMode === "json"
-        ? state.storySource.text
-        : getEditorValue());
-      setEditorReadOnly(false);
-      setEditorLanguage("storydsl");
-      setMonacoDiagnostics(state.storySource.diagnostics);
-      resetEditorViewport();
+      if (!dslIsSource) {
+        if (state.viewMode === "json") state.storySource.jsonText = getEditorValue();
+        try {
+          state.storySource.text = window.StoryDsl.decompileStoryJson(parseJsonText(state.storySource.jsonText));
+        } catch (error) {
+          showValidation(false, error instanceof SyntaxError ? formatJsonError(error) : error.message);
+          mode = "json";
+          setEditorValue(state.storySource.jsonText);
+          setEditorReadOnly(false);
+          setEditorLanguage("json");
+        }
+      }
+      if (mode === "dsl") {
+        setEditorValue(dslIsSource && state.viewMode !== "json" ? getEditorValue() : state.storySource.text);
+        setEditorReadOnly(!dslIsSource);
+        setEditorLanguage("storydsl");
+        setMonacoDiagnostics(dslIsSource ? state.storySource.diagnostics : []);
+        resetEditorViewport();
+      }
     }
 
     state.viewMode = mode === "json" ? "json" : "dsl";
@@ -4261,7 +5131,7 @@ function setViewMode(mode) {
     elements.jsonModeButton.classList.toggle("active", state.viewMode === "json");
     elements.formView.classList.add("hidden");
     setTextEditorVisible(true);
-    renderStoryDslStatus();
+    if (dslIsSource) renderStoryDslStatus();
     updateSearchMatches();
     renderEditorOutline();
     renderCursorState();
@@ -13524,7 +14394,7 @@ function isStoryJsonDslFile(path = state.currentPath) {
 }
 
 function canSaveCurrentStoryJsonAsSource() {
-  return state.mode === "data"
+  return (state.mode === "data" || state.mode === "story")
     && isStoryJsonDslFile()
     && !getStorySourcePathForJson(state.currentPath);
 }
