@@ -346,11 +346,7 @@ story speaker -> characters.json -> portrait -> resources.json -> assets/art
 
 ### 端口 5127 被占用
 
-默认地址是 `http://localhost:5127`。需要同时运行多个调试实例时，可以覆盖监听地址：
-
-```bash
-dotnet run --project tools/JsonEditor/JsonEditor.csproj -- --urls http://localhost:5128
-```
+当前端口在 `tools/JsonEditor/Program.cs` 中固定为 `http://localhost:5127`。请先关闭另一个正在使用 5127 的进程，再重新启动。
 
 macOS 可查看占用：
 

@@ -118,7 +118,7 @@ function createMetric(label, value, detail) {
   const card = document.createElement("article");
   card.className = "project-metric-card";
   const number = document.createElement("strong");
-  number.textContent = value === null || value === undefined ? "按需" : String(value);
+  number.textContent = String(value || 0);
   const title = document.createElement("span");
   title.textContent = label;
   const copy = document.createElement("small");
