@@ -1,11 +1,11 @@
-import { state } from "./core/state.js?v=20260711-stage9-3";
+import { state } from "./core/state.js?v=20260712-stage11-1";
 import { editorVersion } from "./core/version.js?v=20260711-stage9-1";
 import { createEditorApi } from "./core/api.js?v=20260711-core-17";
 import { createCommandRegistry } from "./core/commands.js?v=20260711-core-17";
 import { createDirtyStateController } from "./core/dirty-state.js?v=20260711-core-17";
 import { createEventBus } from "./core/events.js?v=20260711-core-17";
 import { createPreferences, storageKeys } from "./core/preferences.js?v=20260711-core-17";
-import { normalizeWorkspaceMode } from "./core/router.js?v=20260711-stage9-1";
+import { normalizeWorkspaceMode } from "./core/router.js?v=20260712-stage11-1";
 import { bindImeSafeInput } from "./core/input-composition.js?v=20260711-core-17";
 import { createProblem, summarizeProblems } from "./core/problems.js?v=20260711-core-17";
 import { createRecentItemsStore } from "./core/recent-items.js?v=20260711-core-17";
@@ -23,6 +23,7 @@ import { createGrowthTemplate, ensureGrowthTemplateShape } from "./domain/growth
 import { renderGrowthTemplateWorkspace } from "./workspaces/growth-templates.js?v=20260711-stage9-2";
 import { cloneJson as cloneSectJson, createSectDefinition, ensureSectShape, getSectIssues } from "./domain/sects.js?v=20260711-stage9-2";
 import { renderSectWorkspace } from "./workspaces/sects.js?v=20260711-stage9-2";
+import { createMapDefinition, ensureMapEventShape, ensureMapLocationShape, ensureMapShape, matchesMapSearch, moveMapLocation as moveMapLocationEntry } from "./domain/maps.js?v=20260712-stage11-1";
 import { createItemDefinition } from "./domain/items.js?v=20260711-stage6-1";
 import { renderItemWorkspace } from "./workspaces/items.js?v=20260711-stage6-2";
 import { createShopDefinition, createShopProduct, ensureShopShape as ensureShopWorkspaceShape, moveShopProduct as moveShopProductEntry } from "./domain/shops.js?v=20260711-stage7-1";
@@ -90,6 +91,7 @@ const elements = {
   homeTab: document.getElementById("homeTab"),
   problemsTab: document.getElementById("problemsTab"),
   charactersTab: document.getElementById("charactersTab"),
+  mapsTab: document.getElementById("mapsTab"),
   growthTab: document.getElementById("growthTab"),
   sectsTab: document.getElementById("sectsTab"),
   itemsTab: document.getElementById("itemsTab"),
@@ -100,6 +102,7 @@ const elements = {
   homeView: document.getElementById("homeView"),
   problemCenterView: document.getElementById("problemCenterView"),
   characterWorkspaceView: document.getElementById("characterWorkspaceView"),
+  mapWorkspaceView: document.getElementById("mapWorkspaceView"),
   growthWorkspaceView: document.getElementById("growthWorkspaceView"),
   sectWorkspaceView: document.getElementById("sectWorkspaceView"),
   itemWorkspaceView: document.getElementById("itemWorkspaceView"),
@@ -202,6 +205,7 @@ elements.problemCenterButton.addEventListener("click", () => requestWorkspaceCha
 elements.homeTab.addEventListener("click", () => requestWorkspaceChange("home"));
 elements.problemsTab.addEventListener("click", () => requestWorkspaceChange("problems"));
 elements.charactersTab.addEventListener("click", () => requestWorkspaceChange("characters"));
+elements.mapsTab.addEventListener("click", () => requestWorkspaceChange("maps"));
 elements.growthTab.addEventListener("click", () => requestWorkspaceChange("growth"));
 elements.sectsTab.addEventListener("click", () => requestWorkspaceChange("sects"));
 elements.itemsTab.addEventListener("click", () => requestWorkspaceChange("items"));
@@ -737,6 +741,7 @@ function setMode(mode) {
   const isOverview = mode === "home" || mode === "problems";
   const isStory = mode === "story";
   const isCharacters = mode === "characters";
+  const isMaps = mode === "maps";
   const isGrowth = mode === "growth";
   const isSects = mode === "sects";
   const isItems = mode === "items";
@@ -746,6 +751,7 @@ function setMode(mode) {
 
   document.body.classList.toggle("story-mode", isStory);
   document.body.classList.toggle("characters-mode", isCharacters);
+  document.body.classList.toggle("maps-mode", isMaps);
   document.body.classList.toggle("growth-mode", isGrowth);
   document.body.classList.toggle("sects-mode", isSects);
   document.body.classList.toggle("items-mode", isItems);
@@ -757,6 +763,7 @@ function setMode(mode) {
   elements.homeTab.classList.toggle("active", mode === "home");
   elements.problemsTab.classList.toggle("active", mode === "problems");
   elements.charactersTab.classList.toggle("active", isCharacters);
+  elements.mapsTab.classList.toggle("active", isMaps);
   elements.growthTab.classList.toggle("active", isGrowth);
   elements.sectsTab.classList.toggle("active", isSects);
   elements.itemsTab.classList.toggle("active", isItems);
@@ -768,15 +775,16 @@ function setMode(mode) {
   elements.homeView.classList.toggle("hidden", mode !== "home");
   elements.problemCenterView.classList.toggle("hidden", mode !== "problems");
   elements.characterWorkspaceView.classList.toggle("hidden", !isCharacters);
+  elements.mapWorkspaceView.classList.toggle("hidden", !isMaps);
   elements.growthWorkspaceView.classList.toggle("hidden", !isGrowth);
   elements.sectWorkspaceView.classList.toggle("hidden", !isSects);
   elements.itemWorkspaceView.classList.toggle("hidden", !isItems);
   elements.shopWorkspaceView.classList.toggle("hidden", !isShops);
   elements.martialWorkspaceView.classList.toggle("hidden", !isMartial);
   elements.resourceWorkspaceView.classList.toggle("hidden", !isResources);
-  elements.workspacePaneHeader.classList.toggle("hidden", isOverview || isCharacters || isGrowth || isSects || isItems || isShops || isMartial || isResources);
-  elements.editorTools.classList.toggle("hidden", isOverview || isStory || isCharacters || isGrowth || isSects || isItems || isShops || isMartial || isResources);
-  elements.editorStatusbar.classList.toggle("hidden", isOverview || isStory || isCharacters || isGrowth || isSects || isItems || isShops || isMartial || isResources);
+  elements.workspacePaneHeader.classList.toggle("hidden", isOverview || isCharacters || isMaps || isGrowth || isSects || isItems || isShops || isMartial || isResources);
+  elements.editorTools.classList.toggle("hidden", isOverview || isStory || isCharacters || isMaps || isGrowth || isSects || isItems || isShops || isMartial || isResources);
+  elements.editorStatusbar.classList.toggle("hidden", isOverview || isStory || isCharacters || isMaps || isGrowth || isSects || isItems || isShops || isMartial || isResources);
 
   elements.fileSearch.value = "";
   elements.fileSearch.placeholder = isStory
@@ -784,7 +792,7 @@ function setMode(mode) {
     : mode === "assets"
       ? "搜索资产"
       : "搜索文件";
-  elements.saveButton.disabled = mode !== "data" && !isCharacters && !isGrowth && !isSects && !isItems && !isShops && !isMartial;
+  elements.saveButton.disabled = mode !== "data" && !isCharacters && !isMaps && !isGrowth && !isSects && !isItems && !isShops && !isMartial;
   elements.formatButton.disabled = mode !== "data";
 
   if (mode === "home") {
@@ -805,6 +813,14 @@ function setMode(mode) {
     setTextEditorVisible(false);
     elements.currentPath.textContent = "characters.json";
     renderCharacterWorkspaceView();
+  } else if (isMaps) {
+    disposeEmbeddedCodeEditors(elements.formView);
+    elements.formView.replaceChildren();
+    elements.formView.classList.add("hidden");
+    elements.storyView.classList.add("hidden");
+    setTextEditorVisible(false);
+    elements.currentPath.textContent = "maps.json";
+    renderMapWorkspaceView();
   } else if (isGrowth) {
     disposeEmbeddedCodeEditors(elements.formView);
     elements.formView.replaceChildren();
@@ -882,7 +898,7 @@ function setMode(mode) {
   updateMapFocusControl();
   updateStorySourceButton();
   renderShellContext();
-  if (!isOverview && !isCharacters && !isGrowth && !isItems && !isShops && !isMartial && !isResources) {
+  if (!isOverview && !isCharacters && !isMaps && !isGrowth && !isItems && !isShops && !isMartial && !isResources) {
     renderFileList();
     renderCurrentFileInfo();
   }
@@ -911,6 +927,29 @@ async function requestWorkspaceChange(mode) {
         state.selectedRecordIndex = Math.min(state.selectedRecordIndex, Math.max(0, records.length - 1));
         state.viewMode = "form";
         setMode("characters");
+      } catch (error) {
+        showValidation(false, error instanceof SyntaxError ? formatJsonError(error) : error.message);
+      }
+    } else {
+      setMode("data");
+      setViewMode("json");
+    }
+    return;
+  }
+  const switchingMapSurface = isMapFile()
+    && ((state.mode === "maps" && mode === "data") || (state.mode === "data" && mode === "maps"));
+  if (switchingMapSurface) {
+    if (mode === "maps") {
+      try {
+        const records = parseJsonText(getEditorValue());
+        if (!Array.isArray(records) || !records.every((record) => record && typeof record === "object" && !Array.isArray(record))) {
+          throw new Error("maps.json 顶层必须是地图对象数组。");
+        }
+        state.formRecords = records;
+        state.formRecords.forEach(ensureMapShape);
+        state.selectedRecordIndex = Math.min(state.selectedRecordIndex, Math.max(0, records.length - 1));
+        state.viewMode = "form";
+        setMode("maps");
       } catch (error) {
         showValidation(false, error instanceof SyntaxError ? formatJsonError(error) : error.message);
       }
@@ -1018,6 +1057,8 @@ async function requestWorkspaceChange(mode) {
   }
   if (mode === "characters") {
     await openCharacterWorkspace();
+  } else if (mode === "maps") {
+    await openMapWorkspace();
   } else if (mode === "growth") {
     await openGrowthWorkspace();
   } else if (mode === "sects") {
@@ -1043,7 +1084,7 @@ async function reloadCurrentDataFile() {
   const file = await requestJson(`/api/data/file?path=${encodeURIComponent(state.currentPath)}`);
   setEditorValue(file.content);
   dirtyStateController.markClean({ render: false });
-  refreshFormFromEditor({ preferForm: state.viewMode === "form" || state.mode === "characters" || state.mode === "growth" || state.mode === "sects" || state.mode === "items" || state.mode === "shops" });
+  refreshFormFromEditor({ preferForm: state.viewMode === "form" || state.mode === "characters" || state.mode === "maps" || state.mode === "growth" || state.mode === "sects" || state.mode === "items" || state.mode === "shops" });
   renderDirtyState();
 }
 
@@ -2325,7 +2366,7 @@ function renderProjectHomeWorkspace() {
     recentEntries: state.recentEntries,
     quickStarts: [
       { label: "角色与伙伴", detail: "编辑角色、头像、成长与武学", icon: "人", mode: "characters", path: "characters.json", available: true },
-      { label: "地图与事件", detail: "编辑地图、点位和交互事件", icon: "图", mode: "data", path: "maps.json", available: false },
+      { label: "地图与事件", detail: "编辑地图、点位和交互事件", icon: "图", mode: "maps", path: "maps.json", available: true },
       { label: "剧情与任务", detail: "查看剧情图谱与静态诊断", icon: "文", mode: "story", available: true },
       { label: "物品与装备", detail: "编辑物品、装备和效果", icon: "物", mode: "data", path: "items.json", available: false },
       { label: "商店与经济", detail: "编辑商店商品、价格和限购", icon: "商", mode: "data", path: "shops.json", available: false },
@@ -2487,6 +2528,23 @@ function collectProjectProblems() {
 
   if (isCharacterFile() && state.formRecords.length > 0) {
     appendCurrentRecordProblems(problems, "character", "角色", getCharacterValidationIssues);
+  } else if (isMapFile() && state.formRecords.length > 0) {
+    for (let index = 0; index < state.formRecords.length; index += 1) {
+      const record = state.formRecords[index];
+      const recordId = String(record?.id || record?.name || `#${index + 1}`);
+      for (const message of getMapStats(record).issues) {
+        problems.push(createProblem({
+          id: `form:maps.json:${recordId}:${message}`,
+          severity: "warning",
+          source: "form-check",
+          sourceLabel: "地图工作区检查",
+          contentType: "map",
+          contentTypeLabel: "地图",
+          message,
+          location: { workspace: "maps", path: "maps.json", definitionId: recordId },
+        }));
+      }
+    }
   } else if (isItemFile() && state.formRecords.length > 0) {
     appendCurrentRecordProblems(problems, "item", "物品", getItemValidationIssues);
   }
@@ -2566,6 +2624,10 @@ async function openQuickStart(item) {
     await openCharacterWorkspace();
     return;
   }
+  if (item.mode === "maps") {
+    await openMapWorkspace();
+    return;
+  }
   if (item.mode === "story" || item.mode === "assets") {
     await openWorkspaceMode(item.mode);
     return;
@@ -2611,6 +2673,16 @@ async function locateProblem(problem) {
     if (index >= 0) {
       state.selectedRecordIndex = index;
       renderCharacterWorkspaceView();
+    }
+    return;
+  }
+  if (location.workspace === "maps" || location.path === "maps.json") {
+    await openMapWorkspace();
+    const index = state.formRecords.findIndex((record) => record?.id === location.definitionId || record?.name === location.definitionId);
+    if (index >= 0) {
+      state.selectedRecordIndex = index;
+      state.mapEditor.selectedLocationIndex = 0;
+      renderMapWorkspaceView();
     }
     return;
   }
@@ -3311,7 +3383,7 @@ async function saveCurrentFile() {
     await saveMartialWorkspace();
     return;
   }
-  if (!state.currentPath || (state.mode !== "data" && state.mode !== "characters" && state.mode !== "growth" && state.mode !== "sects" && state.mode !== "items" && state.mode !== "shops")) {
+  if (!state.currentPath || (state.mode !== "data" && state.mode !== "characters" && state.mode !== "maps" && state.mode !== "growth" && state.mode !== "sects" && state.mode !== "items" && state.mode !== "shops")) {
     showValidation(false, "请选择可保存的数据工作区。");
     return;
   }
@@ -3353,6 +3425,8 @@ async function saveCurrentFile() {
     renderFileList();
     if (state.mode === "characters") {
       renderCharacterWorkspaceView();
+    } else if (state.mode === "maps") {
+      renderMapWorkspaceView();
     } else if (state.mode === "growth") {
       renderGrowthWorkspaceView();
     } else if (state.mode === "sects") {
@@ -4266,6 +4340,13 @@ function setViewModeButtons() {
 }
 
 function renderFormView() {
+  if (state.mode === "maps") {
+    elements.formView.classList.add("hidden");
+    setTextEditorVisible(false);
+    renderMapWorkspaceView();
+    renderMapResourcePicker();
+    return;
+  }
   if (state.mode === "characters" || state.mode === "growth" || state.mode === "sects" || state.mode === "items" || state.mode === "shops") {
     elements.formView.classList.add("hidden");
     setTextEditorVisible(false);
@@ -4864,6 +4945,238 @@ function isCharacterFile() {
 
 function isMapFile() {
   return state.currentPath === "maps.json";
+}
+
+async function openMapWorkspace() {
+  if (state.mode === "maps" && isMapFile() && state.formRecords.length > 0) {
+    renderMapWorkspaceView();
+    return;
+  }
+  if (!state.dataFiles.some((file) => file.path === "maps.json")) {
+    showValidation(false, "当前 MOD 缺少 maps.json。");
+    return;
+  }
+  await openDataFile("maps.json");
+  if (!isMapFile()) return;
+  state.formRecords.forEach(ensureMapShape);
+  state.viewMode = "form";
+  state.mapEditor.tab = "locations";
+  setMode("maps");
+}
+
+function renderMapWorkspaceView() {
+  if (state.mode !== "maps") return;
+  disposeEmbeddedCodeEditors(elements.mapWorkspaceView);
+  elements.mapWorkspaceView.replaceChildren();
+  state.formRecords.forEach(ensureMapShape);
+  clampMapSelection();
+
+  const shell = document.createElement("div");
+  shell.className = "map-workspace-shell";
+  const catalog = document.createElement("aside");
+  catalog.className = "map-workspace-catalog";
+  const stage = document.createElement("main");
+  stage.className = "map-workspace-stage";
+  const inspector = document.createElement("aside");
+  inspector.className = "map-workspace-inspector";
+  shell.append(catalog, stage, inspector);
+  elements.mapWorkspaceView.appendChild(shell);
+
+  renderMapWorkspaceCatalog(catalog);
+  const record = state.formRecords[state.selectedRecordIndex];
+  if (!record) {
+    const empty = document.createElement("div");
+    empty.className = "map-workspace-empty";
+    empty.innerHTML = "<strong>还没有地图</strong><span>新建第一张地图后即可布置点位与事件。</span>";
+    stage.appendChild(empty);
+    const create = createActionButton("新建地图", addRecord);
+    create.classList.add("primary");
+    inspector.appendChild(create);
+    return;
+  }
+
+  renderMapWorkspaceStage(stage, record);
+  renderMapWorkspaceInspector(inspector, record);
+  renderMapResourcePicker();
+  renderProblemIndicators();
+}
+
+function renderMapWorkspaceCatalog(parent) {
+  const header = document.createElement("header");
+  header.className = "map-workspace-catalog-header";
+  const copy = document.createElement("div");
+  copy.innerHTML = `<strong>地图</strong><small>${state.formRecords.length} 张地图</small>`;
+  header.append(copy, createActionButton("新建", addRecord));
+
+  const search = document.createElement("input");
+  search.type = "search";
+  search.className = "map-workspace-search";
+  search.placeholder = "搜索地图、点位或事件目标";
+  search.value = state.mapEditor.search;
+  bindImeSafeInput(search, (value) => {
+    state.mapEditor.search = value;
+    renderMapWorkspaceView();
+    const next = elements.mapWorkspaceView.querySelector(".map-workspace-search");
+    next?.focus();
+    next?.setSelectionRange(value.length, value.length);
+  });
+
+  const filter = document.createElement("select");
+  filter.className = "map-workspace-filter";
+  for (const item of MAP_FILTERS) {
+    const option = document.createElement("option");
+    option.value = item.value;
+    option.textContent = item.label;
+    option.selected = state.mapEditor.filter === item.value;
+    filter.appendChild(option);
+  }
+  filter.addEventListener("change", () => {
+    state.mapEditor.filter = filter.value;
+    renderMapWorkspaceView();
+  });
+
+  const list = document.createElement("div");
+  list.className = "map-workspace-map-list";
+  const query = state.mapEditor.search.trim().toLowerCase();
+  let visibleCount = 0;
+  state.formRecords.forEach((record, index) => {
+    if (!matchesMapSearch(record, query) || !matchesMapFilter(record, state.mapEditor.filter)) return;
+    visibleCount += 1;
+    const stats = getMapStats(record);
+    const row = document.createElement("button");
+    row.type = "button";
+    row.className = "map-workspace-map-row";
+    row.classList.toggle("active", index === state.selectedRecordIndex);
+    row.addEventListener("click", () => {
+      state.selectedRecordIndex = index;
+      state.mapEditor.selectedLocationIndex = 0;
+      state.mapEditor.locationSearch = "";
+      state.mapEditor.canvasMode = "select";
+      state.mapEditor.tab = "locations";
+      renderMapWorkspaceView();
+    });
+    const thumb = createRecordThumb(record);
+    thumb.classList.add("map-workspace-map-thumb");
+    const body = document.createElement("span");
+    body.className = "map-workspace-map-copy";
+    const title = document.createElement("strong");
+    title.textContent = record.name || record.id || "未命名地图";
+    const id = document.createElement("code");
+    id.textContent = record.id || "缺少 ID";
+    const meta = document.createElement("small");
+    meta.textContent = `${isLargeMap(record) ? "大地图" : "小地图"} · ${stats.locations} 点位 · ${stats.events} 事件`;
+    body.append(title, id, meta);
+    const status = document.createElement("span");
+    status.className = `map-workspace-map-status ${stats.issues.length ? "warn" : "ok"}`;
+    status.textContent = stats.issues.length ? String(stats.issues.length) : "✓";
+    row.append(thumb, body, status);
+    list.appendChild(row);
+  });
+  if (!visibleCount) {
+    const empty = document.createElement("div");
+    empty.className = "map-workspace-empty compact";
+    empty.textContent = "没有匹配的地图";
+    list.appendChild(empty);
+  }
+  bindScrollMemory(list, state.workspaceScrollPositions, "maps:list");
+  parent.append(header, search, filter, list);
+}
+
+function renderMapWorkspaceStage(parent, record) {
+  const stats = getMapStats(record);
+  const header = document.createElement("header");
+  header.className = "map-workspace-stage-header";
+  const copy = document.createElement("div");
+  const eyebrow = document.createElement("span");
+  eyebrow.className = "map-workspace-eyebrow";
+  eyebrow.textContent = isLargeMap(record) ? "大地图" : "小地图";
+  const title = document.createElement("h2");
+  title.textContent = record.name || record.id || "未命名地图";
+  const id = document.createElement("code");
+  id.textContent = record.id || "缺少 ID";
+  copy.append(eyebrow, title, id);
+  const actions = document.createElement("div");
+  actions.className = "map-workspace-stage-actions";
+  actions.append(createActionButton("复制", duplicateRecord), createActionButton("删除", deleteRecord));
+  header.append(copy, actions);
+
+  const metrics = document.createElement("div");
+  metrics.className = "map-workspace-metrics";
+  for (const [value, label, tone] of [
+    [stats.locations, "点位", ""], [stats.events, "事件", ""], [stats.storyEvents, "剧情", ""],
+    [stats.issues.length, "待处理", stats.issues.length ? "warn" : "ok"],
+  ]) {
+    const metric = document.createElement("div");
+    metric.className = `map-workspace-metric ${tone}`;
+    metric.innerHTML = `<strong>${value}</strong><small>${label}</small>`;
+    metrics.appendChild(metric);
+  }
+
+  const canvasSection = document.createElement("section");
+  canvasSection.className = "map-workspace-canvas-section";
+  canvasSection.appendChild(isLargeMap(record) ? createLargeMapCanvas(record) : createSmallMapPreview(record));
+  canvasSection.appendChild(createMapWorkspaceLocationRail(record));
+  parent.append(header, metrics, canvasSection);
+}
+
+function createMapWorkspaceLocationRail(record) {
+  const rail = document.createElement("div");
+  rail.className = "map-workspace-location-rail";
+  record.locations.forEach((location, index) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "map-workspace-location-chip";
+    button.classList.toggle("active", index === state.mapEditor.selectedLocationIndex);
+    const info = getMapLocationIconInfo(location, location.events[0] || null);
+    button.append(createMapIconVisual(info, "", "map-workspace-location-icon"), document.createTextNode(location.name || location.id || `点位 ${index + 1}`));
+    button.addEventListener("click", () => {
+      state.mapEditor.selectedLocationIndex = index;
+      state.mapEditor.tab = "locations";
+      state.mapEditor.canvasMode = "select";
+      renderMapWorkspaceView();
+    });
+    rail.appendChild(button);
+  });
+  if (!record.locations.length) {
+    const empty = document.createElement("span");
+    empty.className = "map-workspace-rail-empty";
+    empty.textContent = "暂无点位";
+    rail.appendChild(empty);
+  }
+  return rail;
+}
+
+function renderMapWorkspaceInspector(parent, record) {
+  const tabs = [
+    ["locations", "点位与事件"],
+    ["settings", "地图设置"],
+    ["review", "检查与 JSON"],
+  ];
+  if (!tabs.some(([id]) => id === state.mapEditor.tab)) state.mapEditor.tab = "locations";
+  const nav = document.createElement("div");
+  nav.className = "map-workspace-tabs";
+  for (const [id, label] of tabs) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "map-workspace-tab";
+    button.classList.toggle("active", state.mapEditor.tab === id);
+    button.textContent = label;
+    button.addEventListener("click", () => {
+      state.mapEditor.tab = id;
+      renderMapWorkspaceView();
+    });
+    nav.appendChild(button);
+  }
+  const body = document.createElement("div");
+  body.className = "map-workspace-inspector-body";
+  if (state.mapEditor.tab === "settings") {
+    body.appendChild(createMapBasicSection(record));
+  } else if (state.mapEditor.tab === "review") {
+    body.append(createMapIntro(getMapStats(record)), createMapAdvancedJsonSection(record));
+  } else {
+    body.appendChild(createMapLocationPanel(record));
+  }
+  parent.append(nav, body);
 }
 
 const MAP_FILTERS = [
@@ -6089,12 +6402,10 @@ function createUniqueLocationId(record, baseId) {
 }
 
 function moveMapLocation(record, index, delta) {
-  const nextIndex = index + delta;
-  if (nextIndex < 0 || nextIndex >= record.locations.length) {
+  const nextIndex = moveMapLocationEntry(record, index, delta);
+  if (nextIndex === index) {
     return;
   }
-  const [location] = record.locations.splice(index, 1);
-  record.locations.splice(nextIndex, 0, location);
   state.mapEditor.selectedLocationIndex = nextIndex;
   syncFormToEditor();
   renderFormView();
@@ -6174,72 +6485,6 @@ function deleteMapEvent(location, index) {
   location.events.splice(index, 1);
   syncFormToEditor();
   renderFormView();
-}
-
-function ensureMapShape(record) {
-  if (typeof record.id !== "string") {
-    record.id = "";
-  }
-  if (typeof record.name !== "string") {
-    record.name = record.id || "";
-  }
-  if (!Array.isArray(record.musics)) {
-    record.musics = [];
-  }
-  if (!Array.isArray(record.locations)) {
-    record.locations = [];
-  }
-  record.locations = record.locations.map((location) => (
-    location && typeof location === "object" && !Array.isArray(location)
-      ? location
-      : createMapLocationTemplate(record, "点位")
-  ));
-  for (const location of record.locations) {
-    ensureMapLocationShape(location);
-  }
-}
-
-function ensureMapLocationShape(location) {
-  if (typeof location.id !== "string") {
-    location.id = "";
-  }
-  if (location.name != null && typeof location.name !== "string") {
-    location.name = String(location.name);
-  }
-  if (!Array.isArray(location.events)) {
-    location.events = [];
-  }
-  location.events = location.events.map((event) => (
-    event && typeof event === "object" && !Array.isArray(event)
-      ? event
-      : { type: "story", targetId: "", probability: 100, conditions: [] }
-  ));
-  for (const event of location.events) {
-    ensureMapEventShape(event);
-  }
-}
-
-function ensureMapEventShape(mapEvent) {
-  if (typeof mapEvent.type !== "string" || !mapEvent.type.trim()) {
-    mapEvent.type = "story";
-  }
-  if (typeof mapEvent.targetId !== "string") {
-    mapEvent.targetId = "";
-  }
-  if (!Number.isFinite(mapEvent.probability)) {
-    mapEvent.probability = 100;
-  }
-  if (!Array.isArray(mapEvent.conditions)) {
-    mapEvent.conditions = [];
-  }
-  mapEvent.conditions = mapEvent.conditions.map((condition) => (
-    condition && typeof condition === "object" && !Array.isArray(condition)
-      ? {
-        type: typeof condition.type === "string" ? condition.type : "always",
-        value: condition.value == null ? "" : String(condition.value),
-      }
-      : { type: "always", value: "" }
-  ));
 }
 
 function clampMapSelection() {
@@ -6608,32 +6853,6 @@ function getMapConditionValuePlaceholder(type) {
     zhoumu_greater_than: "周目数字",
     in_newbie_task: "无需填写",
   }[type] || "条件参数";
-}
-
-function matchesMapSearch(record, query) {
-  if (!query) {
-    return true;
-  }
-  const locationText = (record.locations || []).map((location) => [
-    location.id,
-    location.name,
-    location.description,
-    ...(location.events || []).flatMap((event) => [
-      event.type,
-      event.targetId,
-      event.description,
-      ...(event.conditions || []).map((condition) => `${condition.type}:${condition.value}`),
-    ]),
-  ].filter(Boolean).join(" ")).join(" ");
-  const haystack = [
-    record.id,
-    record.name,
-    record.description,
-    record.picture,
-    ...(record.musics || []),
-    locationText,
-  ].filter(Boolean).join(" ").toLowerCase();
-  return haystack.includes(query);
 }
 
 function matchesMapFilter(record, filter) {
@@ -9931,6 +10150,8 @@ function updateRecordField(record, key, value, options = {}) {
   if (options.rerender) {
     if (state.mode === "characters") {
       renderCharacterWorkspaceView();
+    } else if (state.mode === "maps") {
+      renderMapWorkspaceView();
     } else if (state.mode === "growth") {
       renderGrowthWorkspaceView();
     } else if (state.mode === "sects") {
@@ -9947,8 +10168,11 @@ function updateRecordField(record, key, value, options = {}) {
 
 function addRecord() {
   const record = createRecordTemplate();
-  state.formRecords.splice(state.selectedRecordIndex + 1, 0, record);
-  state.selectedRecordIndex += 1;
+  const insertionIndex = state.formRecords.length === 0
+    ? 0
+    : Math.min(state.selectedRecordIndex + 1, state.formRecords.length);
+  state.formRecords.splice(insertionIndex, 0, record);
+  state.selectedRecordIndex = insertionIndex;
   syncFormToEditor();
   renderFormView();
 }
@@ -10030,34 +10254,7 @@ function createRecordTemplate() {
 
   if (state.currentPath === "maps.json") {
     const id = createUniqueId("新地图");
-    return {
-      id,
-      name: id,
-      description: "",
-      picture: `地图.${id}`,
-      musics: [],
-      locations: [
-        {
-          id: "返回",
-          name: "返回",
-          position: {
-            x: -1,
-            y: -1,
-          },
-          description: "返回大地图",
-          picture: null,
-          events: [
-            {
-              type: "map",
-              targetId: "大地图",
-              probability: 100,
-              description: "返回大地图",
-              conditions: [],
-            },
-          ],
-        },
-      ],
-    };
+    return createMapDefinition(id);
   }
 
   if (state.currentPath === "items.json") {

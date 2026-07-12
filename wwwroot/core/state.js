@@ -21,6 +21,9 @@ export function createEditorState() {
       focusMode: false,
       canvasMode: "select",
       locationSearch: "",
+      search: "",
+      filter: "all",
+      tab: "locations",
       resourcePicker: {
         open: false,
         locationIndex: -1,
