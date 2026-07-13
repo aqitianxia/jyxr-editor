@@ -1,11 +1,12 @@
-import { state } from "./core/state.js?v=20260712-navigation-1";
+import { state } from "./core/state.js?v=20260714-workspace-context-1";
 import { editorVersion } from "./core/version.js?v=20260711-stage9-1";
 import { createEditorApi } from "./core/api.js?v=20260711-core-17";
 import { createCommandRegistry } from "./core/commands.js?v=20260711-core-17";
 import { createDirtyStateController } from "./core/dirty-state.js?v=20260711-core-17";
 import { createEventBus } from "./core/events.js?v=20260711-core-17";
 import { createPreferences, storageKeys } from "./core/preferences.js?v=20260712-navigation-1";
-import { normalizeWorkspaceMode } from "./core/router.js?v=20260712-stage11-1";
+import { rememberDataDocumentSelection, restoreDataDocumentSelection } from "./core/data-document-context.js?v=20260714-workspace-context-1";
+import { normalizeWorkspaceMode } from "./core/router.js?v=20260713-adapt-1";
 import { createJsonPropertyLineIndex } from "./domain/json-source-index.js?v=20260712-performance-1";
 import { bindImeSafeInput, rerenderPreservingInput } from "./core/input-composition.js?v=20260712-search-1";
 import { createProblem, summarizeProblems } from "./core/problems.js?v=20260711-core-17";
@@ -15,7 +16,7 @@ import { confirmAction, createDialogController } from "./ui/dialogs.js?v=2026071
 import { createField, createTextInput } from "./ui/fields.js?v=20260711-core-17";
 import { createTextList } from "./ui/lists.js?v=20260711-core-17";
 import { createProblemSummary, renderStatusMessage } from "./ui/problem-list.js?v=20260711-core-17";
-import { createShellController } from "./ui/shell.js?v=20260712-navigation-1";
+import { createShellController } from "./ui/shell.js?v=20260713-adapt-1";
 import { renderProjectHome } from "./ui/home.js?v=20260711-core-17";
 import { renderProblemCenter } from "./ui/problem-center.js?v=20260711-core-17";
 import { renderCharacterWorkspace } from "./ui/characters.js?v=20260711-stage6-2";
@@ -41,8 +42,15 @@ import {
   martialKinds,
   moveEntry as moveMartialEntry,
   resolvePresentation as resolveMartialPresentation,
-} from "./domain/martial-arts.js?v=20260711-stage8-5";
-import { renderMartialArtsWorkspace } from "./workspaces/martial-arts.js?v=20260711-stage8-5";
+} from "./domain/martial-arts.js?v=20260713-adapt-1";
+import { renderMartialArtsWorkspace } from "./workspaces/martial-arts.js?v=20260713-adapt-3";
+import {
+  cloneTalent,
+  createTalentDefinition,
+  ensureTalentShape,
+  getTalentIssues,
+} from "./domain/talents.js?v=20260713-talents-2";
+import { renderTalentWorkspace } from "./workspaces/talents.js?v=20260713-talents-2";
 import {
   buildResourceCatalog,
   findAssetPath as findCatalogAssetPath,
@@ -61,7 +69,8 @@ import {
   findJsonDifferences,
   matchesStoryDocument,
   mergeDraftStoryGraph,
-} from "./domain/story-workspace.js?v=20260712-stage12-2";
+  resolveStoryDocument,
+} from "./domain/story-workspace.js?v=20260714-workspace-context-1";
 import { destroyStoryGraph, fitStoryGraph, focusStoryGraph, renderStoryGraph } from "./ui/story-graph.js?v=20260712-stage12-2";
 
 const dataFileDisplayNames = new Map([
@@ -116,6 +125,7 @@ const elements = {
   itemsTab: document.getElementById("itemsTab"),
   shopsTab: document.getElementById("shopsTab"),
   martialTab: document.getElementById("martialTab"),
+  talentsTab: document.getElementById("talentsTab"),
   sidebarBrowser: document.getElementById("sidebarBrowser"),
   editorPane: document.getElementById("editorPane"),
   homeView: document.getElementById("homeView"),
@@ -127,6 +137,7 @@ const elements = {
   itemWorkspaceView: document.getElementById("itemWorkspaceView"),
   shopWorkspaceView: document.getElementById("shopWorkspaceView"),
   martialWorkspaceView: document.getElementById("martialWorkspaceView"),
+  talentWorkspaceView: document.getElementById("talentWorkspaceView"),
   resourceWorkspaceView: document.getElementById("resourceWorkspaceView"),
   workspacePaneHeader: document.getElementById("workspacePaneHeader"),
   editorTools: document.getElementById("editorTools"),
@@ -258,6 +269,7 @@ elements.sectsTab.addEventListener("click", () => requestWorkspaceChange("sects"
 elements.itemsTab.addEventListener("click", () => requestWorkspaceChange("items"));
 elements.shopsTab.addEventListener("click", () => requestWorkspaceChange("shops"));
 elements.martialTab.addEventListener("click", () => requestWorkspaceChange("martial"));
+elements.talentsTab.addEventListener("click", () => requestWorkspaceChange("talents"));
 elements.dataTab.addEventListener("click", () => requestWorkspaceChange("data"));
 elements.storyTab.addEventListener("click", () => requestWorkspaceChange("story"));
 elements.assetsTab.addEventListener("click", () => requestWorkspaceChange("assets"));
@@ -405,18 +417,22 @@ function registerStoryDslMonacoLanguage() {
     autoClosingPairs: [
       { open: "(", close: ")" },
       { open: "[", close: "]" },
+      { open: '"', close: '"' },
     ],
   });
   monaco.languages.setMonarchTokensProvider("storydsl", {
     defaultToken: "",
-    keywords: ["if", "elif", "else", "battle", "jump", "and", "or", "not", "win", "lose", "timeout"],
+    keywords: [
+      "if", "elif", "else", "when", "battle", "jump", "call", "return",
+      "and", "or", "not", "win", "lose", "timeout",
+    ],
     tokenizer: {
       root: [
         [/\/\/.*$/, "comment"],
         [/^(#)(.*)$/, ["keyword", "type.identifier"]],
         [/^(\s*)(-)(\s*)(win|lose|timeout)\b/, ["", "keyword", "", "keyword"]],
         [/^(\s*)(-)(\s*)(.*)$/, ["", "keyword", "", "string"]],
-        [/^(\s*)(if|elif|else|battle|jump)\b/, ["", "keyword"]],
+        [/^(\s*)(if|elif|else|when|battle|jump|call|return)\b/, ["", "keyword"]],
         [/^(\s*)([A-Za-z_][\w.]*)\b/, ["", "identifier"]],
         [/^(\s*)([^:：\s][^:：]*)([:：])/, ["", "type.identifier", "delimiter"]],
         [/\$[A-Za-z_][\w\u4e00-\u9fa5]*/, "variable"],
@@ -443,7 +459,7 @@ function registerStoryDslMonacoLanguage() {
       const command = completedParts[0] || "";
       const argumentIndex = completedParts.length - 1;
 
-      if (command === "jump") return storySegmentCompletionItems(range);
+      if (command === "jump" || command === "call") return storySegmentCompletionItems(range);
       const argumentItems = storyCommandArgumentCompletionItems(command, argumentIndex, range);
       if (argumentItems.length > 0) return { suggestions: argumentItems };
       if (completedParts.length > 0) return { suggestions: [] };
@@ -452,6 +468,7 @@ function registerStoryDslMonacoLanguage() {
         createStorySnippetCompletion("剧情段", "# ${1:segment_id}\n${2:旁白：剧情内容}", "创建新的剧情段", range),
         createStorySnippetCompletion("对话", "${1:旁白}：${2:对白内容}", "添加一行对白", range),
         createStorySnippetCompletion("选择分支", "${1:旁白}：${2:请选择}\n- ${3:选项一}\n  jump ${4:target}\n- ${5:选项二}\n  jump ${6:target}", "添加选择及跳转", range),
+        createStorySnippetCompletion("条件选项", "${1:旁白}：${2:请选择}\n- ${3:普通选项}\n  ${4:jump normal}\nwhen ${5:$rank >= 2}\n  - ${6:条件选项}\n    ${7:jump special}", "添加按条件成组显示的选项", range),
         createStorySnippetCompletion("条件分支", "if ${1:$flag == true}\n  ${2:jump target}\nelif ${3:$flag == false}\n  ${4:jump other}\nelse\n  ${5:jump fallback}", "添加 if / elif / else", range),
         createStorySnippetCompletion("战斗结果", "battle ${1:battle_id}\n- win\n  ${2:jump win_target}\n- lose\n  ${3:jump lose_target}", "添加战斗胜负分支", range),
         ...getStoryDslCommandNames().map((name) => ({
@@ -461,10 +478,10 @@ function registerStoryDslMonacoLanguage() {
           detail: "剧情命令",
           range,
         })),
-        ...["jump", "if", "elif", "else", "battle"].map((name) => ({
+        ...["jump", "call", "return", "if", "elif", "else", "when", "battle"].map((name) => ({
           label: name,
           kind: monaco.languages.CompletionItemKind.Keyword,
-          insertText: `${name} `,
+          insertText: name === "return" ? name : `${name} `,
           range,
         })),
         ...Array.from(state.contentIndex.storySpeakers.keys()).map((speaker) => ({
@@ -857,12 +874,33 @@ async function loadWorkspace() {
   state.workspace = await requestJson("/api/workspace");
   state.mods = Array.isArray(state.workspace.mods) ? state.workspace.mods : [];
   const savedModId = preferences.get(storageKeys.activeModId);
-  const defaultModId = state.workspace.defaultModId || "jyxr-expansion";
+  const defaultModId = state.workspace.defaultModId || "jyxr-base";
   state.activeModId = state.mods.some((mod) => mod.id === savedModId)
     ? savedModId
     : state.mods.some((mod) => mod.id === defaultModId)
       ? defaultModId
       : state.mods[0]?.id || defaultModId;
+
+  const requestedModId = state.activeModId;
+  let validation = await validateActiveMod({ render: false });
+  if (!validation.ok) {
+    const fallbackCandidates = [
+      defaultModId,
+      "jyxr-base",
+      ...state.mods.filter((mod) => mod.dataExists).map((mod) => mod.id),
+    ].filter((id, index, values) => id && id !== requestedModId && values.indexOf(id) === index);
+    for (const candidate of fallbackCandidates) {
+      if (!state.mods.some((mod) => mod.id === candidate)) continue;
+      state.activeModId = candidate;
+      const candidateValidation = await validateActiveMod({ render: false });
+      if (candidateValidation.ok) {
+        validation = candidateValidation;
+        preferences.set(storageKeys.activeModId, candidate);
+        showValidation(false, `MOD「${requestedModId}」与当前运行时不兼容，已切换到「${candidate}」：${state.modValidationById.get(requestedModId)?.message || "内容加载失败"}`);
+        break;
+      }
+    }
+  }
   renderModSelect();
   renderWorkspacePath();
   const activeMod = getActiveMod();
@@ -879,7 +917,9 @@ function renderModSelect() {
   for (const mod of state.mods) {
     const option = document.createElement("option");
     option.value = mod.id;
-    option.textContent = `${mod.name || mod.id} (${mod.id})`;
+    const validation = state.modValidationById.get(mod.id);
+    const status = validation ? (validation.ok ? "可用" : "不兼容") : "未检查";
+    option.textContent = `${mod.name || mod.id} (${mod.id}) · ${status}`;
     option.selected = mod.id === state.activeModId;
     elements.modSelect.appendChild(option);
   }
@@ -894,10 +934,12 @@ function renderModSelect() {
 
 function renderWorkspacePath() {
   const activeMod = getActiveMod();
+  const validation = state.modValidationById.get(state.activeModId);
+  const validationText = validation ? (validation.ok ? "内容兼容" : "内容不兼容") : "内容未检查";
   const modText = activeMod
     ? `${activeMod.name || activeMod.id} · ${activeMod.path}/data`
     : state.activeModId;
-  const summary = `正在编辑：${modText}  |  共享资产：${state.workspace.assetsPath}`;
+  const summary = `正在编辑：${modText} · ${validationText}  |  共享资产：${state.workspace.assetsPath}`;
   elements.workspacePath.textContent = summary;
   elements.workspacePath.title = summary;
 }
@@ -918,8 +960,10 @@ async function switchMod(modId) {
   state.currentPath = "";
   dirtyStateController.markClean({ render: false });
   state.records = [];
+  state.recordsPath = "";
   invalidateContentAnalysis();
   state.selectedRecordIndex = 0;
+  state.dataDocumentContexts.clear();
   state.workspaceScrollPositions = {};
   resetMartialWorkspaceState();
   state.storySource = {
@@ -949,6 +993,10 @@ async function switchMod(modId) {
   renderWorkspacePath();
   await loadDataFiles();
   await rebuildContentIndex();
+  const validation = await validateActiveMod();
+  showValidation(validation.ok, validation.ok
+    ? `MOD「${state.activeModId}」内容加载通过。`
+    : `MOD「${state.activeModId}」与当前运行时不兼容：${validation.message}`);
   state.recentEntries = recentItemsStore.read(state.activeModId);
   renderDirtyState();
   renderCursorState();
@@ -957,6 +1005,21 @@ async function switchMod(modId) {
 
 function getActiveMod() {
   return state.mods.find((mod) => mod.id === state.activeModId) || null;
+}
+
+async function validateActiveMod({ render = true } = {}) {
+  let validation;
+  try {
+    validation = await requestJson("/api/validate");
+  } catch (error) {
+    validation = { ok: false, message: error instanceof Error ? error.message : String(error) };
+  }
+  state.modValidationById.set(state.activeModId, validation);
+  if (render) {
+    renderModSelect();
+    renderWorkspacePath();
+  }
+  return validation;
 }
 
 async function loadDataFiles() {
@@ -1075,6 +1138,7 @@ function setMode(mode) {
   const isItems = mode === "items";
   const isShops = mode === "shops";
   const isMartial = mode === "martial";
+  const isTalents = mode === "talents";
   const isResources = mode === "assets";
 
   if (!isStory) {
@@ -1089,6 +1153,7 @@ function setMode(mode) {
   document.body.classList.toggle("items-mode", isItems);
   document.body.classList.toggle("shops-mode", isShops);
   document.body.classList.toggle("martial-mode", isMartial);
+  document.body.classList.toggle("talents-mode", isTalents);
   document.body.classList.toggle("resources-mode", isResources);
   document.body.classList.toggle("overview-mode", isOverview);
   elements.editorPane.classList.toggle("overview-workspace", isOverview);
@@ -1101,6 +1166,7 @@ function setMode(mode) {
   elements.itemsTab.classList.toggle("active", isItems);
   elements.shopsTab.classList.toggle("active", isShops);
   elements.martialTab.classList.toggle("active", isMartial);
+  elements.talentsTab.classList.toggle("active", isTalents);
   elements.dataTab.classList.toggle("active", mode === "data");
   elements.storyTab.classList.toggle("active", isStory);
   elements.assetsTab.classList.toggle("active", mode === "assets");
@@ -1113,10 +1179,11 @@ function setMode(mode) {
   elements.itemWorkspaceView.classList.toggle("hidden", !isItems);
   elements.shopWorkspaceView.classList.toggle("hidden", !isShops);
   elements.martialWorkspaceView.classList.toggle("hidden", !isMartial);
+  elements.talentWorkspaceView.classList.toggle("hidden", !isTalents);
   elements.resourceWorkspaceView.classList.toggle("hidden", !isResources);
-  elements.workspacePaneHeader.classList.toggle("hidden", isOverview || isStory || isCharacters || isMaps || isGrowth || isSects || isItems || isShops || isMartial || isResources);
-  elements.editorTools.classList.toggle("hidden", isOverview || isStory || isCharacters || isMaps || isGrowth || isSects || isItems || isShops || isMartial || isResources);
-  elements.editorStatusbar.classList.toggle("hidden", isOverview || isStory || isCharacters || isMaps || isGrowth || isSects || isItems || isShops || isMartial || isResources);
+  elements.workspacePaneHeader.classList.toggle("hidden", isOverview || isStory || isCharacters || isMaps || isGrowth || isSects || isItems || isShops || isMartial || isTalents || isResources);
+  elements.editorTools.classList.toggle("hidden", isOverview || isStory || isCharacters || isMaps || isGrowth || isSects || isItems || isShops || isMartial || isTalents || isResources);
+  elements.editorStatusbar.classList.toggle("hidden", isOverview || isStory || isCharacters || isMaps || isGrowth || isSects || isItems || isShops || isMartial || isTalents || isResources);
 
   elements.fileSearch.value = "";
   elements.fileSearch.placeholder = isStory
@@ -1125,7 +1192,7 @@ function setMode(mode) {
       ? "搜索资产"
       : "搜索文件";
   const canSaveStory = isStory && (isStorySourceFile() || isStoryJsonFile());
-  elements.saveButton.disabled = mode !== "data" && !canSaveStory && !isCharacters && !isMaps && !isGrowth && !isSects && !isItems && !isShops && !isMartial;
+  elements.saveButton.disabled = mode !== "data" && !canSaveStory && !isCharacters && !isMaps && !isGrowth && !isSects && !isItems && !isShops && !isMartial && !isTalents;
   elements.formatButton.disabled = mode !== "data";
 
   if (mode === "home") {
@@ -1171,6 +1238,11 @@ function setMode(mode) {
     setTextEditorVisible(false);
     elements.currentPath.textContent = "武学与奥义";
     renderMartialWorkspaceView();
+  } else if (isTalents) {
+    elements.storyView.classList.add("hidden");
+    setTextEditorVisible(false);
+    elements.currentPath.textContent = "talents.json";
+    renderTalentWorkspaceView();
   } else if (isResources) {
     elements.storyView.classList.add("hidden");
     setTextEditorVisible(false);
@@ -1198,7 +1270,7 @@ function setMode(mode) {
 
   updateStorySourceButton();
   renderShellContext();
-  if (!isOverview && !isCharacters && !isMaps && !isGrowth && !isItems && !isShops && !isMartial && !isResources) {
+  if (!isOverview && !isCharacters && !isMaps && !isGrowth && !isItems && !isShops && !isMartial && !isTalents && !isResources) {
     renderFileList();
     renderCurrentFileInfo();
   }
@@ -1210,8 +1282,8 @@ function setMode(mode) {
 
 async function requestWorkspaceChange(mode) {
   if (mode === state.mode) return;
-  if (state.mode === "martial") {
-    if (dirtyStateController.isDirty() && !(await confirmDiscardChanges("武学区有尚未保存的修改，是否放弃全部修改？"))) return;
+  if (state.mode === "martial" && dirtyStateController.isDirty()) {
+    if (!(await confirmDiscardChanges("武学区有尚未保存的修改，是否放弃全部修改？"))) return;
     resetMartialWorkspaceState();
     dirtyStateController.markClean({ render: false });
   }
@@ -1364,6 +1436,8 @@ async function requestWorkspaceChange(mode) {
     await openShopWorkspace();
   } else if (mode === "martial") {
     await openMartialWorkspace();
+  } else if (mode === "talents") {
+    await openTalentWorkspace();
   } else if (mode === "story") {
     await openStoryWorkspace();
   } else if (mode === "data" || mode === "assets") {
@@ -1405,16 +1479,26 @@ async function openStoryWorkspace() {
   }
 
   const selectedPath = state.storyWorkspace.selectedDocumentPath;
+  const selectedSegmentId = state.storyWorkspace.selectedSegmentId;
+  const selectedView = state.storyWorkspace.view;
   const currentPath = isStorySourceFile(state.currentPath) || isStoryJsonFile(state.currentPath)
     ? state.currentPath
     : "";
-  const document = documents.find((item) => item.path === selectedPath)
-    || documents.find((item) => item.path === currentPath)
-    || documents[0];
-  await openDataFile(document.path);
+  const document = resolveStoryDocument(documents, selectedPath, currentPath);
+  const restoreDocumentContext = document.path === selectedPath;
+  const opened = await openDataFile(document.path);
+  if (!opened) return;
   state.storyWorkspace.selectedDocumentPath = document.path;
-  state.storyWorkspace.view = document.sourceKind;
+  state.storyWorkspace.selectedSegmentId = restoreDocumentContext ? selectedSegmentId : "";
+  state.storyWorkspace.selectedGraphNodeId = restoreDocumentContext ? state.storyWorkspace.selectedGraphNodeId : "";
+  state.storyWorkspace.view = restoreDocumentContext && ["dsl", "json", "flow"].includes(selectedView)
+    ? selectedView
+    : document.sourceKind;
+  if (state.storyWorkspace.view !== "flow") setViewMode(state.storyWorkspace.view);
   setMode("story");
+  if (restoreDocumentContext && state.storyWorkspace.view !== "flow" && state.storyWorkspace.selectedSegmentId) {
+    selectStorySegment(state.storyWorkspace.selectedSegmentId);
+  }
 }
 
 function rerenderSearchResults(input, render, findReplacement, scrollKey = "") {
@@ -1624,6 +1708,123 @@ async function openItemWorkspace() {
   await openDataFile("items.json", { initializeEditor: false });
   if (!isItemFile()) return;
   setMode("items");
+}
+
+async function openTalentWorkspace() {
+  if (state.mode === "talents" && state.currentPath === "talents.json" && state.records.length > 0) {
+    renderTalentWorkspaceView();
+    return;
+  }
+  if (!state.dataFiles.some((file) => file.path === "talents.json")) {
+    showValidation(false, "当前 MOD 缺少 talents.json。");
+    return;
+  }
+  await openDataFile("talents.json", { initializeEditor: false });
+  if (state.currentPath !== "talents.json") return;
+  state.records.forEach(ensureTalentShape);
+  setMode("talents");
+}
+
+function createTalentOptions() {
+  const definitionsOfType = (...types) => {
+    const values = [];
+    for (const definitions of state.contentIndex.definitionsById.values()) {
+      for (const definition of definitions) {
+        if (!types.includes(definition.type)) continue;
+        values.push([definition.id, definition.displayName || definition.record?.name || definition.id]);
+      }
+    }
+    return Array.from(new Map(values.map((entry) => [entry[0], entry])).values())
+      .sort((left, right) => left[1].localeCompare(right[1], "zh-Hans-CN"));
+  };
+  return {
+    talents: state.records.map((record) => [record.id, record.name || record.id]).filter(([id]) => id),
+    buffs: definitionsOfType("buffs"),
+    skills: definitionsOfType("external-skills", "internal-skills", "special-skills", "form-skills"),
+    legends: definitionsOfType("legend-skills"),
+  };
+}
+
+function getTalentIssueContext() {
+  const idCounts = new Map();
+  for (const record of state.records) {
+    if (!record?.id) continue;
+    idCounts.set(record.id, (idCounts.get(record.id) || 0) + 1);
+  }
+  const options = createTalentOptions();
+  return {
+    idCounts,
+    talentIds: new Set(options.talents.map(([id]) => id)),
+    buffIds: new Set(options.buffs.map(([id]) => id)),
+  };
+}
+
+function renderTalentWorkspaceView() {
+  if (state.mode !== "talents") return;
+  state.selectedRecordIndex = Math.max(0, Math.min(state.selectedRecordIndex, Math.max(0, state.records.length - 1)));
+  const issueContext = getTalentIssueContext();
+  renderTalentWorkspace(elements.talentWorkspaceView, {
+    state,
+    options: createTalentOptions(),
+    issueContext,
+    getIssues: (record) => getTalentIssues(record, issueContext),
+    onSelect: (index) => { state.selectedRecordIndex = index; state.talentWorkspace.tab = "overview"; renderTalentWorkspaceView(); },
+    onSearch: (value) => {
+      const node = elements.talentWorkspaceView.querySelector(".talent-list-search");
+      state.talentWorkspace.search = value;
+      rerenderSearchResults(node, renderTalentWorkspaceView,
+        () => elements.talentWorkspaceView.querySelector(".talent-list-search"), "talents:list");
+    },
+    onFilter: (value) => { state.talentWorkspace.filter = value; renderTalentWorkspaceView(); },
+    onTab: (value) => { state.talentWorkspace.tab = value; renderTalentWorkspaceView(); },
+    onMutate: () => { syncRecordsToEditor(); renderTalentWorkspaceView(); },
+    onReplace: (next) => {
+      if (!next || typeof next !== "object" || Array.isArray(next)) {
+        showValidation(false, "天赋定义必须是 JSON 对象。");
+        return;
+      }
+      state.records[state.selectedRecordIndex] = ensureTalentShape(next);
+      syncRecordsToEditor();
+      renderTalentWorkspaceView();
+    },
+    onJsonError: (error) => showValidation(false, error.message),
+    onCreate: createTalentRecord,
+    onDuplicate: duplicateTalentRecord,
+    onDelete: deleteTalentRecord,
+  });
+  renderProblemIndicators();
+}
+
+function createTalentRecord() {
+  const id = createUniqueId("新天赋");
+  state.records.push(createTalentDefinition(id));
+  state.selectedRecordIndex = state.records.length - 1;
+  state.talentWorkspace.search = "";
+  state.talentWorkspace.filter = "all";
+  state.talentWorkspace.tab = "overview";
+  syncRecordsToEditor();
+  renderTalentWorkspaceView();
+}
+
+function duplicateTalentRecord() {
+  const current = state.records[state.selectedRecordIndex];
+  if (!current) return;
+  const copy = cloneTalent(current);
+  copy.id = createUniqueId(`${String(current.id || "新天赋")}_copy`);
+  copy.name = `${String(current.name || current.id || "新天赋")} 副本`;
+  state.records.splice(state.selectedRecordIndex + 1, 0, copy);
+  state.selectedRecordIndex += 1;
+  syncRecordsToEditor();
+  renderTalentWorkspaceView();
+}
+
+function deleteTalentRecord() {
+  const current = state.records[state.selectedRecordIndex];
+  if (!current || !confirmAction(`确认删除天赋「${current.name || current.id}」？\n\n替换关系、角色、物品和战斗效果中的引用不会自动修改。`)) return;
+  state.records.splice(state.selectedRecordIndex, 1);
+  state.selectedRecordIndex = Math.max(0, Math.min(state.selectedRecordIndex, state.records.length - 1));
+  syncRecordsToEditor();
+  renderTalentWorkspaceView();
 }
 
 function renderItemWorkspaceView(renderOptions = {}) {
@@ -2158,10 +2359,11 @@ async function openMartialWorkspace() {
     workspace.baselines = Object.fromEntries(documents.map(([kind, records]) => [kind, JSON.stringify(records)]));
     workspace.dirtyKinds = new Set();
     workspace.animationCatalog = animations;
-    workspace.selectedIndex = 0;
-    workspace.selectedFormIndex = -1;
-    workspace.tab = "overview";
+    workspace.resourcePicker = { open: false, type: "", search: "", selectedId: "", target: null, field: "", clearValue: null };
+    rememberCurrentDataDocumentContext();
     state.currentPath = getMartialPath(workspace.activeKind);
+    state.records = [];
+    state.recordsPath = "";
     dirtyStateController.markClean({ render: false });
     setMode("martial");
   } catch (error) {
@@ -3348,6 +3550,7 @@ function createStoryNodeButton(node) {
   if (node.choiceCount > 0) appendStoryTag(tags, `选择 ${node.choiceCount}`);
   if (node.branchCount > 0) appendStoryTag(tags, `条件 ${node.branchCount}`);
   if (node.battleCount > 0) appendStoryTag(tags, `战斗 ${node.battleCount}`);
+  if (node.callCount > 0) appendStoryTag(tags, `调用 ${node.callCount}`);
   if (node.externalEntrypoints > 0) appendStoryTag(tags, `入口 ${node.externalEntrypoints}`, "entry");
   button.append(title, meta, tags);
   button.addEventListener("click", () => {
@@ -3385,7 +3588,9 @@ function renderStoryNodeDetail(panel, graph, node) {
     createStoryMetric("选择", node.choiceCount),
     createStoryMetric("条件", node.branchCount),
     createStoryMetric("战斗", node.battleCount),
-    createStoryMetric("跳转", node.jumpCount));
+    createStoryMetric("跳转", node.jumpCount),
+    createStoryMetric("调用", node.callCount),
+    createStoryMetric("返回", node.returnCount));
   panel.appendChild(stats);
 
   const entries = graph.entrypoints.filter((entry) => entry.targetId === node.id);
@@ -4070,12 +4275,15 @@ async function openDataFile(path, options = {}) {
     return;
   }
 
+  rememberCurrentDataDocumentContext();
+
   const [file] = await Promise.all([
     requestJson(`/api/data/file?path=${encodeURIComponent(path)}`),
     options.initializeEditor === false ? Promise.resolve(false) : initializeMonacoEditor(),
     ensureAssetFilesLoaded(),
   ]);
   state.currentPath = file.path;
+  state.selectedRecordIndex = restoreDataDocumentSelection(state.dataDocumentContexts, file.path);
   recordRecentEntry("data", file.path);
   dirtyStateController.markClean({ render: false });
   setEditorValue(file.content);
@@ -4087,12 +4295,16 @@ async function openDataFile(path, options = {}) {
   elements.saveState.textContent = "";
   preferences.set(getLastDataPathStorageKey(), file.path);
   if (isStorySourceFile(file.path)) {
+    state.records = [];
+    state.recordsPath = "";
     state.storySource.path = file.path;
     state.storySource.text = file.content;
     state.storySource.kind = "source";
     setViewMode("dsl");
     updateStoryDslAnalysis({ showSuccess: true });
   } else if (isStoryJsonFile(file.path)) {
+    state.records = [];
+    state.recordsPath = "";
     const storyDsl = window.StoryDsl.decompileStoryJson(parseJsonText(file.content));
     state.storySource = {
       path: file.path,
@@ -4124,16 +4336,14 @@ async function openDataFile(path, options = {}) {
   renderCursorState();
   renderFileList();
   renderProblemIndicators();
-  if (state.mode === "story") {
-    state.storyWorkspace.selectedDocumentPath = file.path;
-    state.storyWorkspace.view = isStorySourceFile(file.path) ? "dsl" : "json";
-    renderStoryView();
-  }
   return true;
 }
 
 function openAssetFile(path) {
+  rememberCurrentDataDocumentContext();
   state.currentPath = path;
+  state.records = [];
+  state.recordsPath = "";
   recordRecentEntry("assets", path);
   dirtyStateController.markClean({ render: false });
   state.storySource = {
@@ -4202,7 +4412,7 @@ async function saveCurrentFile() {
     await saveMartialWorkspace();
     return;
   }
-  if (!state.currentPath || (state.mode !== "data" && state.mode !== "story" && state.mode !== "characters" && state.mode !== "maps" && state.mode !== "growth" && state.mode !== "sects" && state.mode !== "items" && state.mode !== "shops")) {
+  if (!state.currentPath || (state.mode !== "data" && state.mode !== "story" && state.mode !== "characters" && state.mode !== "maps" && state.mode !== "growth" && state.mode !== "sects" && state.mode !== "items" && state.mode !== "shops" && state.mode !== "talents")) {
     showValidation(false, "请选择可保存的数据工作区。");
     return;
   }
@@ -4258,6 +4468,8 @@ async function saveCurrentFile() {
       renderItemWorkspaceView();
     } else if (state.mode === "shops") {
       renderShopWorkspaceView();
+    } else if (state.mode === "talents") {
+      renderTalentWorkspaceView();
     }
   } catch (error) {
     showValidation(false, error instanceof SyntaxError ? formatJsonError(error) : error.message);
@@ -5226,19 +5438,27 @@ function refreshRecordsFromEditor() {
     const json = parseJsonText(getEditorValue());
     if (!Array.isArray(json) || !json.every((record) => record && typeof record === "object" && !Array.isArray(record))) {
       state.records = [];
+      state.recordsPath = "";
       invalidateContentAnalysis();
       return false;
     }
 
     state.records = json;
+    state.recordsPath = state.currentPath;
     invalidateContentAnalysis();
     state.selectedRecordIndex = Math.min(state.selectedRecordIndex, Math.max(0, state.records.length - 1));
     return true;
   } catch {
     state.records = [];
+    state.recordsPath = "";
     invalidateContentAnalysis();
     return false;
   }
+}
+
+function rememberCurrentDataDocumentContext() {
+  if (!state.currentPath || state.recordsPath !== state.currentPath) return;
+  rememberDataDocumentSelection(state.dataDocumentContexts, state.currentPath, state.selectedRecordIndex);
 }
 
  function isCharacterFile() {
@@ -5261,7 +5481,6 @@ async function openMapWorkspace() {
   await openDataFile("maps.json", { initializeEditor: false });
   if (!isMapFile()) return;
   state.records.forEach(ensureMapShape);
-  state.mapEditor.tab = "locations";
   setMode("maps");
 }
 

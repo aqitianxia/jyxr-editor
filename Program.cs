@@ -12,7 +12,10 @@ var workspace = WorkspacePaths.FromCurrentDirectory();
 
 var builder = WebApplication.CreateBuilder(args);
 builder.WebHost.UseWebRoot(Path.Combine(workspace.RootPath, "tools", "JsonEditor", "wwwroot"));
-builder.WebHost.UseUrls("http://localhost:5127");
+if (string.IsNullOrWhiteSpace(builder.Configuration["urls"]))
+{
+    builder.WebHost.UseUrls("http://localhost:5127");
+}
 
 var app = builder.Build();
 var contentTypes = new FileExtensionContentTypeProvider();
@@ -2029,6 +2032,37 @@ static void AnalyzeStorySteps(
 
                 return;
             }
+            case "call":
+            {
+                node.CallCount += 1;
+                var target = TryGetStringProperty(step, "target");
+                if (!string.IsNullOrWhiteSpace(target))
+                {
+                    edges.Add(new StoryGraphEdge(
+                        node.Id,
+                        target,
+                        "call",
+                        edgeLabel,
+                        condition,
+                        relativePath,
+                        FindJsonPropertyLine(content, "target", target)));
+                }
+
+                break;
+            }
+            case "return":
+                node.ReturnCount += 1;
+                if (index < steps.Count - 1)
+                {
+                    diagnostics.Add(CreateStoryDiagnostic(
+                        "warn",
+                        $"剧情段落「{node.Id}」的 return 后还有同级步骤，这些步骤不会被执行。",
+                        node.Id,
+                        relativePath,
+                        node.Line));
+                }
+
+                return;
             case "choice":
                 AnalyzeStoryChoice(step, node, relativePath, content, edges, diagnostics, commandCounts, edgeLabel, condition);
                 break;
@@ -2141,35 +2175,64 @@ static void AnalyzeStoryChoice(
     string? condition)
 {
     node.ChoiceCount += 1;
-    var options = step["options"] as JsonArray;
-    if (options is null || options.Count == 0)
+    var groups = step["groups"] as JsonArray;
+    if (groups is null || groups.Count == 0)
     {
         diagnostics.Add(CreateStoryDiagnostic(
             "error",
-            $"剧情段落「{node.Id}」里的选择没有任何选项。",
+            $"剧情段落「{node.Id}」里的选择没有任何选项组。",
             node.Id,
             relativePath,
             node.Line));
         return;
     }
 
-    foreach (var option in options.OfType<JsonObject>())
+    foreach (var group in groups.OfType<JsonObject>())
     {
-        var optionText = TryGetStringProperty(option, "text") ?? "选项";
-        if (option["steps"] is JsonArray optionSteps)
+        var groupCondition = group.TryGetPropertyValue("when", out var whenNode)
+            ? FormatStoryExpression(whenNode)
+            : null;
+        var effectiveCondition = CombineStoryConditions(condition, groupCondition);
+        var options = group["options"] as JsonArray;
+        if (options is null || options.Count == 0)
         {
-            AnalyzeStorySteps(
-                optionSteps,
-                node,
+            diagnostics.Add(CreateStoryDiagnostic(
+                "error",
+                $"剧情段落「{node.Id}」里的选择组没有任何选项。",
+                node.Id,
                 relativePath,
-                content,
-                edges,
-                diagnostics,
-                commandCounts,
-                $"选择：{ShortenStoryText(optionText, 32)}",
-                condition);
+                node.Line));
+            continue;
+        }
+
+        foreach (var option in options.OfType<JsonObject>())
+        {
+            var optionText = TryGetStringProperty(option, "text") ?? "选项";
+            if (option["steps"] is JsonArray optionSteps)
+            {
+                AnalyzeStorySteps(
+                    optionSteps,
+                    node,
+                    relativePath,
+                    content,
+                    edges,
+                    diagnostics,
+                    commandCounts,
+                    $"选择：{ShortenStoryText(optionText, 32)}",
+                    effectiveCondition);
+            }
         }
     }
+}
+
+static string? CombineStoryConditions(string? outer, string? inner)
+{
+    if (string.IsNullOrWhiteSpace(outer))
+    {
+        return string.IsNullOrWhiteSpace(inner) ? null : inner;
+    }
+
+    return string.IsNullOrWhiteSpace(inner) ? outer : $"({outer}) and ({inner})";
 }
 
 static void AnalyzeStoryBattle(
@@ -2676,7 +2739,7 @@ sealed class StoryDiagnosticSeverityComparer : IComparer<string>
 
 sealed class WorkspacePaths
 {
-    public const string DefaultModId = "jyxr-expansion";
+    public const string DefaultModId = "jyxr-base";
 
     private WorkspacePaths(string rootPath, string modId, string? modPath = null)
     {
@@ -3107,6 +3170,8 @@ sealed record StoryGraphNode(
     int BranchCount,
     int BattleCount,
     int JumpCount,
+    int CallCount,
+    int ReturnCount,
     int Incoming,
     int Outgoing,
     int ExternalEntrypoints);
@@ -3162,6 +3227,8 @@ sealed class StoryNodeAccumulator
     public int BranchCount { get; set; }
     public int BattleCount { get; set; }
     public int JumpCount { get; set; }
+    public int CallCount { get; set; }
+    public int ReturnCount { get; set; }
     public int Incoming { get; set; }
     public int Outgoing { get; set; }
     public int ExternalEntrypoints { get; set; }
@@ -3179,6 +3246,8 @@ sealed class StoryNodeAccumulator
         BranchCount,
         BattleCount,
         JumpCount,
+        CallCount,
+        ReturnCount,
         Incoming,
         Outgoing,
         ExternalEntrypoints);

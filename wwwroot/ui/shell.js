@@ -8,6 +8,7 @@ const shellContexts = Object.freeze({
   items: { eyebrow: "内容创作 / 物品与装备", browserTitle: "物品" },
   shops: { eyebrow: "内容创作 / 商店与经济", browserTitle: "商店" },
   martial: { eyebrow: "内容创作 / 武学与奥义", browserTitle: "武学" },
+  talents: { eyebrow: "内容创作 / 天赋与战斗 Hook", browserTitle: "天赋" },
   data: { eyebrow: "高级数据", browserTitle: "数据文件" },
   story: { eyebrow: "剧情与任务 / 图谱", browserTitle: "剧情分组" },
   assets: { eyebrow: "资源管理", browserTitle: "资源目录" },

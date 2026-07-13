@@ -24,6 +24,11 @@ The editor currently focuses on task-oriented static content authoring and valid
 - Provide generated form editing for top-level array JSON files.
 - Provide a dialogue speaker portrait helper for creating basic speaker records.
 - Provide a portrait checker for static speaker/avatar wiring issues.
+- Provide dedicated character, map/event, growth, sect, item, shop, martial-skill, and resource workspaces.
+- Keep startup demand-driven: load Monaco, assets, story graphs, and full validation only when the active workflow requires them.
+- Use targeted list/detail rendering for the large character, item, and map workspaces.
+- Resolve image fallbacks through a prebuilt basename index instead of scanning the asset list per record.
+- Preserve unknown map fields while allowing the current map JSON to be validated and applied before the explicit file save.
 
 It is not a Godot scene editor, PCK builder, external mod manager, or general filesystem editor.
 
@@ -208,20 +213,25 @@ These are known rough edges in the tool:
 - No batch image normalization for portraits.
 - Save always formats the entire JSON file.
 - The tool selects a MOD from `mods/*/mod.json`; each operation uses the current MOD id.
-- Startup eagerly initializes Monaco, reads every data file, builds the full content index and story graph, lists all assets, and runs full validation before showing the home workspace.
+- Initial entry to a large workspace still creates every list row; list virtualization is not implemented yet.
+- Data file summaries and the content index are rebuilt in the browser instead of being served from a cached backend digest.
+- A save still refreshes broader indexes than the affected file requires.
+- Story graph construction and diagnostics are demand-driven but not yet incremental by file or story group.
 - `app.js` still imports every specialized workspace up front and retains orchestration and legacy workspace code that should move behind workspace-specific modules.
 - The staged CSS files still reflect implementation history instead of final UI ownership boundaries.
+- Browser-level smoke tests and explicit performance budgets are not part of automated verification yet.
 
 ## Recommended Next Steps
 
 The current order is:
 
-1. Clean up completed migration artifacts and reorganize staged CSS by stable UI ownership such as shell, maps, story, forms, and shared components.
-2. Make startup demand-driven: keep the home workspace lightweight, load Monaco on first code edit, load assets and story graphs only when their workspaces open, and move full validation behind the explicit check action or an idle background task.
-3. Replace the per-file startup index rebuild with a cached backend summary and refresh only files affected by a save.
-4. Split remaining workspace implementation out of `app.js` and lazy-load specialized workspaces from the router.
+1. Add cached backend file digests/content summaries and refresh only indexes affected by a save.
+2. Virtualize large record lists and establish browser-level smoke tests and performance budgets for workspace switching.
+3. Split remaining workspace implementation out of `app.js` and lazy-load specialized workspaces from the router.
+4. Make story graph loading and diagnostics incremental by file or story group.
 5. Build the equipment random-affix workspace and review remaining static data only where a dedicated workflow is clearer than advanced JSON editing.
-6. Keep story follow-ups text-first: richer diagnostics, command documentation/hover, log clue checks, and author/base diffing. Do not add a second writable story model.
+6. Clean up completed migration artifacts and reorganize staged CSS by stable UI ownership such as shell, maps, story, forms, and shared components.
+7. Keep story follow-ups text-first: richer diagnostics, command documentation/hover, `log` clue checks, and author/base diffing. Do not add a second writable story model.
 
 ## Design Principles
 
@@ -253,4 +263,4 @@ jq empty mods/jyxr-expansion/data/characters.json
 jq empty mods/jyxr-expansion/data/story/book-shujian.story.json
 ```
 
-Full content validation can be run from the web tool with the "校验" button.
+Full content validation can be run from the web tool with the "检查" button.

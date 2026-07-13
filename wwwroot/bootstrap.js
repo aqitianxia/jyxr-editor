@@ -1,5 +1,5 @@
 (() => {
-  const entryUrl = "/app.js?v=20260712-search-1";
+  const entryUrl = "/app.js?v=20260714-workspace-context-1";
   const status = document.getElementById("coreLoadState");
   const errorBox = document.getElementById("coreLoadError");
   const errorMessage = document.getElementById("coreLoadErrorMessage");

@@ -20,10 +20,11 @@ import {
   matchesMartialSearch,
   resolveEffectiveTargeting,
   resolvePresentation,
+  specialSkillIntents,
   specialEffectTypes,
   targetSelectorTypes,
   weaponTypes,
-} from "../domain/martial-arts.js?v=20260711-stage8-5";
+} from "../domain/martial-arts.js?v=20260713-adapt-1";
 
 const tabs = Object.freeze([
   ["overview", "概要"], ["combat", "战斗参数"], ["growth", "招式与成长"],
@@ -63,11 +64,19 @@ function input(value, onChange, options = {}) {
 function select(value, choices, onChange, placeholder = "") {
   const node = el("select", "input");
   if (placeholder) node.appendChild(new Option(placeholder, ""));
+  const normalizedValue = String(value ?? "");
+  const knownValues = new Set();
   for (const choice of choices) {
     const pair = Array.isArray(choice) ? choice : [choice.id, choice.name || choice.id];
+    knownValues.add(String(pair[0]));
     const option = new Option(pair[1], pair[0]);
-    option.selected = String(pair[0]) === String(value ?? "");
+    option.selected = String(pair[0]) === normalizedValue;
     node.appendChild(option);
+  }
+  if (normalizedValue && !knownValues.has(normalizedValue)) {
+    const unknown = new Option(`未知值：${normalizedValue}`, normalizedValue);
+    unknown.selected = true;
+    node.appendChild(unknown);
   }
   node.addEventListener("change", () => onChange(node.value));
   return node;
@@ -273,6 +282,11 @@ function renderOverview(parent, context, record, kind) {
     fields.append(field("阴性", input(record.yin, (value) => patchObject(context, record, { yin: value }), { type: "number" }), "供负适性外功计算阴性增伤。"), field("阳性", input(record.yang, (value) => patchObject(context, record, { yang: value }), { type: "number" }), "供正适性外功计算阳性增伤。"), field("攻击倍率", input(record.attackScale, (value) => patchObject(context, record, { attackScale: value }), { type: "number" }), "装备后扩大攻击浮动上限；0.15 表示 10 级基础值 15%。"), field("暴击倍率", input(record.criticalScale, (value) => patchObject(context, record, { criticalScale: value }), { type: "number" }), "乘到基础暴击概率上；10 级后不再随等级增加。"), field("防御倍率", input(record.defenceScale, (value) => patchObject(context, record, { defenceScale: value }), { type: "number" }), "装备后提高战斗防御计算。"), field("修炼难度", input(record.hard, (value) => patchObject(context, record, { hard: value }), { type: "number", min: 0 }), "越高越难升级，并提高内功自身的自动内力消耗。"));
     scales.appendChild(fields);
     scales.appendChild(el("div", "martial-callout", "内功本体不会出现在战斗技能栏。希望玩家主动施展时，请在“招式与成长”中添加内功招式；该招式只有装备本内功时可用。"));
+  } else if (kind === "special") {
+    const intent = section(parent, "绝技意图", "意图决定可选择的阵营，并影响进攻绝技命中后的怒气收益。旧数据缺少该字段时不能依赖默认值。");
+    const fields = el("div", "martial-fields-grid");
+    fields.appendChild(field("战斗意图", select(record.intent, specialSkillIntents, (value) => patchObject(context, record, { intent: value })), record.intent === "Offensive" ? "进攻绝技以敌方为主要目标。" : "辅助绝技可以选择友方目标。"));
+    intent.appendChild(fields);
   } else if (kind === "legend") {
     const trigger = section(parent, "触发入口", "同一批奥义按 JSON 顺序从上到下判定，第一条满足条件且概率成功的定义生效。");
     const fields = el("div", "martial-fields-grid");
@@ -494,13 +508,28 @@ function renderSpecialEffects(parent, context, record) {
     const target = entry.target || { type: "target" };
     const row = el("div", "martial-effect-row");
     row.append(field("效果", select(entry.type, specialEffectTypes, (value) => { const replacement = createSpecialEffect(value); Object.keys(entry).forEach((key) => delete entry[key]); Object.assign(entry, replacement); context.onMutate(); })), field("目标", select(target.type, targetSelectorTypes, (value) => nestedPatch(context, entry, "target", { type: value }))));
+    if ("effectId" in entry) row.appendChild(field("效果 ID", input(entry.effectId, (value) => patchObject(context, entry, { effectId: value }), { placeholder: "运行时已注册的 effectId" })));
     if ("buffId" in entry) row.appendChild(field("Buff", select(entry.buffId, context.options.buffs, (value) => patchObject(context, entry, { buffId: value }), "请选择")));
     if ("value" in entry) row.appendChild(field("数值", input(entry.value, (value) => patchObject(context, entry, { value }), { type: "number" })));
     if ("level" in entry) row.appendChild(field("等级", input(entry.level, (value) => patchObject(context, entry, { level: value }), { type: "number" })));
     if ("duration" in entry) row.appendChild(field("持续", input(entry.duration, (value) => patchObject(context, entry, { duration: value }), { type: "number" })));
     if ("chance" in entry) row.appendChild(field("概率 %", input(entry.chance, (value) => patchObject(context, entry, { chance: value }), { type: "number", min: 0, max: 100 })));
-    if (target.type === "nearby_allies") row.appendChild(field("半径", input(target.radius ?? 2, (value) => nestedPatch(context, entry, "target", { radius: value }), { type: "number", min: 0 })));
+    if (target.type === "nearby_allies" || target.type === "nearby_enemies") row.appendChild(field("半径", input(target.radius ?? 2, (value) => nestedPatch(context, entry, "target", { radius: value }), { type: "number", min: 0 })));
     if (target.type === "all_allies" || target.type === "nearby_allies") row.appendChild(checkbox(target.includeSelf ?? true, (value) => nestedPatch(context, entry, "target", { includeSelf: value }), "包含自己"));
+    if ("parameters" in entry) {
+      const parameters = input(JSON.stringify(entry.parameters ?? {}, null, 2), (value) => {
+        try {
+          const parsed = JSON.parse(value || "{}");
+          if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error("自定义效果参数必须是 JSON 对象。");
+          entry.parameters = parsed;
+          context.onMutate();
+        } catch (error) {
+          context.onJsonError(error instanceof Error ? error : new Error(String(error)));
+        }
+      }, { multiline: true });
+      parameters.classList.add("martial-json-input");
+      row.appendChild(field("参数 JSON", parameters, "保存为 JSON 对象并原样交给运行时处理。"));
+    }
     row.appendChild(button("×", "icon-button danger", () => { list.splice(index, 1); context.onMutate(); }, "删除效果"));
     node.appendChild(row);
   });

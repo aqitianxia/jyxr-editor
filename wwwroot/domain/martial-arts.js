@@ -25,17 +25,7 @@ export const legendConditionTypes = Object.freeze([
   ["skill", "需要外功"], ["internal_skill", "需要内功"], ["special_skill", "需要绝技"], ["talent", "需要天赋"],
 ]);
 
-export const specialEffectTypes = Object.freeze([
-  ["apply_buff", "附加 Buff"], ["remove_buff", "移除指定 Buff"],
-  ["remove_negative_buffs", "移除异常状态"], ["remove_positive_buffs", "移除增益状态"],
-  ["add_rage", "增加怒气"], ["set_rage", "设置怒气"], ["set_action_gauge", "设置行动值"],
-  ["add_hp", "恢复生命"], ["add_mp", "恢复内力"],
-]);
-
-export const targetSelectorTypes = Object.freeze([
-  ["self", "自身"], ["source", "施展者"], ["target", "命中目标"],
-  ["all_allies", "全体友军"], ["all_enemies", "全体敌军"], ["nearby_allies", "附近友军"],
-]);
+export const specialEffectTypes = abilityEffectTypes;
 
 export const martialCreationTemplates = Object.freeze({
   external: Object.freeze([
@@ -115,7 +105,7 @@ export function createMartialDefinition(kind, id = "新武学") {
   }
   if (kind === "special") {
     return {
-      id, name: id, description: "", icon: "", cooldown: 0,
+      id, name: id, description: "", intent: "Support", icon: "", cooldown: 0,
       cost: { mp: 0, rage: 0 }, targeting: createTargeting({ impactType: "single", castSize: 1, impactSize: 1 }),
       animation: "", audio: "", speech: null, buffs: [], effects: [],
     };
@@ -168,10 +158,13 @@ export function createMartialFromTemplate(kind, templateId, id = "新武学") {
       record.formSkills.push(form);
     }
   } else if (templateId === "special-self") {
+    record.intent = "Support";
     record.targeting = createTargeting({ canTargetSelf: true, castSize: 0, impactType: "single", impactSize: 0 });
   } else if (templateId === "special-target") {
+    record.intent = "Support";
     record.targeting = createTargeting({ canTargetSelf: true, castSize: 6, impactType: "single", impactSize: 1 });
   } else if (templateId === "special-area") {
+    record.intent = "Support";
     record.targeting = createTargeting({ canTargetSelf: true, castSize: 3, impactType: "square", impactSize: 3 });
   }
   return record;
@@ -215,18 +208,8 @@ export function createLegendCondition(type = "skill") {
   return { type, targetId: "" };
 }
 
-export function createTargetSelector(type = "target") {
-  if (type === "all_allies") return { type, includeSelf: true };
-  if (type === "nearby_allies") return { type, radius: 2, includeSelf: true };
-  return { type };
-}
-
 export function createSpecialEffect(type = "apply_buff") {
-  const target = createTargetSelector("target");
-  if (type === "apply_buff") return { type, target, buffId: "", level: 1, duration: 3, chance: 100 };
-  if (type === "remove_buff") return { type, target, buffId: "" };
-  if (["remove_negative_buffs", "remove_positive_buffs"].includes(type)) return { type, target };
-  return { type, target, value: 0 };
+  return createAbilityEffect(type);
 }
 
 export function cloneJson(value) {
@@ -448,3 +431,12 @@ export function getMartialIssues(entry, context = {}) {
   }
   return issues;
 }
+import {
+  abilityEffectTypes,
+  createAbilityEffect,
+  createTargetSelector,
+  specialSkillIntents,
+  targetSelectorTypes,
+} from "./battle-authoring.js?v=20260713-battle-1";
+
+export { specialSkillIntents, targetSelectorTypes };

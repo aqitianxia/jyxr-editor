@@ -21,9 +21,12 @@ test("武学默认结构匹配四类运行时定义", () => {
   assert.equal(createMartialDefinition("external", "拳").type, "quanzhang");
   assert.deepEqual(createMartialDefinition("internal", "功").formSkills, []);
   assert.deepEqual(createMartialDefinition("special", "技").effects, []);
+  assert.equal(createMartialDefinition("special", "技").intent, "Support");
   assert.equal(createMartialDefinition("legend", "奥").probability, 0.1);
   assert.equal(createFormSkill("招").unlockLevel, 1);
   assert.equal(createSpecialEffect("apply_buff").target.type, "target");
+  assert.equal(createSpecialEffect("add_action_gauge").value, 0);
+  assert.deepEqual(createSpecialEffect("custom_ability").parameters, {});
 });
 
 test("统一索引保留源文件和嵌套招式父级", () => {
@@ -100,6 +103,7 @@ test("新建模板只生成运行时已有字段", () => {
   assert.equal(internal.formSkills[0].powerExtra, 2);
   const special = createMartialFromTemplate("special", "special-self", "新绝技");
   assert.equal(special.targeting.canTargetSelf, true);
+  assert.equal(special.intent, "Support");
   assert.deepEqual(special.effects, []);
 });
 

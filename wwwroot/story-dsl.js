@@ -1,6 +1,9 @@
 (function () {
   const numberPattern = /^[+-]?\d+(?:\.\d+)?$/u;
-  const reservedCommandNames = new Set(["if", "elif", "else", "battle", "and", "or", "not", "win", "lose", "timeout"]);
+  const reservedCommandNames = new Set([
+    "if", "elif", "else", "battle", "when", "call", "return",
+    "and", "or", "not", "win", "lose", "timeout",
+  ]);
 
   function analyzeStory(text) {
     const parseResult = parseStory(text);
@@ -159,6 +162,12 @@
         return this.parseIfStatement(expectedIndent);
       }
 
+      if (isKeywordLine(line, "when")) {
+        this.pushDiagnostic("when 只能作为 choice 的条件组选项出现", lineSpan(line), "structure");
+        this.index += 1;
+        return null;
+      }
+
       if (isKeywordLine(line, "battle")) {
         return this.parseBattleStatement(expectedIndent);
       }
@@ -173,7 +182,8 @@
       this.index += 1;
       if (simpleStatement?.type === "dialogue") {
         const nextLine = this.peekNonBlank();
-        if (nextLine && nextLine.indentLevel === expectedIndent && isBranchLine(nextLine)) {
+        if (nextLine && nextLine.indentLevel === expectedIndent &&
+            (isBranchLine(nextLine) || isKeywordLine(nextLine, "when"))) {
           return this.parseChoiceStatement(simpleStatement, expectedIndent);
         }
       }
@@ -192,69 +202,181 @@
         };
       }
 
-      const parts = splitCommandParts(line.trimmed);
-      if (parts.length === 0) {
+      const commandMatch = /^(\S+)(?:\s+(.*))?$/u.exec(line.trimmed);
+      if (!commandMatch) {
         return null;
       }
 
-      const name = parts[0];
-      if (name === "jump") {
+      const name = commandMatch[1];
+      if (name === "jump" || name === "call") {
         const target = line.trimmed.slice(name.length).trim();
         if (!target) {
-          this.pushDiagnostic("jump 之后必须提供目标段名", lineSpan(line), "syntax");
+          this.pushDiagnostic(`${name} 之后必须提供目标段名`, lineSpan(line), "syntax");
         }
         return {
-          type: "jump",
+          type: name,
           target,
           span: lineSpan(line),
         };
+      }
+
+      if (name === "return") {
+        const rest = line.trimmed.slice(name.length).trim();
+        if (rest) {
+          this.pushDiagnostic("return 后不能跟参数", lineSpan(line), "syntax");
+        }
+        return { type: "return", span: lineSpan(line) };
       }
 
       if (reservedCommandNames.has(name)) {
         this.pushDiagnostic(`'${name}' 是保留字，不能作为命令名`, lineSpan(line), "semantic");
       }
 
+      const argsText = commandMatch[2] ?? "";
+      const argsStart = argsText ? line.trimmed.indexOf(argsText, name.length) : name.length;
+      const parsedArgs = parseValueArgs(argsText, position(line, line.indentSpaces + argsStart + 1));
+      this.diagnostics.push(...parsedArgs.diagnostics);
+
       return {
         type: "command",
         name,
-        args: parts.slice(1).map((part) => parseValueArg(part, lineSpan(line))),
+        args: parsedArgs.args,
         span: lineSpan(line),
       };
     }
 
     parseChoiceStatement(prompt, expectedIndent) {
-      const options = [];
+      const groups = [];
+
       while (true) {
         this.skipBlankLines();
         const line = this.peek();
-        if (!line || line.indentLevel !== expectedIndent || !isBranchLine(line)) {
+        if (!line || line.indentLevel !== expectedIndent) {
           break;
         }
 
-        const optionText = /^-\s*(.*)$/u.exec(line.trimmed)?.[1] ?? "";
-        const optionSpan = lineSpan(line);
-        this.index += 1;
-        const statements = this.parseStatements(
-          expectedIndent + 1,
-          (candidate) => candidate.indentLevel === expectedIndent && isBranchLine(candidate),
-        );
-        options.push({
-          type: "choiceOption",
-          text: optionText,
-          statements,
-          span: statements.length > 0 ? mergeSpans(optionSpan, statements[statements.length - 1].span) : optionSpan,
-        });
+        if (isBranchLine(line)) {
+          const options = this.parseChoiceOptions(expectedIndent);
+          groups.push({
+            type: "choiceGroup",
+            condition: null,
+            rawCondition: null,
+            options,
+            span: mergeSpans(options[0].span, options[options.length - 1].span),
+          });
+          continue;
+        }
+
+        if (isKeywordLine(line, "when")) {
+          groups.push(this.parseConditionalChoiceGroup(expectedIndent));
+          continue;
+        }
+
+        break;
       }
 
-      if (options.length === 0) {
+      if (groups.length === 0) {
         this.pushDiagnostic("choice 至少需要一个 '- 选项' 分支", prompt.span, "structure");
+      }
+
+      if (groups.length > 0 && groups.every((group) => group.condition !== null)) {
+        this.pushDiagnostic(
+          "choice 全部为条件组选项，运行时可能没有可用选项",
+          prompt.span,
+          "semantic",
+          "warning",
+        );
       }
 
       return {
         type: "choice",
         prompt,
+        groups,
+        span: groups.length > 0 ? mergeSpans(prompt.span, groups[groups.length - 1].span) : prompt.span,
+      };
+    }
+
+    parseChoiceOptions(optionIndent) {
+      const options = [];
+      while (true) {
+        this.skipBlankLines();
+        const line = this.peek();
+        if (!line || line.indentLevel !== optionIndent || !isBranchLine(line)) {
+          break;
+        }
+
+        options.push(this.parseChoiceOption(optionIndent));
+      }
+
+      return options;
+    }
+
+    parseChoiceOption(optionIndent) {
+      const line = this.peek();
+      const optionText = /^-\s*(.*)$/u.exec(line.trimmed)?.[1] ?? "";
+      const optionSpan = lineSpan(line);
+      this.index += 1;
+      const statements = this.parseStatements(
+        optionIndent + 1,
+        (candidate) => candidate.indentLevel === optionIndent && isBranchLine(candidate),
+      );
+
+      return {
+        type: "choiceOption",
+        text: optionText,
+        statements,
+        span: statements.length > 0 ? mergeSpans(optionSpan, statements[statements.length - 1].span) : optionSpan,
+      };
+    }
+
+    parseConditionalChoiceGroup(expectedIndent) {
+      const whenLine = this.peek();
+      const groupSpan = lineSpan(whenLine);
+      const rawCondition = whenLine.trimmed.slice("when".length).trim();
+      let condition = null;
+      if (!rawCondition) {
+        this.pushDiagnostic("when 后缺少条件表达式", groupSpan, "syntax");
+      } else {
+        const expressionResult = parseExpression(rawCondition, groupSpan);
+        condition = expressionResult.expr;
+        this.diagnostics.push(...expressionResult.diagnostics);
+      }
+
+      this.index += 1;
+      const optionIndent = expectedIndent + 1;
+      const options = [];
+      while (true) {
+        this.skipBlankLines();
+        const line = this.peek();
+        if (!line || line.indentLevel <= expectedIndent) {
+          break;
+        }
+
+        if (line.indentLevel === optionIndent && isBranchLine(line)) {
+          options.push(this.parseChoiceOption(optionIndent));
+          continue;
+        }
+
+        if (line.indentLevel === optionIndent && isKeywordLine(line, "when")) {
+          this.pushDiagnostic("when 条件组不允许嵌套", lineSpan(line), "structure");
+        } else if (line.indentLevel === optionIndent) {
+          this.pushDiagnostic("when 条件组只能包含 '- 选项'", lineSpan(line), "structure");
+        } else {
+          this.pushDiagnostic("when 条件组中出现了意外的缩进层级", lineSpan(line), "indentation");
+        }
+        this.index += 1;
+      }
+
+      if (options.length === 0) {
+        this.pushDiagnostic("when 条件组至少需要一个缩进的 '- 选项'", groupSpan, "structure");
+      }
+
+      return {
+        type: "choiceGroup",
+        condition,
+        rawCondition,
         options,
-        span: options.length > 0 ? mergeSpans(prompt.span, options[options.length - 1].span) : prompt.span,
+        span: options.length > 0 ? mergeSpans(groupSpan, options[options.length - 1].span) : groupSpan,
       };
     }
 
@@ -409,8 +531,8 @@
       return undefined;
     }
 
-    pushDiagnostic(message, span, code) {
-      this.diagnostics.push({ message, span, code, severity: "error" });
+    pushDiagnostic(message, span, code, severity = "error") {
+      this.diagnostics.push({ message, span, code, severity });
     }
   }
 
@@ -420,7 +542,7 @@
       name: segment.name,
       steps: compileSteps(segment.statements, segment.name, diagnostics),
     }));
-    return { ir: { version: 1, segments }, diagnostics };
+    return { ir: { version: 2, segments }, diagnostics };
   }
 
   function compileSteps(statements, segmentName, diagnostics) {
@@ -429,7 +551,7 @@
     for (const statement of statements) {
       if (terminated) {
         diagnostics.push({
-          message: "jump 之后的同级语句不可达，已跳过 IR 输出",
+          message: "jump/return 之后的同级语句不可达，已跳过 IR 输出",
           span: statement.span,
           severity: "error",
           code: "unreachable",
@@ -440,7 +562,7 @@
       const step = compileStatement(statement, segmentName, diagnostics);
       if (step) {
         steps.push(step);
-        if (step.kind === "jump") {
+        if (step.kind === "jump" || step.kind === "return") {
           terminated = true;
         }
       }
@@ -460,13 +582,20 @@
         }, segmentName, statement.span, diagnostics);
       case "jump":
         return { kind: "jump", target: statement.target };
+      case "call":
+        return { kind: "call", target: statement.target };
+      case "return":
+        return { kind: "return" };
       case "choice":
         return {
           kind: "choice",
           prompt: { speaker: statement.prompt.speaker, text: statement.prompt.text },
-          options: statement.options.map((option) => ({
-            text: option.text,
-            steps: compileSteps(option.statements, segmentName, diagnostics),
+          groups: statement.groups.map((group) => ({
+            ...(group.condition ? { when: compileExpr(group.condition) } : {}),
+            options: group.options.map((option) => ({
+              text: option.text,
+              steps: compileSteps(option.statements, segmentName, diagnostics),
+            })),
           })),
         };
       case "battle": {
@@ -569,8 +698,27 @@
   }
 
   function stripComment(text) {
-    const commentIndex = text.indexOf("//");
-    return commentIndex >= 0 ? text.slice(0, commentIndex) : text;
+    let quoted = false;
+    let escaped = false;
+    for (let index = 0; index < text.length - 1; index += 1) {
+      const char = text[index];
+      if (quoted) {
+        if (escaped) {
+          escaped = false;
+        } else if (char === "\\") {
+          escaped = true;
+        } else if (char === '"') {
+          quoted = false;
+        }
+        continue;
+      }
+      if (char === '"') {
+        quoted = true;
+      } else if (char === "/" && text[index + 1] === "/") {
+        return text.slice(0, index);
+      }
+    }
+    return text;
   }
 
   function isSegmentHeader(line) {
@@ -593,92 +741,16 @@
   }
 
   function findDialogueSeparator(text) {
-    const asciiIndex = text.indexOf(":");
-    const fullWidthIndex = text.indexOf("：");
+    const firstWhitespace = text.search(/\s/u);
+    const dialoguePrefixEnd = firstWhitespace === -1 ? text.length : firstWhitespace;
+    const rawAsciiIndex = text.indexOf(":");
+    const rawFullWidthIndex = text.indexOf("：");
+    const asciiIndex = rawAsciiIndex >= 0 && rawAsciiIndex <= dialoguePrefixEnd ? rawAsciiIndex : -1;
+    const fullWidthIndex = rawFullWidthIndex >= 0 && rawFullWidthIndex <= dialoguePrefixEnd ? rawFullWidthIndex : -1;
     if (asciiIndex === -1 && fullWidthIndex === -1) return null;
     if (asciiIndex === -1) return { marker: "：", index: fullWidthIndex };
     if (fullWidthIndex === -1) return { marker: ":", index: asciiIndex };
     return asciiIndex < fullWidthIndex ? { marker: ":", index: asciiIndex } : { marker: "：", index: fullWidthIndex };
-  }
-
-  function splitCommandParts(text) {
-    const parts = [];
-    let index = 0;
-    while (index < text.length) {
-      while (index < text.length && /\s/u.test(text[index])) {
-        index += 1;
-      }
-      if (index >= text.length) {
-        break;
-      }
-
-      if (text[index] === '"') {
-        const start = index;
-        index += 1;
-        let escaped = false;
-        while (index < text.length) {
-          const char = text[index];
-          index += 1;
-          if (escaped) {
-            escaped = false;
-            continue;
-          }
-          if (char === "\\") {
-            escaped = true;
-            continue;
-          }
-          if (char === '"') {
-            break;
-          }
-        }
-        parts.push(text.slice(start, index));
-        continue;
-      }
-
-      if (text[index] === "[") {
-        const start = index;
-        let depth = 0;
-        let quote = "";
-        let escaped = false;
-        while (index < text.length) {
-          const char = text[index];
-          if (quote) {
-            if (escaped) {
-              escaped = false;
-            } else if (char === "\\") {
-              escaped = true;
-            } else if (char === quote) {
-              quote = "";
-            }
-            index += 1;
-            continue;
-          }
-          if (char === '"') {
-            quote = char;
-            index += 1;
-            continue;
-          }
-          if (char === "[") depth += 1;
-          if (char === "]") {
-            depth -= 1;
-            if (depth === 0) {
-              index += 1;
-              break;
-            }
-          }
-          index += 1;
-        }
-        parts.push(text.slice(start, index));
-        continue;
-      }
-
-      const start = index;
-      while (index < text.length && !/\s/u.test(text[index])) {
-        index += 1;
-      }
-      parts.push(text.slice(start, index));
-    }
-    return parts;
   }
 
   function parseValueArg(raw, span) {
@@ -689,13 +761,6 @@
         return { type: "literal", value: raw.slice(1, -1), valueType: "string", span };
       }
     }
-    if (raw.startsWith("[") && raw.endsWith("]")) {
-      return {
-        type: "list",
-        items: splitListItems(raw.slice(1, -1)).map((item) => parseValueArg(item, span)),
-        span,
-      };
-    }
     if (raw.startsWith("$") && raw.length > 1) {
       return { type: "variable", name: raw.slice(1), span };
     }
@@ -705,39 +770,170 @@
     return { type: "literal", value: raw, valueType: "string", span };
   }
 
-  function splitListItems(text) {
-    const items = [];
-    let index = 0;
-    let start = 0;
-    let depth = 0;
-    let quote = "";
-    let escaped = false;
-    while (index <= text.length) {
-      const char = text[index] ?? ",";
-      if (quote) {
+  function parseValueArgs(raw, base) {
+    return new ValueArgsParser(raw, base).parse();
+  }
+
+  class ValueArgsParser {
+    constructor(raw, base) {
+      this.raw = raw;
+      this.base = base;
+      this.diagnostics = [];
+      this.index = 0;
+    }
+
+    parse() {
+      const args = [];
+      while (this.index < this.raw.length) {
+        this.skipWhitespace();
+        if (this.index >= this.raw.length) break;
+        if (this.raw[this.index] === "[") {
+          args.push(this.parseList());
+        } else if (this.raw[this.index] === '"') {
+          args.push(this.parseQuoted());
+        } else {
+          args.push(this.parseScalar(false));
+        }
+      }
+      return { args, diagnostics: this.diagnostics };
+    }
+
+    parseList() {
+      const listStart = this.index;
+      const items = [];
+      let closed = false;
+      let expectItem = true;
+      let separatorBefore = false;
+      this.index += 1;
+
+      while (this.index < this.raw.length) {
+        this.skipWhitespace();
+        if (this.index >= this.raw.length) break;
+
+        const char = this.raw[this.index];
+        if (char === "]") {
+          closed = true;
+          if (items.length === 0) {
+            this.pushDiagnostic("列表参数不能为空", listStart, this.index + 1);
+          } else if (expectItem && separatorBefore) {
+            this.pushDiagnostic("列表分隔符后缺少元素", this.index, this.index + 1);
+          }
+          this.index += 1;
+          break;
+        }
+
+        if (isArgumentSeparator(char)) {
+          if (expectItem) {
+            this.pushDiagnostic("列表分隔符之间缺少元素", this.index, this.index + 1);
+          }
+          expectItem = true;
+          separatorBefore = true;
+          this.index += 1;
+          continue;
+        }
+
+        if (!expectItem) {
+          this.pushDiagnostic("列表元素之间必须使用 ',' 或 '，' 分隔", this.index, this.index + 1);
+        }
+
+        if (char === "[") {
+          items.push(this.parseList());
+        } else if (char === '"') {
+          items.push(this.parseQuoted());
+        } else {
+          items.push(this.parseScalar(true));
+        }
+        expectItem = false;
+        separatorBefore = false;
+      }
+
+      if (!closed) {
+        this.pushDiagnostic("列表参数缺少右括号 ']'", listStart, this.raw.length);
+        this.index = this.raw.length;
+      }
+
+      return {
+        type: "list",
+        items,
+        span: spanFromRange(this.base, listStart, this.index),
+      };
+    }
+
+    parseQuoted() {
+      const start = this.index;
+      this.index += 1;
+      let escaped = false;
+      let closed = false;
+      while (this.index < this.raw.length) {
+        const char = this.raw[this.index];
+        this.index += 1;
         if (escaped) {
           escaped = false;
         } else if (char === "\\") {
           escaped = true;
-        } else if (char === quote) {
-          quote = "";
+        } else if (char === '"') {
+          closed = true;
+          break;
         }
-        index += 1;
-        continue;
       }
-      if (char === '"') quote = char;
-      if (char === "[") depth += 1;
-      if (char === "]") depth -= 1;
-      if (char === "," && depth === 0) {
-        const item = text.slice(start, index).trim();
-        if (item) {
-          items.push(item);
-        }
-        start = index + 1;
+
+      if (!closed) {
+        this.pushDiagnostic("引号字符串缺少结束引号", start, this.index);
       }
-      index += 1;
+      return parseValueArg(
+        this.raw.slice(start, this.index),
+        spanFromRange(this.base, start, this.index),
+      );
     }
-    return items;
+
+    parseScalar(inList) {
+      const start = this.index;
+      while (this.index < this.raw.length && !/\s/u.test(this.raw[this.index])) {
+        if (inList && (isArgumentSeparator(this.raw[this.index]) || this.raw[this.index] === "]")) {
+          break;
+        }
+        this.index += 1;
+      }
+      if (start === this.index) this.index += 1;
+      return parseValueArg(
+        this.raw.slice(start, this.index),
+        spanFromRange(this.base, start, this.index),
+      );
+    }
+
+    skipWhitespace() {
+      while (this.index < this.raw.length && /\s/u.test(this.raw[this.index])) {
+        this.index += 1;
+      }
+    }
+
+    pushDiagnostic(message, start, end) {
+      this.diagnostics.push({
+        message,
+        severity: "error",
+        code: "syntax",
+        span: spanFromRange(this.base, start, end),
+      });
+    }
+  }
+
+  function isArgumentSeparator(char) {
+    return char === "," || char === "，";
+  }
+
+  function spanFromRange(base, start, end) {
+    return {
+      start: offsetPosition(base, start),
+      end: offsetPosition(base, Math.max(end, start + 1)),
+    };
+  }
+
+  function offsetPosition(base, relativeOffset) {
+    return {
+      line: base.line,
+      column: base.column + relativeOffset,
+      offset: base.offset + relativeOffset,
+    };
   }
 
   function parseExpression(text, span) {
@@ -981,12 +1177,15 @@
       case "jump":
         lines.push(`${indent}jump ${String(step.target ?? "")}`);
         break;
+      case "call":
+        lines.push(`${indent}call ${String(step.target ?? "")}`);
+        break;
+      case "return":
+        lines.push(`${indent}return`);
+        break;
       case "choice":
         lines.push(`${indent}${formatDialogueLine(step.prompt?.speaker, step.prompt?.text)}`);
-        for (const option of Array.isArray(step.options) ? step.options : []) {
-          lines.push(`${indent}- ${String(option?.text ?? "")}`);
-          appendDslSteps(lines, Array.isArray(option?.steps) ? option.steps : [], indentLevel + 1);
-        }
+        appendDslChoiceGroups(lines, Array.isArray(step.groups) ? step.groups : [], indentLevel);
         break;
       case "battle":
         lines.push(`${indent}battle ${String(step.battleId ?? "")}`);
@@ -1004,6 +1203,22 @@
       default:
         lines.push(`${indent}${formatCommandLine("raw_step", [JSON.stringify(step ?? null)])}`);
         break;
+    }
+  }
+
+  function appendDslChoiceGroups(lines, groups, indentLevel) {
+    const indent = "  ".repeat(indentLevel);
+    for (const group of groups) {
+      const conditional = Object.prototype.hasOwnProperty.call(group || {}, "when");
+      const optionIndentLevel = conditional ? indentLevel + 1 : indentLevel;
+      if (conditional) {
+        lines.push(`${indent}when ${formatExpression(group.when)}`);
+      }
+      const optionIndent = "  ".repeat(optionIndentLevel);
+      for (const option of Array.isArray(group?.options) ? group.options : []) {
+        lines.push(`${optionIndent}- ${String(option?.text ?? "")}`);
+        appendDslSteps(lines, Array.isArray(option?.steps) ? option.steps : [], optionIndentLevel + 1);
+      }
     }
   }
 
@@ -1090,6 +1305,14 @@
     return Array.isArray(expr) && ["and", "or", "not", "==", "!=", ">", ">=", "<", "<="].includes(expr[0])
       ? `(${formatExpression(expr)})`
       : formatExpression(expr);
+  }
+
+  function position(line, column) {
+    return {
+      line: line.lineNumber,
+      column,
+      offset: line.lineStartOffset + column - 1,
+    };
   }
 
   function lineSpan(line, startColumn = 1, endColumn) {

@@ -55,6 +55,14 @@ export function buildStoryDocuments(dataFiles, graph) {
     left.title.localeCompare(right.title, "zh-Hans-CN"));
 }
 
+export function resolveStoryDocument(documents, selectedPath, currentPath) {
+  const available = Array.isArray(documents) ? documents : [];
+  return available.find((document) => document.path === selectedPath)
+    || available.find((document) => document.path === currentPath)
+    || available[0]
+    || null;
+}
+
 function createStoryDocument({ path, compiledPath, sourceKind, size, nodes, diagnostics }) {
   const segments = nodes
     .filter((node) => node.path === compiledPath)
@@ -133,6 +141,8 @@ function createStoryStats() {
     branchCount: 0,
     battleCount: 0,
     jumpCount: 0,
+    callCount: 0,
+    returnCount: 0,
   };
 }
 
@@ -153,10 +163,23 @@ function analyzeStorySteps(steps, segmentId, edges, stats, label, condition) {
         stats.jumpCount += 1;
         addStoryEdge(edges, segmentId, step.target, "jump", label, condition);
         return;
+      case "call":
+        stats.callCount += 1;
+        addStoryEdge(edges, segmentId, step.target, "call", label, condition);
+        break;
+      case "return":
+        stats.returnCount += 1;
+        return;
       case "choice":
         stats.choiceCount += 1;
-        for (const option of Array.isArray(step.options) ? step.options : []) {
-          analyzeStorySteps(option?.steps, segmentId, edges, stats, `选择：${shorten(option?.text)}`, condition);
+        for (const group of Array.isArray(step.groups) ? step.groups : []) {
+          const groupCondition = Object.prototype.hasOwnProperty.call(group || {}, "when")
+            ? formatStoryExpression(group.when)
+            : "";
+          const effectiveCondition = combineStoryConditions(condition, groupCondition);
+          for (const option of Array.isArray(group?.options) ? group.options : []) {
+            analyzeStorySteps(option?.steps, segmentId, edges, stats, `选择：${shorten(option?.text)}`, effectiveCondition);
+          }
         }
         break;
       case "battle":
@@ -175,6 +198,12 @@ function analyzeStorySteps(steps, segmentId, edges, stats, label, condition) {
         break;
     }
   }
+}
+
+function combineStoryConditions(outer, inner) {
+  if (!outer) return inner || "";
+  if (!inner) return outer;
+  return `(${outer}) and (${inner})`;
 }
 
 function analyzeStoryCommand(step, segmentId, edges, label, condition) {

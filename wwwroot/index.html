@@ -18,6 +18,7 @@
   <link rel="stylesheet" href="/styles/stage9.css?v=20260711-stage9-1">
   <link rel="stylesheet" href="/styles/stage11.css?v=20260712-stage11-1">
   <link rel="stylesheet" href="/styles/stage12.css?v=20260712-stage12-2">
+  <link rel="stylesheet" href="/styles/stage13.css?v=20260713-talents-1">
 </head>
 <body data-editor-version="0.9.0">
   <div class="app-shell">
@@ -149,6 +150,13 @@
               <small>外功、内功、绝技与奥义</small>
             </span>
             </button>
+            <button id="talentsTab" type="button" class="navigation-item">
+            <span class="navigation-icon" aria-hidden="true">赋</span>
+            <span class="navigation-copy">
+              <strong>天赋与战斗 Hook</strong>
+              <small>词缀、条件、效果与触发时机</small>
+            </span>
+            </button>
           </div>
           <button id="toolsNavigationToggle" class="navigation-section-toggle navigation-section-spaced" type="button" aria-controls="toolsNavigationItems" aria-expanded="true">
             <span>编辑工具</span><span class="navigation-section-chevron" aria-hidden="true">⌄</span>
@@ -202,6 +210,7 @@
         <div id="itemWorkspaceView" class="item-workspace-view hidden"></div>
         <div id="shopWorkspaceView" class="shop-workspace-view hidden"></div>
         <div id="martialWorkspaceView" class="martial-workspace-view hidden"></div>
+        <div id="talentWorkspaceView" class="talent-workspace-view hidden"></div>
         <div id="resourceWorkspaceView" class="resource-workspace-view hidden"></div>
 
         <div id="workspacePaneHeader" class="pane-header hidden">
@@ -286,7 +295,7 @@
   </div>
 
   <script src="/vendor/monaco/vs/loader.js?v=20260708-monaco-1"></script>
-  <script src="/story-dsl.js?v=20260709-dsl-json-1"></script>
-  <script src="/bootstrap.js?v=20260712-search-1"></script>
+  <script src="/story-dsl.js?v=20260713-story-author-1"></script>
+  <script src="/bootstrap.js?v=20260714-workspace-context-1"></script>
 </body>
 </html>

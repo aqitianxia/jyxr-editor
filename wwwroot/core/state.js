@@ -4,6 +4,7 @@ export function createEditorState() {
     workspace: null,
     mods: [],
     activeModId: "",
+    modValidationById: new Map(),
     dataFiles: [],
     assetFiles: [],
     currentPath: "",
@@ -13,7 +14,9 @@ export function createEditorState() {
     searchIndex: -1,
     viewMode: "json",
     records: [],
+    recordsPath: "",
     selectedRecordIndex: 0,
+    dataDocumentContexts: new Map(),
     mapEditor: {
       selectedLocationIndex: 0,
       canvasMode: "select",
@@ -100,6 +103,11 @@ export function createEditorState() {
         field: "",
         clearValue: null,
       },
+    },
+    talentWorkspace: {
+      search: "",
+      filter: "all",
+      tab: "overview",
     },
     resourceWorkspace: {
       tab: "resources",
