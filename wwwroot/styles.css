@@ -1037,7 +1037,7 @@ body.help-page {
 
 .map-canvas-toolbar {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-columns: auto minmax(260px, 1fr) auto;
   gap: 10px;
   align-items: center;
 }
@@ -1045,6 +1045,29 @@ body.help-page {
 .map-canvas-mode-actions {
   display: flex;
   gap: 6px;
+}
+
+.map-canvas-tools {
+  display: grid;
+  grid-template-columns: minmax(110px, 1fr) minmax(120px, 180px) auto;
+  gap: 6px;
+  align-items: center;
+  min-width: 0;
+}
+
+.map-canvas-filter,
+.map-canvas-locate {
+  min-width: 0;
+  width: 100%;
+}
+
+.map-canvas-label-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
+  color: var(--muted);
+  font-size: 12px;
 }
 
 .map-canvas-mode-button.active {
@@ -1069,9 +1092,23 @@ body.help-page {
   background: #f5f3ea;
 }
 
+.map-canvas > div,
+.map-canvas canvas {
+  display: block;
+}
+
 .map-canvas.adding {
   cursor: crosshair;
   outline: 3px solid rgba(45, 108, 223, 0.16);
+}
+
+.map-canvas.pannable {
+  cursor: grab;
+}
+
+.map-canvas.panning,
+.map-canvas.dragging-marker {
+  cursor: grabbing;
 }
 
 .map-canvas img,
@@ -2632,7 +2669,7 @@ body.help-page {
 .tool-dialog-overlay {
   position: fixed;
   inset: 0;
-  z-index: 30;
+  z-index: 100;
   display: grid;
   place-items: center;
   padding: 24px;

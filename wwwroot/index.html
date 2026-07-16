@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>JYXR MOD 编辑器 · v0.9.0</title>
   <link rel="stylesheet" data-name="vs/editor/editor.main" href="/vendor/monaco/vs/editor/editor.main.css?v=20260708-monaco-1">
-  <link rel="stylesheet" href="/styles.css?v=20260710-map-icons-1">
+  <link rel="stylesheet" href="/styles.css?v=20260716-map-events-2">
   <link rel="stylesheet" href="/styles/tokens.css?v=20260711-shell-1">
   <link rel="stylesheet" href="/styles/components.css?v=20260711-shell-1">
   <link rel="stylesheet" href="/styles/shell.css?v=20260712-raw-data-nav-1">
@@ -16,7 +16,7 @@
   <link rel="stylesheet" href="/styles/stage7.css?v=20260711-stage7-1">
   <link rel="stylesheet" href="/styles/stage8.css?v=20260711-stage8-5">
   <link rel="stylesheet" href="/styles/stage9.css?v=20260711-stage9-1">
-  <link rel="stylesheet" href="/styles/stage11.css?v=20260712-stage11-1">
+  <link rel="stylesheet" href="/styles/stage11.css?v=20260716-map-events-2">
   <link rel="stylesheet" href="/styles/stage12.css?v=20260712-stage12-2">
   <link rel="stylesheet" href="/styles/stage13.css?v=20260713-talents-1">
 </head>
@@ -52,6 +52,8 @@
           <span id="inspectorStatus" class="status-badge neutral">未检查</span>
         </button>
         <div id="dirtyState" class="dirty-state" aria-live="polite"></div>
+        <button id="undoButton" type="button" class="icon-button" aria-label="撤销" title="撤销 (Ctrl/Cmd+Z)" disabled>↶</button>
+        <button id="redoButton" type="button" class="icon-button" aria-label="重做" title="重做 (Ctrl/Cmd+Shift+Z)" disabled>↷</button>
         <button id="saveButton" type="button" class="button primary">保存</button>
         <details class="topbar-more">
           <summary class="icon-button" aria-label="更多操作" title="更多操作">•••</summary>
@@ -294,8 +296,9 @@
     </main>
   </div>
 
+  <script src="/vendor/konva/konva.min.js?v=10.3.0"></script>
   <script src="/vendor/monaco/vs/loader.js?v=20260708-monaco-1"></script>
   <script src="/story-dsl.js?v=20260713-story-author-1"></script>
-  <script src="/bootstrap.js?v=20260714-workspace-context-1"></script>
+  <script src="/bootstrap.js?v=20260716-map-events-2"></script>
 </body>
 </html>

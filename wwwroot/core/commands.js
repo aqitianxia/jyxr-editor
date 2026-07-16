@@ -2,8 +2,8 @@ export function createCommandRegistry() {
   const commands = new Map();
   const shortcuts = new Map();
 
-  function register(id, execute, { shortcut = "" } = {}) {
-    commands.set(id, execute);
+  function register(id, execute, { shortcut = "", when = null } = {}) {
+    commands.set(id, { execute, when });
     if (shortcut) {
       shortcuts.set(normalizeShortcut(shortcut), id);
     }
@@ -19,24 +19,29 @@ export function createCommandRegistry() {
 
   function execute(id, detail) {
     const command = commands.get(id);
-    if (!command) {
+    if (!command || (command.when && !command.when(detail))) {
       return false;
     }
-    command(detail);
+    command.execute(detail);
     return true;
   }
 
   function handleKeydown(event) {
     const shortcut = shortcutFromEvent(event);
     const commandId = shortcuts.get(shortcut);
-    if (!commandId) {
+    if (!commandId || !canExecute(commandId, event)) {
       return false;
     }
     event.preventDefault();
     return execute(commandId, event);
   }
 
-  return { register, execute, handleKeydown };
+  function canExecute(id, detail) {
+    const command = commands.get(id);
+    return Boolean(command) && (!command.when || command.when(detail));
+  }
+
+  return { register, execute, canExecute, handleKeydown };
 }
 
 function shortcutFromEvent(event) {

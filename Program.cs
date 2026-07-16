@@ -69,11 +69,21 @@ app.MapPut("/api/data/file", IResult (SaveFileRequest request, string? modId) =>
         var filePath = modWorkspace.ResolveDataFile(request.Path);
         var formatted = FormatJson(request.Content);
         var backupPath = BackupFile(modWorkspace, filePath);
-        Directory.CreateDirectory(Path.GetDirectoryName(filePath)!);
-        File.WriteAllText(filePath, formatted, Encoding.UTF8);
+        ValidationResponse? validation = null;
+        using var transaction = new FileWriteTransaction();
+        transaction.StageText(filePath, formatted, Encoding.UTF8);
+        var committed = transaction.TryCommit(() =>
+        {
+            validation = ValidateContent(modWorkspace);
+            return validation.Ok;
+        });
+        if (!committed)
+        {
+            return Results.BadRequest(new ErrorResponse(
+                $"Content validation failed; the original file was restored: {validation?.Message}"));
+        }
 
-        var validation = ValidateContent(modWorkspace);
-        return Results.Ok(new SaveFileResponse(request.Path, formatted, backupPath, validation));
+        return Results.Ok(new SaveFileResponse(request.Path, formatted, backupPath, validation!));
     }
     catch (JsonException ex)
     {
@@ -959,7 +969,7 @@ static string? BackupFile(WorkspacePaths workspace, string filePath)
     var backupPath = Path.Combine(
         workspace.BackupPath,
         "data",
-        DateTime.UtcNow.ToString("yyyyMMdd-HHmmss"),
+        DateTime.UtcNow.ToString("yyyyMMdd-HHmmssfff"),
         relativePath.Replace('/', Path.DirectorySeparatorChar));
     Directory.CreateDirectory(Path.GetDirectoryName(backupPath)!);
     File.Copy(filePath, backupPath, overwrite: false);
