@@ -1,0 +1,21 @@
+# Build output
+bin/
+obj/
+artifacts/
+
+# Local editor state
+.idea/
+.vscode/
+*.user
+*.suo
+
+# Operating system files
+.DS_Store
+Thumbs.db
+
+# Test and coverage output
+TestResults/
+coverage/
+
+# Local MOD workspaces
+workspaces/
