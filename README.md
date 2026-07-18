@@ -33,11 +33,12 @@ workspace/
 Run it with:
 
 ```bash
-dotnet run --project src/Jyxr.ModEditor/Jyxr.ModEditor.csproj -- \
-  --workspace /absolute/path/to/workspace
+dotnet run --project src/Jyxr.ModEditor/Jyxr.ModEditor.csproj
 ```
 
-Then open `http://localhost:5127`.
+Then open `http://localhost:5127` and choose the authoring workspace. Pass
+`--workspace /absolute/path/to/workspace` only when a script should open one
+workspace directly.
 
 ## Branches
 

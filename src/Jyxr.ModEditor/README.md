@@ -23,7 +23,7 @@ mods/<modId>/data/
 
 4. 如果需要预览头像、物品图、音乐等资源，确认资源位于创作工作区根目录的 `assets/`。
 
-启动时必须通过 `--workspace` 显式传入创作工作区绝对路径。编辑器代码目录与内容工作区彼此独立。
+启动后会先进入工作区启动页。可以浏览目录、输入绝对路径或打开最近使用的工作区；编辑器代码目录与内容工作区彼此独立。自动化脚本仍可通过 `--workspace` 直接打开指定工作区。
 
 ## Windows 启动
 
@@ -31,14 +31,14 @@ PowerShell：
 
 ```powershell
 cd C:\path\to\jyxr-editor
-dotnet run --project .\src\Jyxr.ModEditor\Jyxr.ModEditor.csproj -- --workspace C:\path\to\content-workspace
+dotnet run --project .\src\Jyxr.ModEditor\Jyxr.ModEditor.csproj
 ```
 
 CMD：
 
 ```cmd
 cd /d C:\path\to\jyxr-editor
-dotnet run --project src\Jyxr.ModEditor\Jyxr.ModEditor.csproj -- --workspace C:\path\to\content-workspace
+dotnet run --project src\Jyxr.ModEditor\Jyxr.ModEditor.csproj
 ```
 
 看到类似 `Now listening on: http://localhost:5127` 后，打开浏览器访问：
@@ -55,8 +55,7 @@ Terminal / zsh：
 
 ```bash
 cd /path/to/jyxr-editor
-dotnet run --project src/Jyxr.ModEditor/Jyxr.ModEditor.csproj -- \
-  --workspace /absolute/path/to/content-workspace
+dotnet run --project src/Jyxr.ModEditor/Jyxr.ModEditor.csproj
 ```
 
 看到类似 `Now listening on: http://localhost:5127` 后，打开浏览器访问：
@@ -78,7 +77,7 @@ dotnet --list-sdks
 启动 JSON 编辑器：
 
 ```bash
-dotnet run --project src/Jyxr.ModEditor/Jyxr.ModEditor.csproj -- --workspace /absolute/path/to/workspace
+dotnet run --project src/Jyxr.ModEditor/Jyxr.ModEditor.csproj
 ```
 
 只编译 JSON 编辑器：
@@ -105,12 +104,13 @@ npm test
 ## 基本使用流程
 
 1. 启动服务并打开 `http://localhost:5127`。
-2. 在右上角“当前 MOD”选择要编辑的内容包。
-3. 在左侧进入角色、地图、剧情、物品、商店、资源或高级数据等工作区。
-4. 专用工作区提供对应的结构化创作流程；高级数据继续保留原始 JSON。文本编辑区使用 Monaco，支持行号、缩略代码地图、JSON/DSL 高亮、错误标记和光标定位。
-5. 修改后点击“格式化”检查 JSON 格式。
-6. 点击右上角“检查”运行全目录 JSON 检查，并结合各专用工作区的静态诊断处理引用问题。
-7. 确认无误后点击“保存”。
+2. 在启动页打开包含 `mods/` 的创作工作区。
+3. 在右上角“当前 MOD”选择要编辑的内容包。
+4. 在左侧进入角色、地图、剧情、物品、商店、资源或高级数据等工作区。
+5. 专用工作区提供对应的结构化创作流程；高级数据继续保留原始 JSON。文本编辑区使用 Monaco，支持行号、缩略代码地图、JSON/DSL 高亮、错误标记和光标定位。
+6. 修改后点击“格式化”检查 JSON 格式。
+7. 点击右上角“检查”运行全目录 JSON 检查，并结合各专用工作区的静态诊断处理引用问题。
+8. 确认无误后点击“保存”。
 
 保存时工具会：
 
@@ -395,7 +395,7 @@ netstat -ano | findstr :5127
 
 ### 提示缺少创作工作区
 
-确认启动命令包含 `--workspace`，并且目标目录下存在 `mods/`。
+回到工作区启动页，打开一个包含 `mods/<modId>/mod.json` 和 `mods/<modId>/data/` 的目录。
 
 ### 页面没有显示 MOD
 

@@ -30,16 +30,16 @@
       <h2>Windows 启动</h2>
       <p>PowerShell：</p>
       <pre><code>cd C:\path\to\jyxr-editor
-dotnet run --project .\src\Jyxr.ModEditor\Jyxr.ModEditor.csproj -- --workspace C:\path\to\content-workspace</code></pre>
+dotnet run --project .\src\Jyxr.ModEditor\Jyxr.ModEditor.csproj</code></pre>
       <p>CMD：</p>
       <pre><code>cd /d C:\path\to\jyxr-editor
-dotnet run --project src\Jyxr.ModEditor\Jyxr.ModEditor.csproj -- --workspace C:\path\to\content-workspace</code></pre>
+dotnet run --project src\Jyxr.ModEditor\Jyxr.ModEditor.csproj</code></pre>
     </section>
 
     <section class="help-section">
       <h2>macOS 启动</h2>
       <pre><code>cd /path/to/jyxr-editor
-dotnet run --project src/Jyxr.ModEditor/Jyxr.ModEditor.csproj -- --workspace /absolute/path/to/content-workspace</code></pre>
+dotnet run --project src/Jyxr.ModEditor/Jyxr.ModEditor.csproj</code></pre>
     </section>
 
     <section class="help-section">
@@ -52,7 +52,7 @@ dotnet run --project src/Jyxr.ModEditor/Jyxr.ModEditor.csproj -- --workspace /ab
     <section class="help-section">
       <h2>常用命令</h2>
       <pre><code>dotnet --list-sdks
-dotnet run --project src/Jyxr.ModEditor/Jyxr.ModEditor.csproj -- --workspace /absolute/path/to/workspace
+dotnet run --project src/Jyxr.ModEditor/Jyxr.ModEditor.csproj
 dotnet build Jyxr.ModEditor.slnx
 node --check src/Jyxr.ModEditor/wwwroot/app.js
 cd src/Jyxr.ModEditor &amp;&amp; npm test</code></pre>
@@ -61,8 +61,9 @@ cd src/Jyxr.ModEditor &amp;&amp; npm test</code></pre>
     <section class="help-section">
       <h2>基本流程</h2>
       <ol>
+        <li>在启动页打开包含 <code>mods/</code> 的创作工作区。</li>
         <li>右上角选择当前 MOD。</li>
-        <li>左侧切换“数据 / 剧情 / 资产”。</li>
+        <li>左侧进入内容工作区或高级数据。</li>
         <li>在专用工作区进行结构化创作；未覆盖的内容在“高级数据”中编辑完整 JSON。</li>
         <li>点击“格式化”和“校验”。</li>
         <li>确认无误后点击“保存”。保存会生成备份并再次校验。</li>
@@ -137,7 +138,7 @@ else
 
     <section class="help-section">
       <h2>常见问题</h2>
-      <p><strong>缺少创作工作区：</strong>使用 <code>--workspace</code> 传入包含 <code>mods/</code> 的绝对路径。</p>
+      <p><strong>缺少创作工作区：</strong>回到启动页，打开包含 <code>mods/&lt;modId&gt;/mod.json</code> 和 <code>data/</code> 的目录。</p>
       <p><strong>页面没有 MOD：</strong>检查 <code>mods/</code>、<code>mod.json</code> 和 <code>data/</code> 是否存在。</p>
       <p><strong>端口被占用：</strong>关闭另一个占用 <code>5127</code> 的进程后重新启动。</p>
       <p><strong>保存失败：</strong>查看右侧校验信息；旧文件备份在当前 MOD 的 <code>.jyxr-editor/backups</code>。</p>

@@ -1,0 +1,210 @@
+.workspace-launcher[hidden],
+.app-shell[hidden] {
+  display: none;
+}
+
+.workspace-launcher {
+  min-height: 100dvh;
+  display: grid;
+  grid-template-rows: 64px minmax(0, 1fr);
+  background: #f3f5f7;
+  color: var(--color-text);
+}
+
+.workspace-launcher-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 clamp(24px, 5vw, 72px);
+  border-bottom: 1px solid #cfd6df;
+  background: #ffffff;
+}
+
+.workspace-launcher-brand {
+  font-size: 16px;
+  font-weight: 800;
+}
+
+.workspace-launcher-version {
+  color: var(--color-text-subtle);
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.workspace-launcher-main {
+  width: min(880px, calc(100% - 48px));
+  margin: 0 auto;
+  padding: clamp(56px, 10vh, 104px) 0 64px;
+  align-self: start;
+}
+
+.workspace-launcher-heading {
+  margin-bottom: 32px;
+}
+
+.workspace-launcher-eyebrow {
+  margin-bottom: 8px;
+  color: #315b48;
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.workspace-launcher-heading h1 {
+  margin: 0;
+  font-size: 30px;
+  line-height: 1.2;
+  letter-spacing: 0;
+}
+
+.workspace-launcher-form {
+  display: grid;
+  gap: 12px;
+  padding: 28px 0;
+  border-top: 1px solid #cfd6df;
+  border-bottom: 1px solid #cfd6df;
+}
+
+.workspace-launcher-form > label {
+  color: var(--color-text-muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.workspace-launcher-path-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 10px;
+}
+
+.workspace-launcher-path-row input {
+  width: 100%;
+  min-width: 0;
+  min-height: 42px;
+  border: 1px solid #aeb9c6;
+  border-radius: var(--radius-sm);
+  background: #ffffff;
+  color: var(--color-text);
+  padding: 0 14px;
+  font-family: var(--font-mono);
+}
+
+.workspace-launcher-path-row button {
+  min-height: 42px;
+}
+
+.workspace-launcher-status {
+  min-height: 20px;
+  color: var(--color-text-subtle);
+  font-size: 12px;
+}
+
+.workspace-launcher-status.error {
+  color: var(--color-danger);
+}
+
+.workspace-launcher-status.busy {
+  color: #315b48;
+}
+
+.workspace-launcher-recent {
+  margin-top: 36px;
+}
+
+.workspace-launcher-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 8px;
+}
+
+.workspace-launcher-section-header h2 {
+  margin: 0;
+  font-size: 14px;
+}
+
+.workspace-launcher-recent-list {
+  border-top: 1px solid #cfd6df;
+}
+
+.workspace-launcher-recent-item {
+  width: 100%;
+  min-height: 58px;
+  display: grid;
+  grid-template-columns: minmax(0, 180px) minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 18px;
+  border: 0;
+  border-bottom: 1px solid #cfd6df;
+  border-radius: 0;
+  background: transparent;
+  padding: 0 8px;
+  text-align: left;
+}
+
+.workspace-launcher-recent-item:hover:not(:disabled) {
+  border-color: #cfd6df;
+  background: #e9edf1;
+}
+
+.workspace-launcher-recent-name {
+  overflow: hidden;
+  font-weight: 750;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workspace-launcher-recent-path {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--color-text-subtle);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workspace-launcher-recent-action {
+  color: #315b48;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.workspace-launcher-cancel {
+  margin-top: 24px;
+}
+
+.topbar-menu button.menu-item {
+  width: 100%;
+  justify-content: flex-start;
+  border-color: transparent;
+  background: transparent;
+  text-align: left;
+}
+
+@media (max-width: 700px) {
+  .workspace-launcher-main {
+    width: min(100% - 32px, 880px);
+    padding-top: 40px;
+  }
+
+  .workspace-launcher-path-row {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .workspace-launcher-path-row input {
+    grid-column: 1 / -1;
+  }
+
+  .workspace-launcher-recent-item {
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 4px 12px;
+    padding-block: 10px;
+  }
+
+  .workspace-launcher-recent-path {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+}

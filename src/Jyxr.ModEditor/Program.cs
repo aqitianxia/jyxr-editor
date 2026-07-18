@@ -9,13 +9,7 @@ using Microsoft.AspNetCore.StaticFiles;
 
 var builder = WebApplication.CreateBuilder(args);
 var workspaceRoot = builder.Configuration["workspace"];
-if (string.IsNullOrWhiteSpace(workspaceRoot))
-{
-    throw new InvalidOperationException(
-        "A content workspace is required. Start the editor with --workspace /absolute/path/to/workspace.");
-}
-
-var workspace = WorkspacePaths.Open(workspaceRoot);
+var workspaceSession = new WorkspaceSession(workspaceRoot);
 builder.WebHost.UseWebRoot(Path.Combine(builder.Environment.ContentRootPath, "wwwroot"));
 if (string.IsNullOrWhiteSpace(builder.Configuration["urls"]))
 {
@@ -28,19 +22,50 @@ var contentTypes = new FileExtensionContentTypeProvider();
 app.UseDefaultFiles();
 app.UseStaticFiles();
 
-app.MapGet("/api/workspace", () => Results.Ok(new WorkspaceResponse(
-    workspace.RootPath,
-    workspace.ModsPath,
-    WorkspacePaths.DefaultModId,
-    workspace.DiscoverMods(),
-    workspace.DataPath,
-    Directory.Exists(workspace.DataPath),
-    workspace.AssetsPath,
-    Directory.Exists(workspace.AssetsPath))));
+app.Use(async (context, next) =>
+{
+    try
+    {
+        var isWorkspaceApi = context.Request.Path.StartsWithSegments("/api/workspace");
+        if (context.Request.Path.StartsWithSegments("/api") && !isWorkspaceApi && !workspaceSession.IsOpen)
+        {
+            context.Response.StatusCode = StatusCodes.Status409Conflict;
+            await context.Response.WriteAsJsonAsync(new ErrorResponse("请先打开创作工作区。"));
+            return;
+        }
+
+        await next();
+    }
+    catch (InvalidOperationException ex) when (!context.Response.HasStarted)
+    {
+        context.Response.StatusCode = StatusCodes.Status400BadRequest;
+        await context.Response.WriteAsJsonAsync(new ErrorResponse(ex.Message));
+    }
+});
+
+app.MapGet("/api/workspace", () => Results.Ok(workspaceSession.Describe()));
+
+app.MapPost("/api/workspace/open", IResult (OpenWorkspaceRequest request) =>
+{
+    try
+    {
+        return Results.Ok(workspaceSession.Open(request.Path));
+    }
+    catch (Exception ex)
+    {
+        return Results.BadRequest(new ErrorResponse(ex.Message));
+    }
+});
+
+app.MapPost("/api/workspace/pick", async Task<IResult> (HttpContext context) =>
+{
+    var result = await WorkspaceFolderPicker.PickAsync(context.RequestAborted);
+    return Results.Ok(new WorkspacePickResponse(result.Supported, result.Canceled, result.Path, result.Message));
+});
 
 app.MapGet("/api/data/files", (string? modId) =>
 {
-    var modWorkspace = workspace.ForMod(modId);
+    var modWorkspace = workspaceSession.RequireCurrent().ForMod(modId);
     if (!Directory.Exists(modWorkspace.DataPath))
     {
         return Results.Ok(Array.Empty<FileEntry>());
@@ -51,7 +76,7 @@ app.MapGet("/api/data/files", (string? modId) =>
 
 app.MapGet("/api/data/file", IResult (string path, string? modId) =>
 {
-    var modWorkspace = workspace.ForMod(modId);
+    var modWorkspace = workspaceSession.RequireCurrent().ForMod(modId);
     var filePath = modWorkspace.ResolveDataTextFile(path);
     if (!File.Exists(filePath))
     {
@@ -65,7 +90,7 @@ app.MapPut("/api/data/file", IResult (SaveFileRequest request, string? modId) =>
 {
     try
     {
-        var modWorkspace = workspace.ForMod(modId);
+        var modWorkspace = workspaceSession.RequireCurrent().ForMod(modId);
         if (!Directory.Exists(modWorkspace.DataPath))
         {
             return Results.BadRequest(new ErrorResponse($"Data directory was not found: {modWorkspace.DataPath}"));
@@ -104,7 +129,7 @@ app.MapPut("/api/story/source", IResult (SaveStorySourceRequest request, string?
 {
     try
     {
-        var modWorkspace = workspace.ForMod(modId);
+        var modWorkspace = workspaceSession.RequireCurrent().ForMod(modId);
         if (!Directory.Exists(modWorkspace.DataPath))
         {
             return Results.BadRequest(new ErrorResponse($"Data directory was not found: {modWorkspace.DataPath}"));
@@ -146,7 +171,7 @@ app.MapPost("/api/story/source/from-json", IResult (SaveStoryJsonAsSourceRequest
 {
     try
     {
-        var modWorkspace = workspace.ForMod(modId);
+        var modWorkspace = workspaceSession.RequireCurrent().ForMod(modId);
         if (!Directory.Exists(modWorkspace.DataPath))
         {
             return Results.BadRequest(new ErrorResponse($"Data directory was not found: {modWorkspace.DataPath}"));
@@ -193,7 +218,7 @@ app.MapPost("/api/story/source/new", IResult (CreateStorySourceRequest request, 
 {
     try
     {
-        var modWorkspace = workspace.ForMod(modId);
+        var modWorkspace = workspaceSession.RequireCurrent().ForMod(modId);
         if (!Directory.Exists(modWorkspace.DataPath))
         {
             return Results.BadRequest(new ErrorResponse($"Data directory was not found: {modWorkspace.DataPath}"));
@@ -226,13 +251,14 @@ app.MapPost("/api/story/source/new", IResult (CreateStorySourceRequest request, 
     }
 });
 
-app.MapGet("/api/validate", (string? modId) => Results.Ok(ValidateContent(workspace.ForMod(modId))));
+app.MapGet("/api/validate", (string? modId) =>
+    Results.Ok(ValidateContent(workspaceSession.RequireCurrent().ForMod(modId))));
 
 app.MapGet("/api/story/graph", IResult (string? modId) =>
 {
     try
     {
-        var modWorkspace = workspace.ForMod(modId);
+        var modWorkspace = workspaceSession.RequireCurrent().ForMod(modId);
         if (!Directory.Exists(modWorkspace.DataPath))
         {
             return Results.BadRequest(new ErrorResponse($"Data directory was not found: {modWorkspace.DataPath}"));
@@ -254,7 +280,7 @@ app.MapPost("/api/static/speaker", IResult (CreateSpeakerRequest request, string
 {
     try
     {
-        var modWorkspace = workspace.ForMod(modId);
+        var modWorkspace = workspaceSession.RequireCurrent().ForMod(modId);
         if (!Directory.Exists(modWorkspace.DataPath))
         {
             return Results.BadRequest(new ErrorResponse($"Data directory was not found: {modWorkspace.DataPath}"));
@@ -338,7 +364,7 @@ app.MapPost("/api/static/portrait-resource", IResult (CreatePortraitResourceRequ
 {
     try
     {
-        var modWorkspace = workspace.ForMod(modId);
+        var modWorkspace = workspaceSession.RequireCurrent().ForMod(modId);
         if (!Directory.Exists(modWorkspace.DataPath))
         {
             return Results.BadRequest(new ErrorResponse($"Data directory was not found: {modWorkspace.DataPath}"));
@@ -381,7 +407,7 @@ app.MapPut("/api/static/portrait-resource", IResult (UpdatePortraitResourceReque
 {
     try
     {
-        var modWorkspace = workspace.ForMod(modId);
+        var modWorkspace = workspaceSession.RequireCurrent().ForMod(modId);
         if (!Directory.Exists(modWorkspace.DataPath))
         {
             return Results.BadRequest(new ErrorResponse($"Data directory was not found: {modWorkspace.DataPath}"));
@@ -439,7 +465,7 @@ app.MapPost("/api/static/item-resource", IResult (CreateItemResourceRequest requ
 {
     try
     {
-        var modWorkspace = workspace.ForMod(modId);
+        var modWorkspace = workspaceSession.RequireCurrent().ForMod(modId);
         if (!Directory.Exists(modWorkspace.DataPath))
         {
             return Results.BadRequest(new ErrorResponse($"Data directory was not found: {modWorkspace.DataPath}"));
@@ -481,7 +507,7 @@ app.MapPost("/api/static/resource", IResult (CreateResourceRequest request, stri
 {
     try
     {
-        var modWorkspace = workspace.ForMod(modId);
+        var modWorkspace = workspaceSession.RequireCurrent().ForMod(modId);
         if (!Directory.Exists(modWorkspace.DataPath))
         {
             return Results.BadRequest(new ErrorResponse($"Data directory was not found: {modWorkspace.DataPath}"));
@@ -529,7 +555,7 @@ app.MapGet("/api/static/portraits/check", (string? modId) =>
 {
     try
     {
-        return Results.Ok(CheckPortraits(workspace.ForMod(modId)));
+        return Results.Ok(CheckPortraits(workspaceSession.RequireCurrent().ForMod(modId)));
     }
     catch (JsonException ex)
     {
@@ -543,6 +569,7 @@ app.MapGet("/api/static/portraits/check", (string? modId) =>
 
 app.MapGet("/api/assets/files", (bool? includeImport) =>
 {
+    var workspace = workspaceSession.RequireCurrent();
     if (!Directory.Exists(workspace.AssetsPath))
     {
         return Results.Ok(Array.Empty<FileEntry>());
@@ -552,12 +579,13 @@ app.MapGet("/api/assets/files", (bool? includeImport) =>
 });
 
 app.MapGet("/api/assets/skill-animations", () =>
-    Results.Ok(GodotSkillAnimationCatalog.List(workspace.AssetsPath)));
+    Results.Ok(GodotSkillAnimationCatalog.List(workspaceSession.RequireCurrent().AssetsPath)));
 
 app.MapGet("/api/assets/skill-animation", IResult (string id) =>
 {
     try
     {
+        var workspace = workspaceSession.RequireCurrent();
         return Results.Ok(GodotSkillAnimationCatalog.Load(id, workspace.AssetsPath));
     }
     catch (FileNotFoundException exception)
@@ -572,6 +600,7 @@ app.MapGet("/api/assets/skill-animation", IResult (string id) =>
 
 app.MapGet("/api/assets/file", IResult (string path) =>
 {
+    var workspace = workspaceSession.RequireCurrent();
     var filePath = workspace.ResolveAssetFile(path);
     if (!File.Exists(filePath))
     {
@@ -590,6 +619,7 @@ app.MapPost("/api/assets/portrait/normalize", IResult (NormalizePortraitRequest 
 {
     try
     {
+        var workspace = workspaceSession.RequireCurrent();
         var assetPath = request.Path.Trim().Replace('\\', '/');
         var isPortrait = assetPath.StartsWith("art/head/", StringComparison.OrdinalIgnoreCase);
         var isItem = assetPath.StartsWith("art/item/", StringComparison.OrdinalIgnoreCase);
@@ -630,6 +660,7 @@ app.MapPost("/api/assets/item/upload-bind", IResult (UploadItemImageRequest requ
 {
     try
     {
+        var workspace = workspaceSession.RequireCurrent();
         var modWorkspace = workspace.ForMod(modId);
         if (!Directory.Exists(workspace.AssetsPath))
         {
@@ -718,6 +749,7 @@ app.MapPost("/api/assets/item/upload-bind/preflight", IResult (ItemImageUploadPr
 {
     try
     {
+        var workspace = workspaceSession.RequireCurrent();
         var modWorkspace = workspace.ForMod(modId);
         if (!Directory.Exists(workspace.AssetsPath))
         {
@@ -2765,6 +2797,83 @@ sealed class StoryDiagnosticSeverityComparer : IComparer<string>
     };
 }
 
+sealed class WorkspaceSession
+{
+    private readonly object _sync = new();
+    private WorkspacePaths? _current;
+    private string? _message;
+
+    public WorkspaceSession(string? initialRootPath)
+    {
+        if (string.IsNullOrWhiteSpace(initialRootPath))
+        {
+            return;
+        }
+
+        try
+        {
+            _current = OpenValidated(initialRootPath);
+        }
+        catch (Exception ex)
+        {
+            _message = ex.Message;
+        }
+    }
+
+    public bool IsOpen
+    {
+        get
+        {
+            lock (_sync)
+            {
+                return _current is not null;
+            }
+        }
+    }
+
+    public WorkspacePaths RequireCurrent()
+    {
+        lock (_sync)
+        {
+            return _current ?? throw new InvalidOperationException("请先打开创作工作区。");
+        }
+    }
+
+    public WorkspaceResponse Describe()
+    {
+        lock (_sync)
+        {
+            return _current is null
+                ? WorkspaceResponse.Closed(_message)
+                : WorkspaceResponse.From(_current);
+        }
+    }
+
+    public WorkspaceResponse Open(string rootPath)
+    {
+        var next = OpenValidated(rootPath);
+        var response = WorkspaceResponse.From(next);
+        lock (_sync)
+        {
+            _current = next;
+            _message = null;
+            return response;
+        }
+    }
+
+    private static WorkspacePaths OpenValidated(string rootPath)
+    {
+        var workspace = WorkspacePaths.Open(rootPath);
+        if (!workspace.DiscoverMods().Any(static mod => mod.DataExists))
+        {
+            throw new InvalidOperationException(
+                $"工作区中没有同时包含 mod.json 和 data/ 的可编辑 MOD：{workspace.RootPath}");
+        }
+
+        return workspace;
+    }
+}
+
 sealed class WorkspacePaths
 {
     public const string DefaultModId = "jyxr-base";
@@ -2792,19 +2901,19 @@ sealed class WorkspacePaths
     {
         if (string.IsNullOrWhiteSpace(rootPath))
         {
-            throw new InvalidOperationException("Content workspace path is required.");
+            throw new InvalidOperationException("请输入创作工作区路径。");
         }
 
-        var fullPath = Path.GetFullPath(rootPath.Trim());
+        var fullPath = Path.TrimEndingDirectorySeparator(Path.GetFullPath(rootPath.Trim()));
         if (!Directory.Exists(fullPath))
         {
-            throw new DirectoryNotFoundException($"Content workspace was not found: {fullPath}");
+            throw new DirectoryNotFoundException($"找不到创作工作区：{fullPath}");
         }
 
         var modsPath = Path.Combine(fullPath, "mods");
         if (!Directory.Exists(modsPath))
         {
-            throw new InvalidOperationException($"Content workspace does not contain a mods directory: {fullPath}");
+            throw new InvalidOperationException($"创作工作区必须包含 mods/ 目录：{fullPath}");
         }
 
         return new WorkspacePaths(fullPath, DefaultModId);
@@ -2820,7 +2929,7 @@ sealed class WorkspacePaths
             : ResolveChildPath(RootPath, discoveredMod.Path);
         if (!File.Exists(Path.Combine(modPath, "mod.json")))
         {
-            throw new InvalidOperationException($"MOD was not found: {normalized}");
+            throw new InvalidOperationException($"当前工作区中找不到 MOD：{normalized}");
         }
 
         return new WorkspacePaths(RootPath, normalized, modPath);
@@ -2975,6 +3084,8 @@ sealed class WorkspacePaths
 }
 
 sealed record WorkspaceResponse(
+    bool IsOpen,
+    string? Message,
     string RootPath,
     string ModsPath,
     string DefaultModId,
@@ -2982,7 +3093,49 @@ sealed record WorkspaceResponse(
     string DataPath,
     bool DataExists,
     string AssetsPath,
-    bool AssetsExists);
+    bool AssetsExists)
+{
+    public static WorkspaceResponse Closed(string? message) => new(
+        false,
+        message,
+        string.Empty,
+        string.Empty,
+        WorkspacePaths.DefaultModId,
+        Array.Empty<ModSummary>(),
+        string.Empty,
+        false,
+        string.Empty,
+        false);
+
+    public static WorkspaceResponse From(WorkspacePaths workspace)
+    {
+        var mods = workspace.DiscoverMods();
+        var defaultModId = mods.Any(static mod =>
+            mod.Id == WorkspacePaths.DefaultModId && mod.DataExists)
+            ? WorkspacePaths.DefaultModId
+            : mods.First(static mod => mod.DataExists).Id;
+        var defaultMod = workspace.ForMod(defaultModId);
+        return new WorkspaceResponse(
+            true,
+            null,
+            workspace.RootPath,
+            workspace.ModsPath,
+            defaultModId,
+            mods,
+            defaultMod.DataPath,
+            Directory.Exists(defaultMod.DataPath),
+            workspace.AssetsPath,
+            Directory.Exists(workspace.AssetsPath));
+    }
+}
+
+sealed record OpenWorkspaceRequest(string Path);
+
+sealed record WorkspacePickResponse(
+    bool Supported,
+    bool Canceled,
+    string? Path,
+    string? Message);
 
 sealed record ModSummary(
     string Id,

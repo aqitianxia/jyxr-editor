@@ -5,10 +5,16 @@ import { createCommandRegistry } from "./core/commands.js?v=20260711-core-17";
 import { createDocumentHistory } from "./core/document-history.js?v=20260716-map-data-safety-1";
 import { createDirtyStateController } from "./core/dirty-state.js?v=20260711-core-17";
 import { createEventBus } from "./core/events.js?v=20260711-core-17";
-import { createPreferences, storageKeys } from "./core/preferences.js?v=20260712-navigation-1";
+import { createPreferences, storageKeys } from "./core/preferences.js?v=20260718-workspace-launcher-1";
 import { rememberDataDocumentSelection, restoreDataDocumentSelection } from "./core/data-document-context.js?v=20260714-workspace-context-1";
 import { normalizeWorkspaceMode } from "./core/router.js?v=20260713-adapt-1";
 import { createJsonPropertyLineIndex } from "./domain/json-source-index.js?v=20260712-performance-1";
+import {
+  getWorkspaceName,
+  normalizeRecentWorkspaces,
+  normalizeWorkspacePath,
+  rememberWorkspacePath,
+} from "./domain/workspace-launcher.js?v=20260718-workspace-launcher-1";
 import { bindImeSafeInput, rerenderPreservingInput } from "./core/input-composition.js?v=20260712-search-1";
 import { createProblem, summarizeProblems } from "./core/problems.js?v=20260711-core-17";
 import { createRecentItemsStore } from "./core/recent-items.js?v=20260711-core-17";
@@ -100,6 +106,18 @@ const dataFileDisplayNames = new Map([
 ]);
 
 const elements = {
+  appShell: document.getElementById("appShell"),
+  workspaceLauncher: document.getElementById("workspaceLauncher"),
+  workspaceLauncherForm: document.getElementById("workspaceLauncherForm"),
+  workspaceLauncherPath: document.getElementById("workspaceLauncherPath"),
+  workspaceLauncherBrowse: document.getElementById("workspaceLauncherBrowse"),
+  workspaceLauncherOpen: document.getElementById("workspaceLauncherOpen"),
+  workspaceLauncherStatus: document.getElementById("workspaceLauncherStatus"),
+  workspaceLauncherRecentSection: document.getElementById("workspaceLauncherRecentSection"),
+  workspaceLauncherRecentList: document.getElementById("workspaceLauncherRecentList"),
+  workspaceLauncherClearRecent: document.getElementById("workspaceLauncherClearRecent"),
+  workspaceLauncherCancel: document.getElementById("workspaceLauncherCancel"),
+  workspaceSwitchButton: document.getElementById("workspaceSwitchButton"),
   editorVersion: document.getElementById("editorVersion"),
   coreLoadState: document.getElementById("coreLoadState"),
   workspacePath: document.getElementById("workspacePath"),
@@ -309,6 +327,14 @@ elements.newSpeakerButton.addEventListener("click", openSpeakerToolDialog);
 elements.portraitCheckButton.addEventListener("click", runPortraitCheckFromToolbar);
 elements.characterCheckButton.addEventListener("click", focusCheckResults);
 elements.modSelect.addEventListener("change", () => switchMod(elements.modSelect.value));
+elements.workspaceLauncherForm.addEventListener("submit", (event) => {
+  event.preventDefault();
+  openWorkspace(elements.workspaceLauncherPath.value);
+});
+elements.workspaceLauncherBrowse.addEventListener("click", pickWorkspaceFolder);
+elements.workspaceLauncherClearRecent.addEventListener("click", clearRecentWorkspaces);
+elements.workspaceLauncherCancel.addEventListener("click", hideWorkspaceLauncher);
+elements.workspaceSwitchButton.addEventListener("click", requestWorkspaceSwitch);
 bindImeSafeInput(elements.contentSearch, () => {
   if (state.mode === "story") {
     renderStoryView();
@@ -882,15 +908,31 @@ function setMonacoDiagnostics(diagnostics) {
 }
 
 async function boot() {
-  await loadWorkspace();
-  await loadDataFiles();
-  state.recentEntries = recentItemsStore.read(state.activeModId);
-  await rebuildContentIndex();
-  setMode("home");
+  try {
+    const workspace = await requestJson("/api/workspace");
+    if (!workspace?.isOpen) {
+      showWorkspaceLauncher({ message: workspace?.message || "尚未打开工作区。" });
+      return;
+    }
+
+    setWorkspaceLauncherStatus("正在载入工作区...", "busy");
+    await loadWorkspace(workspace);
+    await loadDataFiles();
+    state.recentEntries = recentItemsStore.read(state.activeModId);
+    await rebuildContentIndex();
+    rememberCurrentWorkspace();
+    setMode("home");
+    hideWorkspaceLauncher();
+  } catch (error) {
+    showWorkspaceLauncher({
+      message: error instanceof Error ? error.message : String(error),
+      error: true,
+    });
+  }
 }
 
-async function loadWorkspace() {
-  state.workspace = await requestJson("/api/workspace");
+async function loadWorkspace(workspace = null) {
+  state.workspace = workspace || await requestJson("/api/workspace");
   state.mods = Array.isArray(state.workspace.mods) ? state.workspace.mods : [];
   const savedModId = preferences.get(storageKeys.activeModId);
   const defaultModId = state.workspace.defaultModId || "jyxr-base";
@@ -928,6 +970,153 @@ async function loadWorkspace() {
   }
   if (!state.workspace.assetsExists) {
     elements.assetPreview.textContent = `缺少 assets 目录：${state.workspace.assetsPath}`;
+  }
+}
+
+function showWorkspaceLauncher({ message = "", error = false } = {}) {
+  const recent = readRecentWorkspaces();
+  const currentPath = state.workspace?.rootPath || "";
+  elements.workspaceLauncherPath.value = currentPath || recent[0] || "";
+  elements.workspaceLauncherCancel.hidden = !state.workspace?.isOpen;
+  elements.workspaceLauncher.hidden = false;
+  elements.appShell.hidden = true;
+  renderRecentWorkspaces(recent);
+  setWorkspaceLauncherStatus(message || "尚未打开工作区。", error ? "error" : "");
+  requestAnimationFrame(() => elements.workspaceLauncherPath.focus({ preventScroll: true }));
+}
+
+function hideWorkspaceLauncher() {
+  if (!state.workspace?.isOpen) {
+    return;
+  }
+
+  elements.workspaceLauncher.hidden = true;
+  elements.appShell.hidden = false;
+  setWorkspaceLauncherBusy(false);
+  scheduleEditorLayout();
+}
+
+async function requestWorkspaceSwitch() {
+  elements.workspaceSwitchButton.closest("details")?.removeAttribute("open");
+  if (!(await confirmDiscardChanges())) {
+    return;
+  }
+
+  showWorkspaceLauncher({ message: `当前工作区：${state.workspace.rootPath}` });
+}
+
+async function openWorkspace(pathValue) {
+  const path = normalizeWorkspacePath(pathValue);
+  if (!path) {
+    setWorkspaceLauncherStatus("请输入工作区绝对路径。", "error");
+    elements.workspaceLauncherPath.focus({ preventScroll: true });
+    return;
+  }
+
+  setWorkspaceLauncherBusy(true);
+  setWorkspaceLauncherStatus("正在验证工作区...", "busy");
+  try {
+    const workspace = await requestJson("/api/workspace/open", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ path }),
+    });
+    writeRecentWorkspaces(rememberWorkspacePath(readRecentWorkspaces(), workspace.rootPath));
+    window.location.reload();
+  } catch (error) {
+    setWorkspaceLauncherBusy(false);
+    setWorkspaceLauncherStatus(error instanceof Error ? error.message : String(error), "error");
+  }
+}
+
+async function pickWorkspaceFolder() {
+  setWorkspaceLauncherBusy(true);
+  setWorkspaceLauncherStatus("正在等待目录选择...", "busy");
+  try {
+    const result = await requestJson("/api/workspace/pick", { method: "POST" });
+    if (!result.supported) {
+      setWorkspaceLauncherStatus(result.message || "当前系统不支持目录选择。", "error");
+      return;
+    }
+    if (result.canceled || !result.path) {
+      setWorkspaceLauncherStatus("已取消目录选择。", "");
+      return;
+    }
+
+    elements.workspaceLauncherPath.value = result.path;
+    await openWorkspace(result.path);
+  } catch (error) {
+    setWorkspaceLauncherStatus(error instanceof Error ? error.message : String(error), "error");
+  } finally {
+    if (!document.hidden) {
+      setWorkspaceLauncherBusy(false);
+    }
+  }
+}
+
+function setWorkspaceLauncherBusy(busy) {
+  elements.workspaceLauncherPath.disabled = busy;
+  elements.workspaceLauncherBrowse.disabled = busy;
+  elements.workspaceLauncherOpen.disabled = busy;
+  elements.workspaceLauncherCancel.disabled = busy;
+  for (const button of elements.workspaceLauncherRecentList.querySelectorAll("button")) {
+    button.disabled = busy;
+  }
+}
+
+function setWorkspaceLauncherStatus(message, tone = "") {
+  elements.workspaceLauncherStatus.className = `workspace-launcher-status${tone ? ` ${tone}` : ""}`;
+  elements.workspaceLauncherStatus.textContent = message || "";
+}
+
+function readRecentWorkspaces() {
+  try {
+    return normalizeRecentWorkspaces(JSON.parse(preferences.get(storageKeys.recentWorkspaces, "[]")));
+  } catch {
+    return [];
+  }
+}
+
+function writeRecentWorkspaces(paths) {
+  preferences.set(storageKeys.recentWorkspaces, JSON.stringify(normalizeRecentWorkspaces(paths)));
+  renderRecentWorkspaces(readRecentWorkspaces());
+}
+
+function rememberCurrentWorkspace() {
+  if (!state.workspace?.rootPath) {
+    return;
+  }
+
+  writeRecentWorkspaces(rememberWorkspacePath(readRecentWorkspaces(), state.workspace.rootPath));
+}
+
+function clearRecentWorkspaces() {
+  preferences.remove(storageKeys.recentWorkspaces);
+  renderRecentWorkspaces([]);
+  setWorkspaceLauncherStatus("最近工作区记录已清除。", "");
+}
+
+function renderRecentWorkspaces(paths = readRecentWorkspaces()) {
+  elements.workspaceLauncherRecentList.replaceChildren();
+  elements.workspaceLauncherRecentSection.hidden = paths.length === 0;
+  for (const path of paths) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "workspace-launcher-recent-item";
+    button.title = path;
+    button.addEventListener("click", () => openWorkspace(path));
+
+    const name = document.createElement("span");
+    name.className = "workspace-launcher-recent-name";
+    name.textContent = getWorkspaceName(path);
+    const pathText = document.createElement("span");
+    pathText.className = "workspace-launcher-recent-path";
+    pathText.textContent = path;
+    const action = document.createElement("span");
+    action.className = "workspace-launcher-recent-action";
+    action.textContent = "打开";
+    button.append(name, pathText, action);
+    elements.workspaceLauncherRecentList.appendChild(button);
   }
 }
 

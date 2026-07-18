@@ -19,9 +19,43 @@
   <link rel="stylesheet" href="/styles/stage11.css?v=20260716-map-events-2">
   <link rel="stylesheet" href="/styles/stage12.css?v=20260712-stage12-2">
   <link rel="stylesheet" href="/styles/stage13.css?v=20260713-talents-1">
+  <link rel="stylesheet" href="/styles/workspace-launcher.css?v=20260718-workspace-launcher-1">
 </head>
 <body data-editor-version="0.9.0">
-  <div class="app-shell">
+  <section id="workspaceLauncher" class="workspace-launcher" aria-labelledby="workspaceLauncherTitle">
+    <header class="workspace-launcher-header">
+      <div class="workspace-launcher-brand">JYXR MOD 编辑器</div>
+      <div class="workspace-launcher-version">v0.9.0</div>
+    </header>
+    <main class="workspace-launcher-main">
+      <div class="workspace-launcher-heading">
+        <div class="workspace-launcher-eyebrow">创作工作区</div>
+        <h1 id="workspaceLauncherTitle">打开工作区</h1>
+      </div>
+
+      <form id="workspaceLauncherForm" class="workspace-launcher-form">
+        <label for="workspaceLauncherPath">工作区路径</label>
+        <div class="workspace-launcher-path-row">
+          <input id="workspaceLauncherPath" type="text" autocomplete="off" spellcheck="false" placeholder="/absolute/path/to/workspace">
+          <button id="workspaceLauncherBrowse" type="button" class="button secondary">浏览...</button>
+          <button id="workspaceLauncherOpen" type="submit" class="button primary">打开工作区</button>
+        </div>
+        <div id="workspaceLauncherStatus" class="workspace-launcher-status" role="status" aria-live="polite">正在读取工作区状态...</div>
+      </form>
+
+      <section id="workspaceLauncherRecentSection" class="workspace-launcher-recent" aria-labelledby="workspaceLauncherRecentTitle" hidden>
+        <div class="workspace-launcher-section-header">
+          <h2 id="workspaceLauncherRecentTitle">最近使用</h2>
+          <button id="workspaceLauncherClearRecent" type="button" class="button ghost">清除记录</button>
+        </div>
+        <div id="workspaceLauncherRecentList" class="workspace-launcher-recent-list"></div>
+      </section>
+
+      <button id="workspaceLauncherCancel" type="button" class="button ghost workspace-launcher-cancel" hidden>返回当前工作区</button>
+    </main>
+  </section>
+
+  <div id="appShell" class="app-shell" hidden>
     <header class="topbar">
       <div class="topbar-leading">
         <button id="navigationToggleButton" class="icon-button navigation-toggle" type="button" aria-label="收起导航" title="收起导航">
@@ -58,6 +92,7 @@
         <details class="topbar-more">
           <summary class="icon-button" aria-label="更多操作" title="更多操作">•••</summary>
           <div class="topbar-menu">
+            <button id="workspaceSwitchButton" class="menu-item" type="button">切换工作区</button>
             <a class="menu-item" href="/help.html" target="_blank" rel="noreferrer">帮助与使用说明</a>
           </div>
         </details>
@@ -299,6 +334,6 @@
   <script src="/vendor/konva/konva.min.js?v=10.3.0"></script>
   <script src="/vendor/monaco/vs/loader.js?v=20260708-monaco-1"></script>
   <script src="/story-dsl.js?v=20260713-story-author-1"></script>
-  <script src="/bootstrap.js?v=20260716-map-events-2"></script>
+  <script src="/bootstrap.js?v=20260718-workspace-launcher-1"></script>
 </body>
 </html>

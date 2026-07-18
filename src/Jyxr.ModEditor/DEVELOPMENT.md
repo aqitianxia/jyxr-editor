@@ -52,7 +52,11 @@ Direct resource writes must use `Services/ResourceWritePolicy.cs` or an equally 
 Important endpoints:
 
 - `GET /api/workspace`
-  - Returns project root, MOD root, discovered MOD summaries, default MOD id, data path, and asset path.
+  - Returns the current workspace state and discovered MOD summaries; it also works before a workspace is open.
+- `POST /api/workspace/open`
+  - Validates and activates a workspace containing at least one `mods/<modId>/mod.json` plus `data/`.
+- `POST /api/workspace/pick`
+  - Opens the local operating system's directory picker when supported; path entry remains the fallback.
 - `GET /api/data/files?modId=...`
   - Lists the selected MOD's `data/**/*.json`.
 - `GET /api/data/file?path=...&modId=...`
@@ -84,6 +88,7 @@ Important endpoints:
   - Intended for NPC speakers like `清兵`, `内侍`, `红花会弟子`.
 
 Path resolution must stay constrained to the project data/assets roots. Do not add arbitrary absolute path writes.
+Workspace switching validates the next root before replacing the active root. The frontend reloads after a successful switch so no document or MOD state crosses workspace boundaries.
 
 ### Frontend
 

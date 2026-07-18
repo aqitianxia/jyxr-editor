@@ -4,6 +4,7 @@ export const storageKeys = Object.freeze({
   navigationCollapsed: "jyxr-json-editor:navigation-collapsed",
   navigationSections: "jyxr-json-editor:navigation-sections",
   recentEntries: "jyxr-json-editor:recent-entries",
+  recentWorkspaces: "jyxr-json-editor:recent-workspaces",
 });
 
 export function createPreferences(storage = window.localStorage) {
