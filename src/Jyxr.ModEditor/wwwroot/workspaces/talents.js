@@ -21,7 +21,7 @@ import {
   hookEffectTypes,
   hookTimings,
   targetSelectorTypes,
-} from "../domain/battle-authoring.js?v=20260713-battle-1";
+} from "../domain/battle-authoring.js?v=20260718-contract-1";
 
 const tabs = Object.freeze([
   ["overview", "概要"],

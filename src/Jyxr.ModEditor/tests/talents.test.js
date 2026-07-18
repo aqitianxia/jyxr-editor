@@ -1,6 +1,15 @@
 import assert from "node:assert/strict";
+import fs from "node:fs";
 import test from "node:test";
 import {
+  abilityEffectTypes,
+  hookConditionTypes,
+  hookEffectTypes,
+  targetSelectorTypes,
+} from "../wwwroot/domain/battle-authoring.js";
+import { createItemDefinition, effectTypes as itemEffectTypes, requirementTypes } from "../wwwroot/domain/items.js";
+import {
+  affixTypes,
   createHookCondition,
   createHookEffect,
   createTalentAffix,
@@ -12,6 +21,31 @@ import {
   matchesTalentSearch,
   moveTalentEntry,
 } from "../wwwroot/domain/talents.js";
+
+const contract = JSON.parse(fs.readFileSync(
+  new URL("../Contracts/jyxr-content-contract.json", import.meta.url),
+  "utf8",
+));
+
+function values(entries) {
+  return entries.map(([value]) => value).sort();
+}
+
+test("编辑器表单类型与游戏导出的契约一致", () => {
+  assert.deepEqual(values(affixTypes), [...contract.polymorphicTypes.affix.values].sort());
+  assert.deepEqual(values(hookConditionTypes), [...contract.polymorphicTypes.battleHookCondition.values].sort());
+  assert.deepEqual(
+    [...new Set([...values(abilityEffectTypes), ...values(hookEffectTypes)])].sort(),
+    [...contract.polymorphicTypes.battleEffect.values].sort(),
+  );
+  assert.deepEqual(values(targetSelectorTypes), [...contract.polymorphicTypes.battleTarget.values].sort());
+  assert.deepEqual(values(requirementTypes), [...contract.polymorphicTypes.itemRequirement.values].sort());
+  assert.deepEqual(values(itemEffectTypes), [...contract.polymorphicTypes.itemUseEffect.values].sort());
+  assert.deepEqual(
+    [createItemDefinition("consumable").category, createItemDefinition("equipment").category].sort(),
+    [...contract.polymorphicTypes.item.values].sort(),
+  );
+});
 
 test("新建天赋只生成当前运行时字段", () => {
   assert.deepEqual(createTalentDefinition("医者"), {
@@ -37,6 +71,7 @@ test("结构补齐保留运行时新增的未知字段", () => {
 
 test("Hook 条件与效果覆盖当前天赋数据能力", () => {
   assert.deepEqual(createHookCondition("context_unit_relation"), { type: "context_unit_relation", role: "target", relation: "enemy" });
+  assert.deepEqual(createHookCondition("context_skill_source_id"), { type: "context_skill_source_id", sourceSkillIds: [] });
   assert.equal(createHookCondition("unit_level_chance").maxValue, 1);
   assert.equal(createHookEffect("modify_damage_context").field, "final_damage");
   assert.equal(createHookEffect("custom").effectId, "");

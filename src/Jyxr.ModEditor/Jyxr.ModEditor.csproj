@@ -5,4 +5,7 @@
     <Nullable>enable</Nullable>
     <RootNamespace>Jyxr.ModEditor</RootNamespace>
   </PropertyGroup>
+  <ItemGroup>
+    <Content Update="Contracts/*.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
 </Project>

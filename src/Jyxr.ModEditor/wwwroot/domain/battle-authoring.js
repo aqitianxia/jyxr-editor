@@ -38,6 +38,7 @@ export const hookConditionTypes = Object.freeze([
   ["context_unit_role", "上下文单位角色"],
   ["context_unit_gender", "上下文单位性别"],
   ["context_hit_state", "命中状态"],
+  ["context_skill_source_id", "来源武学 ID"],
   ["context_skill_name_equals", "技能名等于"],
   ["context_skill_name_contains", "技能名包含"],
   ["context_skill_kind", "技能种类"],
@@ -98,6 +99,7 @@ export function createHookCondition(type = "chance") {
   if (type === "context_unit_role") return { type, role: "source" };
   if (type === "context_unit_gender") return { type, role: "target", genders: ["female"] };
   if (type === "context_hit_state") return { type, state: "hit" };
+  if (type === "context_skill_source_id") return { type, sourceSkillIds: [] };
   if (type === "context_skill_name_equals" || type === "context_skill_name_contains") return { type, values: [] };
   if (type === "context_skill_kind") return { type, kinds: ["External"] };
   if (type === "context_skill_weapon_type") return { type, weaponTypes: ["quanzhang"] };

@@ -1,3 +1,4 @@
 <Solution>
   <Project Path="src/Jyxr.ModEditor/Jyxr.ModEditor.csproj" />
+  <Project Path="tests/Jyxr.ModEditor.Tests/Jyxr.ModEditor.Tests.csproj" />
 </Solution>

@@ -7,8 +7,19 @@ export function createDirtyStateController({ state, events, render, confirmDisca
     const nextDirty = Boolean(dirty);
     const changed = state.dirty !== nextDirty;
     state.dirty = nextDirty;
+    if (nextDirty) {
+      state.dirtyPath = options.path || state.dirtyPath || state.currentPath || "";
+      if (options.detail !== undefined) state.dirtyDetail = String(options.detail || "");
+    } else {
+      state.dirtyPath = "";
+      state.dirtyDetail = "";
+    }
     if (changed) {
-      events?.emit(dirtyStateEvents.changed, { dirty: nextDirty });
+      events?.emit(dirtyStateEvents.changed, {
+        dirty: nextDirty,
+        path: state.dirtyPath,
+        detail: state.dirtyDetail,
+      });
     }
     if (options.render !== false) {
       render?.();
@@ -20,12 +31,15 @@ export function createDirtyStateController({ state, events, render, confirmDisca
     return state.dirty;
   }
 
-  async function confirmDiscardChanges(message = "当前文件尚未保存，是否放弃修改？") {
+  async function confirmDiscardChanges(message = "") {
     if (!isDirty()) {
       return true;
     }
 
-    return Boolean(await confirmDiscard(message));
+    const path = state.dirtyPath || state.currentPath || "当前文件";
+    const detail = state.dirtyDetail ? `（${state.dirtyDetail}）` : "";
+    const prompt = message || `“${path}”${detail}有尚未保存的修改。\n\n确定将放弃这些修改并继续，取消则留在当前页面。`;
+    return Boolean(await confirmDiscard(prompt));
   }
 
   return {

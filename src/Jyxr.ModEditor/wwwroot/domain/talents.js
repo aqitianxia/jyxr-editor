@@ -1,4 +1,4 @@
-import { createHookCondition, createHookEffect } from "./battle-authoring.js?v=20260713-battle-1";
+import { createHookCondition, createHookEffect } from "./battle-authoring.js?v=20260718-contract-1";
 
 export const talentFilters = Object.freeze([
   ["all", "全部天赋"],

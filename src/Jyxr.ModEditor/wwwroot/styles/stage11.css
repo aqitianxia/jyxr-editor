@@ -466,113 +466,11 @@
   font-size: 12px;
 }
 
-.map-trigger-simulator-dialog {
-  width: min(1080px, 100%);
-}
-
-.map-trigger-simulator {
-  grid-template-columns: minmax(360px, 0.85fr) minmax(420px, 1.15fr);
-  align-items: start;
-}
-
-.map-trigger-scenario {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: var(--space-2);
-}
-
-.map-trigger-scenario .character-field.full {
-  grid-column: 1 / -1;
-}
-
-.map-trigger-results {
-  min-width: 0;
-  display: grid;
-  gap: var(--space-2);
-}
-
-.map-trigger-summary {
-  padding: var(--space-3);
-  border-left: 3px solid var(--color-border-strong);
-  background: var(--color-surface-subtle);
-  font-weight: 800;
-}
-
-.map-trigger-summary.selected {
-  border-left-color: var(--color-success);
-  color: var(--color-success);
-}
-
-.map-trigger-result-list {
-  display: grid;
-  gap: var(--space-2);
-}
-
-.map-trigger-result {
-  display: grid;
-  gap: var(--space-2);
-  padding: var(--space-3);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
-  background: var(--color-surface);
-}
-
-.map-trigger-result.selected {
-  border-color: var(--color-success);
-  background: color-mix(in srgb, var(--color-success) 7%, var(--color-surface));
-}
-
-.map-trigger-result-heading {
-  display: flex;
-  justify-content: space-between;
-  gap: var(--space-3);
-}
-
-.map-trigger-result-heading span {
-  flex: 0 0 auto;
-  color: var(--color-text-muted);
-  font-size: 12px;
-}
-
-.map-trigger-condition-results {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-1);
-}
-
-.map-trigger-condition-results span {
-  padding: 3px 6px;
-  border-radius: var(--radius-sm);
-  background: var(--color-surface-muted);
-  font-size: 11px;
-  overflow-wrap: anywhere;
-}
-
-.map-trigger-condition-results .pass {
-  color: var(--color-success);
-}
-
-.map-trigger-condition-results .fail {
-  color: var(--color-danger);
-}
-
 .map-workspace-inspector .embedded-code-editor-host {
   min-height: 360px;
 }
 
 @media (max-width: 820px) {
-  .map-trigger-simulator {
-    grid-template-columns: 1fr;
-  }
-
-  .map-trigger-scenario {
-    grid-template-columns: 1fr;
-  }
-
-  .map-trigger-scenario .character-field.full {
-    grid-column: auto;
-  }
-
   .map-event-destination {
     max-width: 100%;
   }

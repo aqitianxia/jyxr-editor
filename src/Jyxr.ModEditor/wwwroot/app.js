@@ -34,7 +34,7 @@ import { createGrowthTemplate, ensureGrowthTemplateShape } from "./domain/growth
 import { renderGrowthTemplateWorkspace } from "./workspaces/growth-templates.js?v=20260711-stage9-2";
 import { cloneJson as cloneSectJson, createSectDefinition, ensureSectShape, getSectIssues } from "./domain/sects.js?v=20260711-stage9-2";
 import { renderSectWorkspace } from "./workspaces/sects.js?v=20260711-stage9-2";
-import { createMapDefinition, createMapEventDefinition, createUniqueMapEventId, describeMapCondition, ensureMapEventShape, ensureMapLocationShape, ensureMapShape, findMapReferences, getMapConditionReferences, getMapConditionValueIssue, mapConditionDefinitions, mapConditionTypes, matchesMapSearch, moveMapEventToLocation as moveMapEventToLocationEntry, moveMapEventWithinLocation, moveMapLocation as moveMapLocationEntry, renameMapId, simulateMapLocationEvents } from "./domain/maps.js?v=20260716-map-events-2";
+import { createMapDefinition, createMapEventDefinition, describeMapCondition, findMapReferences, getMapConditionReferences, getMapConditionValueIssue, mapConditionDefinitions, mapConditionTypes, matchesMapSearch, moveMapEventToLocation as moveMapEventToLocationEntry, moveMapEventWithinLocation, moveMapLocation as moveMapLocationEntry, renameMapId } from "./domain/maps.js?v=20260718-map-runtime-keys-1";
 import { characterStatFields } from "./domain/characters.js?v=20260712-navigation-2";
 import { createItemDefinition, effectTypes, statChoices, weaponTypes } from "./domain/items.js?v=20260711-stage6-1";
 import { renderItemWorkspace } from "./workspaces/items.js?v=20260711-stage6-2";
@@ -1564,11 +1564,9 @@ async function requestWorkspaceChange(mode) {
         if (!Array.isArray(records) || !records.every((record) => record && typeof record === "object" && !Array.isArray(record))) {
           throw new Error("maps.json 顶层必须是地图对象数组。");
         }
-        const savedRecords = structuredCloneCompat(records);
         state.records = records;
-        state.records.forEach(ensureMapShape);
         state.selectedRecordIndex = Math.min(state.selectedRecordIndex, Math.max(0, records.length - 1));
-        initializeMapHistory(savedRecords);
+        initializeMapHistory(records);
         setMode("maps");
       } catch (error) {
         showValidation(false, error instanceof SyntaxError ? formatJsonError(error) : error.message);
@@ -3188,7 +3186,34 @@ function collectProjectProblems() {
   if (projectProblemsCache) return projectProblemsCache;
   const problems = [];
   const validation = state.problemCenter.validation;
-  if (validation && !validation.ok) {
+  if (Array.isArray(validation?.issues) && validation.issues.length > 0) {
+    const sourceLabels = {
+      syntax: "JSON 语法检查",
+      contract: "游戏内容契约",
+      resource: "资源依赖检查",
+    };
+    for (const [index, issue] of validation.issues.entries()) {
+      const issuePath = String(issue.path || "");
+      const dataPath = issue.category === "resource"
+        ? issuePath
+        : issuePath.match(/^[^.[\]]+\.json/i)?.[0] || issuePath;
+      problems.push(createProblem({
+        id: `backend:${issue.code || "validation"}:${issuePath}:${index}`,
+        severity: issue.severity,
+        source: `backend-${issue.category || "validation"}`,
+        sourceLabel: sourceLabels[issue.category] || "正式内容校验",
+        ...getProblemContentType(dataPath),
+        message: issue.message,
+        detail: issuePath && issuePath !== dataPath ? `数据位置：${issuePath}` : "",
+        location: dataPath ? {
+          workspace: issue.category === "resource" ? "assets" : "data",
+          path: dataPath,
+          line: issue.line,
+          definitionId: issue.definitionId,
+        } : null,
+      }));
+    }
+  } else if (validation && !validation.ok) {
     problems.push(createProblem({
       id: "backend:content-validation",
       severity: "error",
@@ -5198,7 +5223,9 @@ async function validateContent() {
 }
 
 function renderDirtyState() {
-  elements.dirtyState.textContent = state.dirty ? "未保存" : "";
+  const path = state.dirtyPath || state.currentPath || "当前文件";
+  elements.dirtyState.textContent = state.dirty ? `${path} 未保存` : "";
+  elements.dirtyState.title = state.dirtyDetail || "";
   renderMapHistoryControls();
   renderCurrentFileInfo();
 }
@@ -5736,9 +5763,7 @@ async function openMapWorkspace() {
   }
   await openDataFile("maps.json", { initializeEditor: false });
   if (!isMapFile()) return;
-  const savedRecords = structuredCloneCompat(state.records);
-  state.records.forEach(ensureMapShape);
-  initializeMapHistory(savedRecords);
+  initializeMapHistory(state.records);
   setMode("maps");
 }
 
@@ -5760,7 +5785,6 @@ function renderMapWorkspaceView(renderOptions = {}) {
     elements.mapWorkspaceView.appendChild(shell);
   }
 
-  if (createShell || renderOptions.catalog !== false) state.records.forEach(ensureMapShape);
   clampMapSelection();
   const catalog = shell.querySelector(".map-workspace-catalog");
   const stage = shell.querySelector(".map-workspace-stage");
@@ -5788,7 +5812,6 @@ function renderMapWorkspaceView(renderOptions = {}) {
     return;
   }
 
-  ensureMapShape(record);
   if (createShell || renderOptions.stage !== false) {
     destroyActiveMapCanvas();
     stage.replaceChildren();
@@ -5935,7 +5958,7 @@ function createMapWorkspaceLocationRail(record) {
     button.className = "map-workspace-location-chip";
     button.dataset.locationIndex = String(index);
     button.classList.toggle("active", index === state.mapEditor.selectedLocationIndex);
-    const info = getMapLocationIconInfo(location, location.events[0] || null);
+    const info = getMapLocationIconInfo(location, (location.events || [])[0] || null);
     button.append(createMapIconVisual(info, "", "map-workspace-location-icon"), document.createTextNode(location.name || location.id || `点位 ${index + 1}`));
     button.addEventListener("click", () => {
       selectMapLocation(index);
@@ -6297,7 +6320,7 @@ function createLargeMapCanvas(record) {
 
   const assetPath = resolveAssetPath(record.picture);
   const locations = record.locations.map((location, index) => {
-    const iconInfo = getMapLocationIconInfo(location, location.events[0] || null);
+    const iconInfo = getMapLocationIconInfo(location, (location.events || [])[0] || null);
     return {
       position: normalizeMapPosition(location.position),
       badge: index + 1,
@@ -6442,7 +6465,7 @@ function createMapLocationPanel(record) {
         selectMapLocation(index);
       });
 
-      const iconInfo = getMapLocationIconInfo(location, location.events[0] || null);
+      const iconInfo = getMapLocationIconInfo(location, (location.events || [])[0] || null);
       const icon = createMapIconVisual(iconInfo, String(index + 1), "map-location-list-icon");
       const content = document.createElement("div");
       content.className = "map-location-card-content";
@@ -6451,7 +6474,7 @@ function createMapLocationPanel(record) {
       name.textContent = location.name || location.id || `点位 ${index + 1}`;
       const meta = document.createElement("div");
       meta.className = "record-subtitle";
-      meta.textContent = `${location.events.length} 事件${isLargeMap(record) ? ` · (${normalizeMapPosition(location.position).x}, ${normalizeMapPosition(location.position).y})` : ""}`;
+      meta.textContent = `${(location.events || []).length} 事件${isLargeMap(record) ? ` · (${normalizeMapPosition(location.position).x}, ${normalizeMapPosition(location.position).y})` : ""}`;
       const source = document.createElement("div");
       source.className = `map-location-icon-source ${iconInfo.status}`;
       source.textContent = iconInfo.sourceLabel;
@@ -6511,7 +6534,6 @@ function createSelectedMapLocationEditor(record) {
     return editor;
   }
 
-  ensureMapLocationShape(location);
   const header = document.createElement("div");
   header.className = "item-array-card-header";
   const title = document.createElement("div");
@@ -6634,7 +6656,7 @@ function createMapObjectResourceField(owner, labelCn, key, group, pickerContext 
 function createMapLocationIconSummary(location) {
   const box = document.createElement("div");
   box.className = "map-runtime-icon-summary";
-  const mapEvent = location.events[0] || null;
+  const mapEvent = (location.events || [])[0] || null;
   const info = getMapLocationIconInfo(location, mapEvent);
   box.appendChild(createMapIconVisual(info, "", "map-runtime-icon-preview"));
   const content = document.createElement("div");
@@ -6747,18 +6769,16 @@ function createMapEventSection(record, location) {
   note.textContent = "优先级从上到下；常见写法是先放一次性剧情，再放进入地图的兜底事件。";
   const actions = document.createElement("div");
   actions.className = "record-actions";
-  actions.append(
-    createActionButton("触发模拟", () => openMapTriggerSimulator(record, location)),
-    createActionButton("新增事件", () => addMapEvent(location)),
-  );
+  actions.append(createActionButton("新增事件", () => addMapEvent(location)));
   toolbar.append(note, actions);
 
   const list = document.createElement("div");
   list.className = "item-array-list map-event-list";
-  location.events.forEach((event, eventIndex) => {
+  const events = Array.isArray(location.events) ? location.events : [];
+  events.forEach((event, eventIndex) => {
     list.appendChild(createMapEventCard(record, location, event, eventIndex));
   });
-  if (location.events.length === 0) {
+  if (events.length === 0) {
     const empty = document.createElement("div");
     empty.className = "record-empty";
     empty.textContent = "这个点位没有事件。小地图中没有事件的点位不会显示。";
@@ -6770,7 +6790,6 @@ function createMapEventSection(record, location) {
 }
 
 function createMapEventCard(record, location, mapEvent, eventIndex) {
-  ensureMapEventShape(mapEvent);
   const info = getMapEventInfo(mapEvent);
   const locationIndex = record.locations.indexOf(location);
   const card = document.createElement("article");
@@ -6823,7 +6842,7 @@ function createMapEventCard(record, location, mapEvent, eventIndex) {
   const meta = document.createElement("div");
   meta.className = "shop-product-meta";
   meta.append(
-    createPill(`ID ${mapEvent.id}`),
+    createPill(`事件键 ${record.id || "?"}|${location.id || "?"}|${eventIndex}`),
     createPill(info.typeLabel),
     createPill(info.targetStatusText, info.targetStatusTone),
     createPill(mapEvent.repeatMode === "once" ? "一次性" : "可重复"),
@@ -6988,6 +7007,7 @@ function createMapConditionEditor(record, mapEvent) {
   note.className = "static-tool-note";
   note.textContent = "条件全部满足后才会尝试触发这个事件。多个值用 # 分隔，例如 角色#10。";
   const add = createActionButton("添加条件", () => {
+    if (!Array.isArray(mapEvent.conditions)) mapEvent.conditions = [];
     mapEvent.conditions.push({ type: "should_not_finish", value: "" });
     syncRecordsToEditor();
     renderMapWorkspaceView();
@@ -6995,10 +7015,11 @@ function createMapConditionEditor(record, mapEvent) {
   header.append(note, add);
   const list = document.createElement("div");
   list.className = "map-condition-list";
-  mapEvent.conditions.forEach((condition, index) => {
+  const conditions = Array.isArray(mapEvent.conditions) ? mapEvent.conditions : [];
+  conditions.forEach((condition, index) => {
     list.appendChild(createMapConditionRow(record, mapEvent, condition, index));
   });
-  if (mapEvent.conditions.length === 0) {
+  if (conditions.length === 0) {
     const empty = document.createElement("div");
     empty.className = "record-empty compact";
     empty.textContent = "无条件，始终可参与触发判断。";
@@ -7089,16 +7110,18 @@ function createMapConditionRow(record, mapEvent, condition, index) {
 function getMapConditionReferenceDiagnostics(condition) {
   return getMapConditionReferences(condition).map((reference) => {
     if (reference.types.includes("map-events")) {
-      const [mapId, eventId, ...extra] = reference.id.split("|");
+      const [mapId, locationId, eventIndexText, ...extra] = reference.id.split("|");
+      const eventIndex = Number(eventIndexText);
       const targetMap = extra.length === 0 ? state.records.find((map) => map.id === mapId) : null;
-      const targetLocationIndex = targetMap?.locations?.findIndex((location) => (
-        (location.events || []).some((mapEvent) => mapEvent.id === eventId)
-      )) ?? -1;
+      const targetLocationIndex = targetMap?.locations?.findIndex((location) => location.id === locationId) ?? -1;
+      const targetLocation = targetLocationIndex >= 0 ? targetMap?.locations?.[targetLocationIndex] : null;
       return {
         ...reference,
-        exists: Boolean(targetMap && targetLocationIndex >= 0),
+        exists: Boolean(targetMap && targetLocation && Number.isInteger(eventIndex)
+          && eventIndex >= 0 && eventIndex < (targetLocation.events || []).length),
         mapId,
-        eventId,
+        locationId,
+        eventIndex,
         targetLocationIndex,
       };
     }
@@ -7143,197 +7166,6 @@ async function revealMapConditionReference(reference) {
   await revealDefinitionById(reference.definitionId || reference.id, reference.types);
 }
 
-function openMapTriggerSimulator(record, location) {
-  const simulation = state.mapEditor.simulation;
-  if (!state.records.some((map) => map.id === simulation.currentMapId)) {
-    simulation.currentMapId = record.id || "";
-  }
-
-  const content = document.createElement("div");
-  content.className = "tool-dialog-content map-trigger-simulator";
-  const scenarioPanel = document.createElement("div");
-  scenarioPanel.className = "map-trigger-scenario";
-  const resultsPanel = document.createElement("div");
-  resultsPanel.className = "map-trigger-results";
-
-  const refresh = () => renderMapTriggerSimulationResults(record, location, resultsPanel);
-  scenarioPanel.append(
-    createMapSimulationSelectField("当前地图", "currentMapId", state.records.map((map) => ({ value: map.id, label: map.name || map.id })), refresh),
-    createMapSimulationSelectField("当前时辰", "timeSlot", [
-      ["Zi", "子"], ["Chou", "丑"], ["Yin", "寅"], ["Mao", "卯"], ["Chen", "辰"], ["Si", "巳"],
-      ["Wu", "午"], ["Wei", "未"], ["Shen", "申"], ["You", "酉"], ["Xu", "戌"], ["Hai", "亥"],
-    ].map(([value, label]) => ({ value, label })), refresh),
-    createMapSimulationTextField("队伍角色", "partyMembers", "主角#郭襄", refresh),
-    createMapSimulationTextField("已完成剧情", "completedStories", "剧情A#剧情B", refresh),
-    createMapSimulationTextField("已完成事件", "completedEvents", "大地图|事件ID#洛阳|事件ID", refresh),
-    createMapSimulationTextField("限时 key", "timeKeys", "限时任务A#限时任务B", refresh),
-    createMapSimulationTextField("物品数量", "items", "小还丹=2#钥匙=1", refresh),
-    createMapSimulationTextField("角色等级", "characterLevels", "主角=10#郭襄=20", refresh),
-    createMapSimulationTextField("角色身法", "characterShenfa", "主角=50", refresh),
-    createMapSimulationTextField("技能等级", "skillLevels", "主角|太极拳=5", refresh),
-    createMapSimulationTextField("上一个剧情", "lastStoryId", "剧情 ID", refresh),
-    createMapSimulationNumberField("银两", "silver", 0, refresh),
-    createMapSimulationNumberField("元宝", "gold", 0, refresh),
-    createMapSimulationNumberField("世界天数", "totalDays", 0, refresh),
-    createMapSimulationNumberField("当前周目", "round", 0, refresh),
-    createMapSimulationSelectField("难度", "difficulty", [
-      { value: "normal", label: "normal" },
-      { value: "hard", label: "hard" },
-      { value: "crazy", label: "crazy" },
-    ], refresh),
-    createMapSimulationTextField("门派", "sectId", "门派 ID", refresh),
-    createMapSimulationNumberField("概率抽样值", "probabilityRoll", 0, refresh, 99),
-  );
-
-  content.append(scenarioPanel, resultsPanel);
-  const { dialog } = dialogController.open({
-    title: `触发模拟 · ${location.name || location.id || "未命名点位"}`,
-    content,
-  });
-  dialog.classList.add("map-trigger-simulator-dialog");
-  refresh();
-}
-
-function createMapSimulationTextField(label, key, placeholder, refresh) {
-  const field = createCharacterFieldShell(label, "", true);
-  const input = document.createElement("input");
-  input.type = "text";
-  input.value = state.mapEditor.simulation[key] ?? "";
-  input.placeholder = placeholder;
-  bindImeSafeInput(input, (value) => {
-    state.mapEditor.simulation[key] = value;
-    refresh();
-  });
-  field.appendChild(input);
-  return field;
-}
-
-function createMapSimulationNumberField(label, key, min, refresh, max = null) {
-  const field = createCharacterFieldShell(label, "");
-  const input = document.createElement("input");
-  input.type = "number";
-  input.min = String(min);
-  if (max != null) input.max = String(max);
-  input.value = String(state.mapEditor.simulation[key] ?? min);
-  input.addEventListener("input", () => {
-    const value = Math.max(min, Number(input.value) || 0);
-    state.mapEditor.simulation[key] = max == null ? value : Math.min(max, value);
-    refresh();
-  });
-  field.appendChild(input);
-  return field;
-}
-
-function createMapSimulationSelectField(label, key, choices, refresh) {
-  const field = createCharacterFieldShell(label, "");
-  const select = document.createElement("select");
-  for (const choice of choices) {
-    const option = document.createElement("option");
-    option.value = choice.value;
-    option.textContent = choice.label;
-    option.selected = String(state.mapEditor.simulation[key] ?? "") === choice.value;
-    select.appendChild(option);
-  }
-  select.addEventListener("change", () => {
-    state.mapEditor.simulation[key] = select.value;
-    refresh();
-  });
-  field.appendChild(select);
-  return field;
-}
-
-function renderMapTriggerSimulationResults(record, location, parent) {
-  const simulation = state.mapEditor.simulation;
-  const result = simulateMapLocationEvents(record.id, location, {
-    ...simulation,
-    partyMembers: parseMapSimulationList(simulation.partyMembers),
-    completedStories: parseMapSimulationList(simulation.completedStories),
-    completedEvents: parseMapSimulationList(simulation.completedEvents),
-    timeKeys: parseMapSimulationList(simulation.timeKeys),
-    items: parseMapSimulationNumberAssignments(simulation.items),
-    characterLevels: parseMapSimulationNumberAssignments(simulation.characterLevels),
-    characterShenfa: parseMapSimulationNumberAssignments(simulation.characterShenfa),
-    skillLevels: parseMapSimulationSkillAssignments(simulation.skillLevels),
-  });
-  parent.replaceChildren();
-
-  const summary = document.createElement("div");
-  summary.className = `map-trigger-summary ${result.selectedEvent ? "selected" : "empty"}`;
-  summary.textContent = result.selectedEvent
-    ? `最终触发：${getMapEventInfo(result.selectedEvent).title}`
-    : "当前场景没有可触发事件";
-  parent.appendChild(summary);
-
-  const list = document.createElement("div");
-  list.className = "map-trigger-result-list";
-  result.results.forEach((entry) => {
-    const mapEvent = location.events[entry.index];
-    const row = document.createElement("div");
-    row.className = `map-trigger-result ${entry.eligible ? "selected" : "skipped"}`;
-    const heading = document.createElement("div");
-    heading.className = "map-trigger-result-heading";
-    const title = document.createElement("strong");
-    title.textContent = `${entry.index + 1}. ${getMapEventInfo(mapEvent).title}`;
-    const status = document.createElement("span");
-    status.textContent = getMapSimulationResultStatus(entry);
-    heading.append(title, status);
-    row.appendChild(heading);
-    if (entry.conditionResults.length > 0) {
-      const conditions = document.createElement("div");
-      conditions.className = "map-trigger-condition-results";
-      entry.conditionResults.forEach((conditionResult) => {
-        const item = document.createElement("span");
-        item.className = conditionResult.passed ? "pass" : "fail";
-        item.textContent = `${conditionResult.passed ? "通过" : "未通过"} · ${conditionResult.message}`;
-        conditions.appendChild(item);
-      });
-      row.appendChild(conditions);
-    }
-    list.appendChild(row);
-  });
-  parent.appendChild(list);
-}
-
-function getMapSimulationResultStatus(entry) {
-  if (entry.eligible) return "最终触发";
-  if (!entry.reached) return "前序事件已命中";
-  if (entry.alreadyCompleted) return "一次性事件已完成";
-  if (!entry.conditionsPassed) return "条件未满足";
-  if (!entry.probabilityPassed) return `概率未通过（需要抽样值 < ${entry.probability}）`;
-  return "未触发";
-}
-
-function parseMapSimulationList(value) {
-  return String(value || "").split(/[#，,；;\n]+/).map((entry) => entry.trim()).filter(Boolean);
-}
-
-function parseMapSimulationNumberAssignments(value) {
-  const result = {};
-  for (const entry of parseMapSimulationList(value)) {
-    const separatorIndex = entry.lastIndexOf("=");
-    if (separatorIndex <= 0) continue;
-    const id = entry.slice(0, separatorIndex).trim();
-    const amount = Number(entry.slice(separatorIndex + 1).trim());
-    if (id && Number.isFinite(amount) && amount >= 0) result[id] = amount;
-  }
-  return result;
-}
-
-function parseMapSimulationSkillAssignments(value) {
-  const result = {};
-  for (const entry of parseMapSimulationList(value)) {
-    const separatorIndex = entry.lastIndexOf("=");
-    if (separatorIndex <= 0) continue;
-    const reference = entry.slice(0, separatorIndex).trim();
-    const amount = Number(entry.slice(separatorIndex + 1).trim());
-    const [characterId, skillId, ...extra] = reference.split("|").map((part) => part.trim());
-    if (!characterId || !skillId || extra.length > 0 || !Number.isFinite(amount) || amount < 0) continue;
-    result[characterId] ||= {};
-    result[characterId][skillId] = amount;
-  }
-  return result;
-}
-
 function createMapAdvancedJsonSection(record) {
   const section = createCharacterSection("高级 JSON", "Advanced");
   const note = document.createElement("p");
@@ -7348,7 +7180,7 @@ function createMapAdvancedJsonSection(record) {
       if (!Array.isArray(value.locations)) throw new Error("locations 必须是数组");
     },
     onApply: (value) => {
-      state.records[state.selectedRecordIndex] = ensureMapShape(value);
+      state.records[state.selectedRecordIndex] = value;
       clampMapSelection();
       syncRecordsToEditor();
       renderMapWorkspaceView();
@@ -7436,15 +7268,7 @@ function duplicateMapLocation(record, index) {
   const copy = structuredCloneCompat(location);
   copy.id = createUniqueLocationId(record, `${copy.id || "点位"}_复制`);
   copy.name = copy.name ? `${copy.name} 复制` : copy.id;
-  const copiedEvents = [];
-  for (const mapEvent of copy.events || []) {
-    const id = createUniqueMapEventId(
-      { locations: [...record.locations, { events: copiedEvents }] },
-      `${copy.id}_${mapEvent.type || "event"}`,
-    );
-    copiedEvents.push({ ...mapEvent, id });
-  }
-  copy.events = copiedEvents;
+  copy.events = Array.isArray(copy.events) ? copy.events : [];
   record.locations.splice(index + 1, 0, copy);
   state.mapEditor.selectedLocationIndex = index + 1;
   syncRecordsToEditor();
@@ -7468,6 +7292,7 @@ function deleteMapLocation(record, index) {
 
 function addMapEvent(location) {
   const record = state.records[state.selectedRecordIndex];
+  if (!Array.isArray(location.events)) location.events = [];
   location.events.push(createMapEventDefinition(record, location));
   syncRecordsToEditor();
   renderMapWorkspaceView();
@@ -7561,9 +7386,7 @@ function duplicateMapEvent(location, index) {
   if (!source) {
     return;
   }
-  const record = state.records[state.selectedRecordIndex];
   const copy = structuredCloneCompat(source);
-  copy.id = createUniqueMapEventId(record, `${source.id || location.id || "event"}_copy`);
   location.events.splice(index + 1, 0, copy);
   syncRecordsToEditor();
   renderMapWorkspaceView();
@@ -7669,16 +7492,11 @@ function getMapStats(record) {
   }
 
   const locationIdCounts = new Map();
-  const eventIdCounts = new Map();
   const occupiedPositions = new Map();
   for (const location of locations) {
     const id = String(location?.id || "").trim();
     if (id) {
       locationIdCounts.set(id, (locationIdCounts.get(id) || 0) + 1);
-    }
-    for (const mapEvent of location?.events || []) {
-      const eventId = String(mapEvent?.id || "").trim();
-      if (eventId) eventIdCounts.set(eventId, (eventIdCounts.get(eventId) || 0) + 1);
     }
   }
 
@@ -7721,14 +7539,6 @@ function getMapStats(record) {
     let hasPermanentCatchAll = false;
     location.events.forEach((mapEvent, eventIndex) => {
       events += 1;
-      const eventId = String(mapEvent.id || "").trim();
-      if (!eventId) {
-        issues.push(`点位「${locationName}」第 ${eventIndex + 1} 个事件缺少 id。`);
-      } else if (eventId.includes("|")) {
-        issues.push(`事件 ID 不能包含 |：${eventId}`);
-      } else if ((eventIdCounts.get(eventId) || 0) > 1) {
-        issues.push(`地图内事件 ID 重复：${eventId}`);
-      }
       if (hasPermanentCatchAll) {
         issues.push(`点位「${locationName}」第 ${eventIndex + 1} 个事件永远不会触发：前面已有可重复、无条件、100% 概率事件。`);
       }
@@ -7954,10 +7764,10 @@ function getMapConditionValuePlaceholder(type) {
     gold_at_least: "非负整数",
     friendCount: "队伍人数",
     current_map: "地图 id",
-    event_completed: "地图id|事件id",
-    event_finished: "地图id|事件id",
-    event_not_completed: "地图id|事件id",
-    event_not_finished: "地图id|事件id",
+    event_completed: "地图id|点位id|事件序号（从0开始）",
+    event_finished: "地图id|点位id|事件序号（从0开始）",
+    event_not_completed: "地图id|点位id|事件序号（从0开始）",
+    event_not_finished: "地图id|点位id|事件序号（从0开始）",
     should_finish: "剧情 id",
     should_not_finish: "剧情 id",
     follow_story: "剧情 id",
@@ -8666,7 +8476,7 @@ function deleteMapRecord() {
   const externalReferences = getExternalStaticReferences(current?.id);
   if (internalReferences.length > 0 || externalReferences.length > 0) {
     const internal = internalReferences.slice(0, 6)
-      .map((reference) => `maps.json · ${reference.mapId}/${reference.locationId}/${reference.eventId}`);
+      .map((reference) => `maps.json · ${reference.eventKey}`);
     const external = externalReferences.slice(0, 6)
       .map((reference) => `${reference.path} · ${reference.fieldPath}`);
     showValidation(false, `无法删除「${title}」：仍有 ${internalReferences.length + externalReferences.length} 处引用。\n${[...internal, ...external].join("\n")}`);
@@ -8783,10 +8593,15 @@ function syncRecordsToEditor() {
   const content = serializeRecords();
   if (state.mode === "maps" && !applyingMapHistory) mapHistory.commit(createMapHistorySnapshot());
   setEditorValue(content);
+  const dirtyOptions = {
+    render: false,
+    path: state.currentPath,
+    detail: getStructuredDirtyDetail(),
+  };
   if (state.mode === "maps") {
-    dirtyStateController.setDirty(content !== mapSavedContent, { render: false });
+    dirtyStateController.setDirty(content !== mapSavedContent, dirtyOptions);
   } else {
-    dirtyStateController.markDirty({ render: false });
+    dirtyStateController.markDirty(dirtyOptions);
   }
   elements.saveState.textContent = state.dirty ? "结构化内容已修改，尚未保存" : "";
   if (state.mode === "data" || state.mode === "story") {
@@ -8798,6 +8613,16 @@ function syncRecordsToEditor() {
   }
   renderDirtyState();
   scheduleProblemIndicators();
+}
+
+function getStructuredDirtyDetail() {
+  const record = state.records[state.selectedRecordIndex];
+  if (!record) return "";
+  const recordLabel = String(record.name || record.id || `第 ${state.selectedRecordIndex + 1} 项`);
+  if (state.mode !== "maps") return recordLabel;
+  const location = record.locations?.[state.mapEditor.selectedLocationIndex];
+  const locationLabel = location ? String(location.name || location.id || `点位 ${state.mapEditor.selectedLocationIndex + 1}`) : "";
+  return locationLabel ? `地图：${recordLabel} / 点位：${locationLabel}` : `地图：${recordLabel}`;
 }
 
 function getRecordTitle(record, index) {

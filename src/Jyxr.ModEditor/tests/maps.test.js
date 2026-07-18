@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import test from "node:test";
-import { createMapDefinition, createMapEventDefinition, describeMapCondition, ensureMapShape, findMapReferences, getMapConditionReferences, getMapConditionValueIssue, mapConditionTypes, matchesMapSearch, moveMapEventToLocation, moveMapEventWithinLocation, moveMapLocation, renameMapId, simulateMapLocationEvents } from "../wwwroot/domain/maps.js";
+import { createMapDefinition, createMapEventDefinition, describeMapCondition, findMapReferences, getMapConditionReferences, getMapConditionValueIssue, mapConditionTypes, matchesMapSearch, moveMapEventToLocation, moveMapEventWithinLocation, moveMapLocation, renameMapId } from "../wwwroot/domain/maps.js";
 
 test("新建地图只使用运行时支持的字段", () => {
   assert.deepEqual(createMapDefinition("测试地图"), {
@@ -16,68 +18,52 @@ test("新建地图只使用运行时支持的字段", () => {
       position: { x: -1, y: -1 },
       description: "返回大地图",
       picture: null,
-      events: [{ id: "返回_map_1", type: "map", targetId: "大地图", probability: 100, description: "返回大地图", conditions: [] }],
+      events: [{ type: "map", targetId: "大地图", probability: 100, description: "返回大地图", conditions: [] }],
     }],
   });
 });
 
-test("结构补齐保留地图、点位、事件和条件的未知字段", () => {
-  const record = {
-    id: "测试",
-    extension: { map: true },
-    locations: [{
-      id: "入口",
-      extension: { location: true },
-      events: [{
-        type: "story",
-        targetId: "开场",
-        probability: 100,
-        extension: { event: true },
-        conditions: [{ type: "always", value: "", extension: { condition: true } }],
-      }],
-    }],
-  };
-  assert.equal(ensureMapShape(record), record);
-  assert.deepEqual(record.extension, { map: true });
-  assert.deepEqual(record.locations[0].extension, { location: true });
-  assert.deepEqual(record.locations[0].events[0].extension, { event: true });
-  assert.deepEqual(record.locations[0].events[0].conditions[0].extension, { condition: true });
-});
-
-test("结构补齐不改写大地图坐标", () => {
-  const record = { id: "大地图", kind: "large", locations: [{ id: "山门", position: { x: 112.5, y: -8 }, events: [] }] };
-  ensureMapShape(record);
-  assert.deepEqual(record.locations[0].position, { x: 112.5, y: -8 });
-});
-
-test("结构补齐为缺失和重复事件生成地图内唯一稳定 ID", () => {
-  const record = {
-    id: "大地图",
-    locations: [
-      { id: "山门", events: [{ type: "story" }, { id: "固定事件", type: "map" }] },
-      { id: "客栈", events: [{ id: "固定事件", type: "shop" }] },
-    ],
-  };
-  ensureMapShape(record);
-  assert.deepEqual(record.locations.flatMap((location) => location.events.map((event) => event.id)), [
-    "山门_story_1",
-    "固定事件",
-    "客栈_shop_1",
-  ]);
-});
-
-test("新增事件 ID 在同一地图内保持唯一", () => {
-  const record = { locations: [{ id: "入口", events: [{ id: "入口_story", type: "story" }] }] };
+test("新增事件只使用运行时支持的字段", () => {
+  const record = { locations: [{ id: "入口", events: [{ type: "story" }] }] };
   const created = createMapEventDefinition(record, record.locations[0]);
-  assert.equal(created.id, "入口_story_2");
+  assert.deepEqual(created, { type: "story", targetId: "", probability: 100, description: "", conditions: [] });
+});
+
+test("查看安卓端真实地图数据不会改写内容或添加事件 ID", {
+  skip: !process.env.JYXR_GAME_ROOT,
+}, () => {
+  const mapsPath = join(process.env.JYXR_GAME_ROOT, "mods", "jyxr-base", "data", "maps.json");
+  const source = readFileSync(mapsPath, "utf8");
+  const records = JSON.parse(source);
+  const beforeViewing = JSON.stringify(records);
+  let eventCount = 0;
+
+  for (const record of records) {
+    matchesMapSearch(record, "");
+    for (const location of record.locations || []) {
+      for (const mapEvent of location.events || []) {
+        eventCount += 1;
+        assert.equal(Object.hasOwn(mapEvent, "id"), false);
+        for (const condition of mapEvent.conditions || []) {
+          describeMapCondition(condition);
+          getMapConditionValueIssue(condition);
+          getMapConditionReferences(condition);
+        }
+      }
+    }
+  }
+
+  assert.ok(eventCount > 0);
+  assert.equal(JSON.stringify(records), beforeViewing);
+  assert.equal(readFileSync(mapsPath, "utf8"), source);
 });
 
 test("地图重命名更新进入地图事件和 current_map 条件", () => {
   const records = [
     { id: "旧地图", locations: [] },
     { id: "入口", locations: [{ id: "门", events: [
-      { id: "enter", type: "map", targetId: "旧地图", conditions: [] },
-      { id: "condition", type: "story", targetId: "剧情", conditions: [{ type: "current_map", value: "旧地图" }] },
+      { type: "map", targetId: "旧地图", conditions: [] },
+      { type: "story", targetId: "剧情", conditions: [{ type: "current_map", value: "旧地图" }] },
     ] }] },
   ];
   assert.equal(findMapReferences(records, "旧地图").length, 2);
@@ -142,8 +128,9 @@ test("地图条件参数按运行时分隔与非负整数规则检查", () => {
   assert.equal(getMapConditionValueIssue({ type: "level_greater_than", value: "主角#10" }), "");
   assert.equal(getMapConditionValueIssue({ type: "skill_more_than", value: "主角#太极拳#5" }), "");
   assert.match(getMapConditionValueIssue({ type: "skill_more_than", value: "主角#太极拳" }), /角色#技能/);
-  assert.equal(getMapConditionValueIssue({ type: "event_completed", value: "大地图|黑木崖_story_1" }), "");
-  assert.match(getMapConditionValueIssue({ type: "event_completed", value: "大地图|黑木崖|1" }), /地图id\|事件id/);
+  assert.equal(getMapConditionValueIssue({ type: "event_completed", value: "大地图|黑木崖|1" }), "");
+  assert.match(getMapConditionValueIssue({ type: "event_completed", value: "大地图|黑木崖_story_1" }), /地图id\|点位id\|事件序号/);
+  assert.match(getMapConditionValueIssue({ type: "event_completed", value: "大地图|黑木崖|-1" }), /从 0 开始/);
   assert.equal(getMapConditionValueIssue({ type: "in_time", value: "子#Wu" }), "");
   assert.match(getMapConditionValueIssue({ type: "in_time", value: "早晨" }), /时辰/);
   assert.match(getMapConditionValueIssue({ type: "game_mode", value: "nightmare" }), /normal/);
@@ -155,57 +142,7 @@ test("地图条件提供运行时含义和引用目标", () => {
     { id: "主角", types: ["characters"], label: "角色" },
     { id: "太极拳", types: ["external-skills", "internal-skills"], label: "技能" },
   ]);
-  assert.deepEqual(getMapConditionReferences({ type: "event_completed", value: "大地图|黑木崖_story_1" }), [
-    { id: "大地图|黑木崖_story_1", types: ["map-events"], label: "地图事件" },
+  assert.deepEqual(getMapConditionReferences({ type: "event_completed", value: "大地图|黑木崖|1" }), [
+    { id: "大地图|黑木崖|1", types: ["map-events"], label: "地图事件" },
   ]);
-});
-
-test("触发模拟按一次性、条件、概率和事件顺序选择首个事件", () => {
-  const location = {
-    events: [
-      { id: "intro", type: "story", targetId: "开场", repeatMode: "once", probability: 100, conditions: [] },
-      { id: "night", type: "story", targetId: "夜话", probability: 50, conditions: [
-        { type: "in_time", value: "子#Zi" },
-        { type: "in_team", value: "郭襄" },
-        { type: "silver_at_least", value: "100" },
-      ] },
-      { id: "fallback", type: "map", targetId: "洛阳", probability: 100, conditions: [] },
-    ],
-  };
-  const result = simulateMapLocationEvents("大地图", location, {
-    timeSlot: "Zi",
-    partyMembers: ["郭襄"],
-    completedStories: ["开场"],
-    silver: 100,
-    probabilityRoll: 20,
-  });
-
-  assert.equal(result.selectedIndex, 1);
-  assert.equal(result.selectedEvent.id, "night");
-  assert.equal(result.results[0].alreadyCompleted, true);
-  assert.equal(result.results[1].conditionsPassed, true);
-  assert.equal(result.results[1].probabilityPassed, true);
-  assert.equal(result.results[2].reached, false);
-});
-
-test("触发模拟的角色条件与运行时队伍语义一致", () => {
-  assert.equal(simulateMapLocationEvents("大地图", {
-    events: [{ id: "level", type: "story", probability: 100, conditions: [{ type: "level_greater_than", value: "主角#10" }] }],
-  }, {
-    characterLevels: { 主角: 20 },
-  }).selectedEvent, null);
-
-  assert.equal(simulateMapLocationEvents("大地图", {
-    events: [{ id: "skill", type: "story", probability: 100, conditions: [{ type: "skill_less_than", value: "主角#太极拳#1" }] }],
-  }, {
-    partyMembers: ["主角"],
-  }).selectedEvent.id, "skill");
-});
-
-test("新手任务条件按当前运行时固定为不满足", () => {
-  const result = simulateMapLocationEvents("大地图", {
-    events: [{ id: "newbie", type: "story", probability: 100, conditions: [{ type: "in_newbie_task", value: "" }] }],
-  }, { inNewbieTask: true });
-  assert.equal(result.selectedEvent, null);
-  assert.match(result.results[0].conditionResults[0].message, /尚未建模/);
 });

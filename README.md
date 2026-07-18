@@ -40,6 +40,23 @@ Then open `http://localhost:5127` and choose the authoring workspace. Pass
 `--workspace /absolute/path/to/workspace` only when a script should open one
 workspace directly.
 
+## Game compatibility contract
+
+The game owns the canonical content types and exports them with
+`tools/Game.EditorContractExporter`. The editor keeps the generated snapshot at
+`src/Jyxr.ModEditor/Contracts/jyxr-content-contract.json`; it does not reference
+game assemblies at runtime.
+
+Run the full compatibility check against a local game workspace with:
+
+```bash
+./scripts/check-game-compatibility.sh /absolute/path/to/jyxr-android
+```
+
+The check fails when the game contract changed without a matching editor update,
+when the editor form type lists drifted, when current base data violates the
+contract, or when a text skill animation cannot resolve its atlas dependencies.
+
 ## Branches
 
 - `main` must remain runnable.

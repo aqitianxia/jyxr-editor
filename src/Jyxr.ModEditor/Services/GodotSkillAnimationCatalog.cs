@@ -45,11 +45,13 @@ public static partial class GodotSkillAnimationCatalog
             return [];
         }
 
+        var atlasCache = new Dictionary<string, (string AtlasPath, double X, double Y, double Width, double Height)>(
+            StringComparer.Ordinal);
         return Directory.EnumerateFiles(directory, "*.*", SearchOption.TopDirectoryOnly)
             .Where(static path => string.Equals(Path.GetExtension(path), ".tres", StringComparison.OrdinalIgnoreCase) ||
                                   string.Equals(Path.GetExtension(path), ".res", StringComparison.OrdinalIgnoreCase))
             .OrderBy(static path => Path.GetFileNameWithoutExtension(path), StringComparer.OrdinalIgnoreCase)
-            .Select(path => CreateSummary(path, assetsPath))
+            .Select(path => CreateSummary(path, assetsPath, atlasCache))
             .ToArray();
     }
 
@@ -70,10 +72,13 @@ public static partial class GodotSkillAnimationCatalog
             throw new FileNotFoundException($"Skill animation was not found: {normalizedId}");
         }
 
-        return ParseTextAnimation(normalizedId, animationPath, assetsPath);
+        return ParseTextAnimation(normalizedId, animationPath, assetsPath, null);
     }
 
-    private static SkillAnimationSummary CreateSummary(string path, string assetsPath)
+    private static SkillAnimationSummary CreateSummary(
+        string path,
+        string assetsPath,
+        Dictionary<string, (string AtlasPath, double X, double Y, double Width, double Height)> atlasCache)
     {
         var id = Path.GetFileNameWithoutExtension(path);
         var relativePath = ToAssetRelativePath(assetsPath, path);
@@ -85,12 +90,18 @@ public static partial class GodotSkillAnimationCatalog
         try
         {
             var text = File.ReadAllText(path);
-            var hasDefault = DefaultAnimationRegex().IsMatch(text);
             var frameCount = ParseTextureResourceIds(GetTrackBlock(text, 0)).Count;
-            var duration = ParseDuration(text, ParseNumbers(ParsePackedArray(GetTrackBlock(text, 0))));
-            return hasDefault && frameCount > 0
-                ? new SkillAnimationSummary(id, relativePath, true, frameCount, duration, "ok", $"{frameCount} 帧")
-                : new SkillAnimationSummary(id, relativePath, false, frameCount, duration, "invalid", "缺少 default 动画或纹理帧");
+            var manifest = ParseTextAnimation(id, path, assetsPath, atlasCache);
+            return manifest.Previewable
+                ? new SkillAnimationSummary(id, relativePath, true, frameCount, manifest.Duration, "ok", $"{frameCount} 帧")
+                : new SkillAnimationSummary(
+                    id,
+                    relativePath,
+                    false,
+                    frameCount,
+                    manifest.Duration,
+                    "invalid",
+                    manifest.Diagnostics.FirstOrDefault() ?? "动画无法预览");
         }
         catch (Exception exception)
         {
@@ -98,7 +109,11 @@ public static partial class GodotSkillAnimationCatalog
         }
     }
 
-    private static SkillAnimationManifest ParseTextAnimation(string id, string animationPath, string assetsPath)
+    private static SkillAnimationManifest ParseTextAnimation(
+        string id,
+        string animationPath,
+        string assetsPath,
+        Dictionary<string, (string AtlasPath, double X, double Y, double Width, double Height)>? atlasCache)
     {
         var diagnostics = new List<string>();
         var text = File.ReadAllText(animationPath);
@@ -137,7 +152,7 @@ public static partial class GodotSkillAnimationCatalog
 
             try
             {
-                var atlas = ParseAtlasTexture(atlasTextureResourcePath, assetsPath);
+                var atlas = ParseAtlasTexture(atlasTextureResourcePath, assetsPath, atlasCache);
                 var offset = ResolveVector(offsets, index, (0d, 0d));
                 var scale = ResolveVector(scales, index, (1d, 1d));
                 frames.Add(new SkillAnimationFrame(
@@ -172,18 +187,44 @@ public static partial class GodotSkillAnimationCatalog
     private static Dictionary<string, string> ParseTextureResources(string text)
     {
         var resources = new Dictionary<string, string>(StringComparer.Ordinal);
-        foreach (Match match in TextureResourceRegex().Matches(text))
+        foreach (Match headerMatch in ExtResourceHeaderRegex().Matches(text))
         {
-            resources[match.Groups["id"].Value] = match.Groups["path"].Value;
+            var attributes = ParseResourceHeaderAttributes(headerMatch.Groups["attributes"].Value);
+            if (!attributes.TryGetValue("type", out var type) ||
+                !string.Equals(type, "Texture2D", StringComparison.Ordinal) ||
+                !attributes.TryGetValue("path", out var path) ||
+                !attributes.TryGetValue("id", out var id))
+            {
+                continue;
+            }
+
+            resources[id] = path;
         }
 
         return resources;
     }
 
+    private static Dictionary<string, string> ParseResourceHeaderAttributes(string value)
+    {
+        var attributes = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (Match match in ResourceHeaderAttributeRegex().Matches(value))
+        {
+            attributes[match.Groups["name"].Value] = match.Groups["value"].Value;
+        }
+
+        return attributes;
+    }
+
     private static (string AtlasPath, double X, double Y, double Width, double Height) ParseAtlasTexture(
         string resourcePath,
-        string assetsPath)
+        string assetsPath,
+        Dictionary<string, (string AtlasPath, double X, double Y, double Width, double Height)>? atlasCache)
     {
+        if (atlasCache?.TryGetValue(resourcePath, out var cached) == true)
+        {
+            return cached;
+        }
+
         var atlasTexturePath = ResolveGodotAssetPath(resourcePath, assetsPath);
         if (!File.Exists(atlasTexturePath))
         {
@@ -191,8 +232,10 @@ public static partial class GodotSkillAnimationCatalog
         }
 
         var text = File.ReadAllText(atlasTexturePath);
-        var textureMatch = TextureResourceRegex().Match(text);
-        if (!textureMatch.Success)
+        var atlasResourceMatch = AtlasResourceRegex().Match(text);
+        var textureResources = ParseTextureResources(text);
+        if (!atlasResourceMatch.Success ||
+            !textureResources.TryGetValue(atlasResourceMatch.Groups["id"].Value, out var atlasResourcePath))
         {
             throw new InvalidDataException($"AtlasTexture 缺少图集引用：{resourcePath}");
         }
@@ -203,18 +246,24 @@ public static partial class GodotSkillAnimationCatalog
             throw new InvalidDataException($"AtlasTexture 缺少 region：{resourcePath}");
         }
 
-        var atlasPath = ResolveGodotAssetPath(textureMatch.Groups["path"].Value, assetsPath);
+        var atlasPath = ResolveGodotAssetPath(atlasResourcePath, assetsPath);
         if (!File.Exists(atlasPath))
         {
-            throw new FileNotFoundException($"图集图片不存在：{textureMatch.Groups["path"].Value}");
+            throw new FileNotFoundException($"图集图片不存在：{atlasResourcePath}");
         }
 
-        return (
+        var result = (
             ToAssetRelativePath(assetsPath, atlasPath),
             ParseDouble(regionMatch.Groups["x"].Value),
             ParseDouble(regionMatch.Groups["y"].Value),
             ParseDouble(regionMatch.Groups["width"].Value),
             ParseDouble(regionMatch.Groups["height"].Value));
+        if (atlasCache is not null)
+        {
+            atlasCache[resourcePath] = result;
+        }
+
+        return result;
     }
 
     private static string GetTrackBlock(string text, int trackIndex)
@@ -333,8 +382,14 @@ public static partial class GodotSkillAnimationCatalog
     [GeneratedRegex("&\\\"default\\\"\\s*:", RegexOptions.CultureInvariant)]
     private static partial Regex DefaultAnimationRegex();
 
-    [GeneratedRegex("\\[ext_resource\\s+type=\\\"Texture2D\\\"\\s+path=\\\"(?<path>[^\\\"]+)\\\"\\s+id=\\\"(?<id>[^\\\"]+)\\\"\\]", RegexOptions.CultureInvariant)]
-    private static partial Regex TextureResourceRegex();
+    [GeneratedRegex("^\\[ext_resource\\s+(?<attributes>[^\\]]+)\\]\\s*$", RegexOptions.CultureInvariant | RegexOptions.Multiline)]
+    private static partial Regex ExtResourceHeaderRegex();
+
+    [GeneratedRegex("(?<name>[A-Za-z_][A-Za-z0-9_]*)=\\\"(?<value>[^\\\"]*)\\\"", RegexOptions.CultureInvariant)]
+    private static partial Regex ResourceHeaderAttributeRegex();
+
+    [GeneratedRegex("^atlas\\s*=\\s*ExtResource\\(\\\"(?<id>[^\\\"]+)\\\"\\)", RegexOptions.CultureInvariant | RegexOptions.Multiline)]
+    private static partial Regex AtlasResourceRegex();
 
     [GeneratedRegex("PackedFloat32Array\\((?<values>[^)]*)\\)", RegexOptions.CultureInvariant)]
     private static partial Regex PackedFloatArrayRegex();

@@ -11,7 +11,7 @@ The editor currently focuses on task-oriented static content authoring and valid
 - Browse and edit JSON files under the selected MOD data directory.
 - Preview assets under root `assets`.
 - Validate every JSON file without referencing the game source tree; domain-level
-  contract validation will be added through a versioned editor contract.
+  validation uses the checked-in versioned contract exported by the game.
 - Merge `.story` and paired `.story.json` files into one story document with a single writable source.
 - Provide DSL, JSON, and read-only flow projections for story authoring.
 - Build story flow projections from the current unsaved draft with neighborhood, group, file, and repository scopes.
@@ -51,6 +51,8 @@ Direct resource writes must use `Services/ResourceWritePolicy.cs` or an equally 
 
 Important endpoints:
 
+- `GET /api/contract`
+  - Returns the game-owned content contract bundled with this editor build.
 - `GET /api/workspace`
   - Returns the current workspace state and discovered MOD summaries; it also works before a workspace is open.
 - `POST /api/workspace/open`
@@ -66,7 +68,9 @@ Important endpoints:
   - Creates a timestamped backup under the active MOD's `.jyxr-editor/backups`.
   - Runs full JSON-directory validation after save.
 - `GET /api/validate?modId=...`
-  - Runs content validation without saving.
+  - Separates JSON syntax, game contract, and resource dependency diagnostics.
+  - Validates required content files and runtime polymorphic type values.
+  - Deep-loads text skill-animation atlas dependencies before reporting them as previewable.
 - `GET /api/story/graph?modId=...`
   - Builds a read-only story graph for the selected MOD.
   - Reports segment counts, grouped branches, entrypoints, edge diagnostics, and static story references.

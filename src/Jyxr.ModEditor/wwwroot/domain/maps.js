@@ -71,9 +71,12 @@ export function getMapConditionValueIssue(condition) {
     && (parts.length !== 3 || !isNonNegativeInteger(parts[2]))) {
     return "格式应为“角色#技能#非负等级”。";
   }
-  if (["event_completed", "event_finished", "event_not_completed", "event_not_finished"].includes(type)
-    && (parts.length !== 1 || value.split("|").length !== 2 || value.split("|").some((part) => !part.trim()))) {
-    return "格式应为“地图id|事件id”。";
+  if (["event_completed", "event_finished", "event_not_completed", "event_not_finished"].includes(type)) {
+    const eventKeyParts = value.split("|").map((part) => part.trim());
+    if (parts.length !== 1 || eventKeyParts.length !== 3 || eventKeyParts.some((part) => !part)
+      || !isNonNegativeInteger(eventKeyParts[2])) {
+      return "格式应为“地图id|点位id|事件序号”，事件序号从 0 开始。";
+    }
   }
   if (["time_slot", "in_time", "not_in_time"].includes(type)
     && parts.some((part) => !validTimeSlots.has(part.toLocaleLowerCase("en-US")))) {
@@ -180,7 +183,6 @@ export function createMapDefinition(id = "新地图") {
         picture: null,
         events: [
           {
-            id: "返回_map_1",
             type: "map",
             targetId: "大地图",
             probability: 100,
@@ -191,35 +193,6 @@ export function createMapDefinition(id = "新地图") {
       },
     ],
   };
-}
-
-export function ensureMapShape(record) {
-  if (!record || Array.isArray(record) || typeof record !== "object") return record;
-  if (typeof record.id !== "string") record.id = "";
-  if (typeof record.name !== "string") record.name = record.id;
-  if (!Array.isArray(record.musics)) record.musics = [];
-  if (!Array.isArray(record.locations)) record.locations = [];
-
-  record.locations = record.locations.map((location) => (
-    isObject(location) ? location : createLocationDefinition()
-  ));
-  const eventIds = new Set();
-  for (const location of record.locations) {
-    ensureMapLocationShape(location);
-    location.events.forEach((event, eventIndex) => {
-      const currentId = String(event.id || "").trim();
-      if (currentId && !eventIds.has(currentId)) {
-        event.id = currentId;
-        eventIds.add(currentId);
-        return;
-      }
-      event.id = createUniqueIdFromSet(
-        eventIds,
-        `${normalizeIdSeed(location.id, "location")}_${normalizeIdSeed(event.type, "event")}_${eventIndex + 1}`,
-      );
-    });
-  }
-  return record;
 }
 
 export function matchesMapSearch(record, query) {
@@ -268,140 +241,20 @@ export function moveMapEventToLocation(record, sourceLocationIndex, eventIndex, 
   const locations = Array.isArray(record?.locations) ? record.locations : [];
   const source = locations[sourceLocationIndex];
   const target = locations[targetLocationIndex];
-  if (!source || !target || eventIndex < 0 || eventIndex >= (source.events || []).length) return null;
-  const [mapEvent] = source.events.splice(eventIndex, 1);
-  target.events.push(mapEvent);
-  return { mapEvent, targetEventIndex: target.events.length - 1 };
+  if (!source || !target) return null;
+  const sourceEvents = Array.isArray(source.events) ? source.events : [];
+  const targetEvents = Array.isArray(target.events) ? target.events : [];
+  if (eventIndex < 0 || eventIndex >= sourceEvents.length) return null;
+  if (!Array.isArray(source.events)) source.events = sourceEvents;
+  if (!Array.isArray(target.events)) target.events = targetEvents;
+  const [mapEvent] = sourceEvents.splice(eventIndex, 1);
+  targetEvents.push(mapEvent);
+  return { mapEvent, targetEventIndex: targetEvents.length - 1 };
 }
 
-export function simulateMapLocationEvents(mapId, location, scenario = {}) {
-  const normalized = normalizeSimulationScenario(scenario);
-  const results = [];
-  let selectedIndex = -1;
-  for (const [index, mapEvent] of (location?.events || []).entries()) {
-    const conditionResults = (mapEvent.conditions || []).map((condition) => evaluateMapConditionForSimulation(condition, normalized));
-    const completedKey = mapEvent.type === "story" ? mapEvent.targetId : `${mapId}|${mapEvent.id}`;
-    const alreadyCompleted = mapEvent.repeatMode === "once" && (
-      mapEvent.type === "story"
-        ? normalized.completedStories.has(String(mapEvent.targetId || ""))
-        : normalized.completedEvents.has(completedKey)
-    );
-    const probability = Math.max(0, Math.min(100, Number(mapEvent.probability) || 0));
-    const probabilityPassed = normalized.probabilityRoll < probability;
-    const conditionsPassed = conditionResults.every((result) => result.passed);
-    const eligible = selectedIndex < 0 && !alreadyCompleted && conditionsPassed && probabilityPassed;
-    if (eligible) selectedIndex = index;
-    results.push({
-      index,
-      eventId: String(mapEvent.id || ""),
-      eligible,
-      alreadyCompleted,
-      conditionsPassed,
-      probability,
-      probabilityPassed,
-      conditionResults,
-      reached: selectedIndex < 0 || selectedIndex === index,
-    });
-  }
+export function createMapEventDefinition(_record, _location, overrides = {}) {
   return {
-    selectedIndex,
-    selectedEvent: selectedIndex >= 0 ? location.events[selectedIndex] : null,
-    results,
-  };
-}
-
-export function evaluateMapConditionForSimulation(condition, scenario = {}) {
-  const normalized = scenario?.completedStories instanceof Set ? scenario : normalizeSimulationScenario(scenario);
-  const type = String(condition?.type || "");
-  const value = String(condition?.value ?? "").trim();
-  const parts = splitConditionValue(value);
-  const issue = getMapConditionValueIssue(condition);
-  if (issue) return { passed: false, message: issue };
-  const amount = Number(parts[1] ?? value);
-  const threshold = Number(parts[2] ?? parts[1] ?? value);
-  let passed;
-  switch (type) {
-    case "always": passed = true; break;
-    case "silver_at_least": passed = normalized.silver >= Number(value); break;
-    case "gold_at_least": passed = normalized.gold >= Number(value); break;
-    case "friendCount": passed = normalized.partyMembers.size >= Number(value); break;
-    case "current_map": passed = normalized.currentMapId === value; break;
-    case "event_completed":
-    case "event_finished": passed = normalized.completedEvents.has(value); break;
-    case "event_not_completed":
-    case "event_not_finished": passed = !normalized.completedEvents.has(value); break;
-    case "time_slot":
-    case "in_time": passed = parts.map(normalizeTimeSlot).includes(normalized.timeSlot); break;
-    case "not_in_time": passed = !parts.map(normalizeTimeSlot).includes(normalized.timeSlot); break;
-    case "key_in_team":
-    case "in_team": passed = normalized.partyMembers.has(value); break;
-    case "key_not_in_team":
-    case "not_in_team": passed = !normalized.partyMembers.has(value); break;
-    case "have_item": passed = (normalized.items[value ? parts[0] : ""] || 0) >= (parts.length > 1 ? amount : 1) && (parts.length <= 1 || amount > 0); break;
-    case "not_have_item": passed = !((normalized.items[value ? parts[0] : ""] || 0) >= (parts.length > 1 ? amount : 1) && (parts.length <= 1 || amount > 0)); break;
-    case "level_greater_than": passed = normalized.partyMembers.has(parts[0]) && hasNumericEntry(normalized.characterLevels, parts[0]) && normalized.characterLevels[parts[0]] >= threshold; break;
-    case "level_less_than": passed = normalized.partyMembers.has(parts[0]) && hasNumericEntry(normalized.characterLevels, parts[0]) && normalized.characterLevels[parts[0]] < threshold; break;
-    case "shenfa_greater_than": passed = normalized.partyMembers.has(parts[0]) && hasNumericEntry(normalized.characterShenfa, parts[0]) && normalized.characterShenfa[parts[0]] >= threshold; break;
-    case "skill_more_than": {
-      const level = normalized.partyMembers.has(parts[0])
-        ? normalized.skillLevels[parts[0]]?.[parts[1]] ?? 0
-        : 0;
-      passed = level >= threshold;
-      break;
-    }
-    case "skill_less_than": {
-      const level = normalized.skillLevels[parts[0]]?.[parts[1]] ?? 0;
-      passed = normalized.partyMembers.has(parts[0]) && level < threshold;
-      break;
-    }
-    case "should_finish": passed = normalized.completedStories.has(value); break;
-    case "follow_story": passed = normalized.lastStoryId === value; break;
-    case "should_not_finish": passed = !normalized.completedStories.has(value); break;
-    case "has_time_key": passed = normalized.timeKeys.has(value); break;
-    case "not_has_time_key": passed = !normalized.timeKeys.has(value); break;
-    case "exceed_day": passed = normalized.totalDays > Number(value); break;
-    case "not_exceed_day": passed = normalized.totalDays <= Number(value); break;
-    case "in_round": passed = normalized.round === Number(value); break;
-    case "not_in_round": passed = normalized.round !== Number(value); break;
-    case "zhoumu_greater_than": passed = normalized.round >= Number(value); break;
-    case "game_mode": passed = normalized.difficulty === value; break;
-    case "in_menpai":
-    case "in_sect": passed = normalized.sectId === value; break;
-    case "not_in_menpai":
-    case "not_in_sect": passed = normalized.sectId !== value; break;
-    case "in_newbie_task": passed = false; break;
-    default: return { passed: false, message: `未支持条件：${type}` };
-  }
-  return { passed, message: describeMapCondition(condition) };
-}
-
-export function ensureMapLocationShape(location) {
-  if (typeof location.id !== "string") location.id = "";
-  if (location.name != null && typeof location.name !== "string") location.name = String(location.name);
-  if (!Array.isArray(location.events)) location.events = [];
-  location.events = location.events.map((event) => isObject(event) ? event : createEventDefinition());
-  for (const event of location.events) ensureMapEventShape(event);
-}
-
-export function ensureMapEventShape(event) {
-  if (typeof event.id !== "string") event.id = "";
-  if (typeof event.type !== "string" || !event.type.trim()) event.type = "story";
-  if (typeof event.targetId !== "string") event.targetId = "";
-  if (!Number.isFinite(event.probability)) event.probability = 100;
-  if (!Array.isArray(event.conditions)) event.conditions = [];
-  event.conditions = event.conditions.map((condition) => isObject(condition) ? condition : createConditionDefinition());
-  for (const condition of event.conditions) {
-    if (typeof condition.type !== "string") condition.type = "always";
-    if (condition.value == null) condition.value = "";
-    else if (typeof condition.value !== "string") condition.value = String(condition.value);
-  }
-}
-
-export function createMapEventDefinition(record, location, overrides = {}) {
-  const type = String(overrides.type || "story").trim() || "story";
-  return {
-    id: createUniqueMapEventId(record, `${normalizeIdSeed(location?.id, "location")}_${normalizeIdSeed(type, "event")}`),
-    type,
+    type: String(overrides.type || "story").trim() || "story",
     targetId: "",
     probability: 100,
     description: "",
@@ -410,28 +263,20 @@ export function createMapEventDefinition(record, location, overrides = {}) {
   };
 }
 
-export function createUniqueMapEventId(record, baseId = "event") {
-  const used = new Set(
-    (record?.locations || []).flatMap((location) => (
-      (location?.events || []).map((event) => String(event?.id || "").trim()).filter(Boolean)
-    )),
-  );
-  return createUniqueIdFromSet(used, normalizeIdSeed(baseId, "event"));
-}
-
 export function findMapReferences(records, mapId) {
   const targetId = String(mapId || "").trim();
   if (!targetId) return [];
   const references = [];
   for (const map of records || []) {
     for (const location of map?.locations || []) {
-      for (const mapEvent of location?.events || []) {
+      for (const [eventIndex, mapEvent] of (location?.events || []).entries()) {
+        const eventKey = `${String(map?.id || "")}|${String(location?.id || "")}|${eventIndex}`;
         if (mapEvent?.type === "map" && mapEvent.targetId === targetId) {
           references.push({
             kind: "event-target",
             mapId: String(map?.id || ""),
             locationId: String(location?.id || ""),
-            eventId: String(mapEvent?.id || ""),
+            eventKey,
           });
         }
         for (const condition of mapEvent?.conditions || []) {
@@ -440,7 +285,7 @@ export function findMapReferences(records, mapId) {
               kind: "condition",
               mapId: String(map?.id || ""),
               locationId: String(location?.id || ""),
-              eventId: String(mapEvent?.id || ""),
+              eventKey,
             });
           }
         }
@@ -482,112 +327,10 @@ export function renameMapId(records, oldId, newId) {
   return { record, updatedReferences };
 }
 
-function createLocationDefinition() {
-  return { id: "", name: "", description: "", picture: null, events: [] };
-}
-
-function createEventDefinition() {
-  return { id: "", type: "story", targetId: "", probability: 100, conditions: [] };
-}
-
-function createConditionDefinition() {
-  return { type: "always", value: "" };
-}
-
-function isObject(value) {
-  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
-}
-
 function isNonNegativeInteger(value) {
   return /^\d+$/.test(String(value || "").trim());
 }
 
 function splitConditionValue(value) {
   return String(value || "").split("#").map((part) => part.trim()).filter(Boolean);
-}
-
-function normalizeSimulationScenario(scenario) {
-  return {
-    silver: Math.max(0, Number(scenario.silver) || 0),
-    gold: Math.max(0, Number(scenario.gold) || 0),
-    currentMapId: String(scenario.currentMapId || ""),
-    timeSlot: normalizeTimeSlot(scenario.timeSlot || "Zi"),
-    partyMembers: toStringSet(scenario.partyMembers),
-    completedStories: toStringSet(scenario.completedStories),
-    completedEvents: toStringSet(scenario.completedEvents),
-    timeKeys: toStringSet(scenario.timeKeys),
-    items: normalizeNumberRecord(scenario.items),
-    characterLevels: normalizeNumberRecord(scenario.characterLevels),
-    characterShenfa: normalizeNumberRecord(scenario.characterShenfa),
-    skillLevels: normalizeSkillRecord(scenario.skillLevels),
-    lastStoryId: String(scenario.lastStoryId || ""),
-    totalDays: Math.max(0, Number(scenario.totalDays) || 0),
-    round: Math.max(0, Number(scenario.round) || 0),
-    difficulty: String(scenario.difficulty || "normal"),
-    sectId: String(scenario.sectId || ""),
-    probabilityRoll: Math.max(0, Math.min(99, Math.trunc(Number(scenario.probabilityRoll) || 0))),
-  };
-}
-
-function toStringSet(value) {
-  if (value instanceof Set) return new Set(Array.from(value, (item) => String(item)));
-  if (Array.isArray(value)) return new Set(value.map((item) => String(item)).filter(Boolean));
-  return new Set();
-}
-
-function normalizeNumberRecord(value) {
-  const result = {};
-  if (!value || typeof value !== "object" || Array.isArray(value)) return result;
-  for (const [key, entry] of Object.entries(value)) {
-    const number = Number(entry);
-    if (key && Number.isFinite(number)) result[key] = Math.max(0, number);
-  }
-  return result;
-}
-
-function normalizeSkillRecord(value) {
-  const result = {};
-  if (!value || typeof value !== "object" || Array.isArray(value)) return result;
-  for (const [characterId, skills] of Object.entries(value)) {
-    result[characterId] = normalizeNumberRecord(skills);
-  }
-  return result;
-}
-
-function normalizeTimeSlot(value) {
-  const aliases = {
-    "子": "zi", "丑": "chou", "寅": "yin", "卯": "mao", "辰": "chen", "巳": "si",
-    "午": "wu", "未": "wei", "申": "shen", "酉": "you", "戌": "xu", "亥": "hai",
-  };
-  const normalized = String(value || "").trim();
-  return aliases[normalized] || normalized.toLocaleLowerCase("en-US");
-}
-
-function hasNumericEntry(record, key) {
-  return Object.prototype.hasOwnProperty.call(record, key) && Number.isFinite(record[key]);
-}
-
-function normalizeIdSeed(value, fallback) {
-  const normalized = String(value || "")
-    .trim()
-    .replace(/[|\\/\s]+/g, "_")
-    .replace(/^_+|_+$/g, "");
-  return normalized || fallback;
-}
-
-function createUniqueIdFromSet(used, baseId) {
-  if (!used.has(baseId)) {
-    used.add(baseId);
-    return baseId;
-  }
-  for (let index = 2; index < 10000; index += 1) {
-    const candidate = `${baseId}_${index}`;
-    if (!used.has(candidate)) {
-      used.add(candidate);
-      return candidate;
-    }
-  }
-  const candidate = `${baseId}_${Date.now()}`;
-  used.add(candidate);
-  return candidate;
 }

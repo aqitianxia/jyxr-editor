@@ -10,6 +10,8 @@ using Microsoft.AspNetCore.StaticFiles;
 var builder = WebApplication.CreateBuilder(args);
 var workspaceRoot = builder.Configuration["workspace"];
 var workspaceSession = new WorkspaceSession(workspaceRoot);
+var contentContractCatalog = ContentContractCatalog.Load(
+    Path.Combine(builder.Environment.ContentRootPath, "Contracts", "jyxr-content-contract.json"));
 builder.WebHost.UseWebRoot(Path.Combine(builder.Environment.ContentRootPath, "wwwroot"));
 if (string.IsNullOrWhiteSpace(builder.Configuration["urls"]))
 {
@@ -104,7 +106,7 @@ app.MapPut("/api/data/file", IResult (SaveFileRequest request, string? modId) =>
         transaction.StageText(filePath, formatted, Encoding.UTF8);
         var committed = transaction.TryCommit(() =>
         {
-            validation = ValidateContent(modWorkspace);
+            validation = ValidateContent(modWorkspace, contentContractCatalog);
             return validation.Ok;
         });
         if (!committed)
@@ -147,7 +149,7 @@ app.MapPut("/api/story/source", IResult (SaveStorySourceRequest request, string?
         File.WriteAllText(sourcePath, NormalizeTextFile(request.Content), Encoding.UTF8);
         File.WriteAllText(compiledPath, formattedJson, Encoding.UTF8);
 
-        var validation = ValidateContent(modWorkspace);
+        var validation = ValidateContent(modWorkspace, contentContractCatalog);
         return Results.Ok(new SaveStorySourceResponse(
             request.Path,
             NormalizeTextFile(request.Content),
@@ -194,7 +196,7 @@ app.MapPost("/api/story/source/from-json", IResult (SaveStoryJsonAsSourceRequest
         File.WriteAllText(sourcePath, NormalizeTextFile(request.Content), Encoding.UTF8);
         File.WriteAllText(compiledPath, formattedJson, Encoding.UTF8);
 
-        var validation = ValidateContent(modWorkspace);
+        var validation = ValidateContent(modWorkspace, contentContractCatalog);
         return Results.Ok(new SaveStorySourceResponse(
             sourceRelativePath,
             NormalizeTextFile(request.Content),
@@ -251,8 +253,10 @@ app.MapPost("/api/story/source/new", IResult (CreateStorySourceRequest request, 
     }
 });
 
+app.MapGet("/api/contract", () => Results.Ok(contentContractCatalog.Contract));
+
 app.MapGet("/api/validate", (string? modId) =>
-    Results.Ok(ValidateContent(workspaceSession.RequireCurrent().ForMod(modId))));
+    Results.Ok(ValidateContent(workspaceSession.RequireCurrent().ForMod(modId), contentContractCatalog)));
 
 app.MapGet("/api/story/graph", IResult (string? modId) =>
 {
@@ -347,7 +351,7 @@ app.MapPost("/api/static/speaker", IResult (CreateSpeakerRequest request, string
         characters.Add(CreateDialogueSpeakerCharacter(speakerId, speakerName, portraitId, gender));
         WriteJson(charactersPath, characters);
 
-        var validation = ValidateContent(modWorkspace);
+        var validation = ValidateContent(modWorkspace, contentContractCatalog);
         return Results.Ok(new CreateSpeakerResponse(speakerId, speakerName, portraitId, assetValue, backupPaths, validation));
     }
     catch (JsonException ex)
@@ -390,7 +394,7 @@ app.MapPost("/api/static/portrait-resource", IResult (CreatePortraitResourceRequ
         });
         WriteJson(resourcesPath, resources);
 
-        var validation = ValidateContent(modWorkspace);
+        var validation = ValidateContent(modWorkspace, contentContractCatalog);
         return Results.Ok(new CreatePortraitResourceResponse(portraitId, assetValue, backupPath, validation));
     }
     catch (JsonException ex)
@@ -448,7 +452,7 @@ app.MapPut("/api/static/portrait-resource", IResult (UpdatePortraitResourceReque
             WriteJson(resourcesPath, resources);
         }
 
-        var validation = ValidateContent(modWorkspace);
+        var validation = ValidateContent(modWorkspace, contentContractCatalog);
         return Results.Ok(new CreatePortraitResourceResponse(portraitId, assetValue, backupPath, validation));
     }
     catch (JsonException ex)
@@ -490,7 +494,7 @@ app.MapPost("/api/static/item-resource", IResult (CreateItemResourceRequest requ
         });
         WriteJson(resourcesPath, resources);
 
-        var validation = ValidateContent(modWorkspace);
+        var validation = ValidateContent(modWorkspace, contentContractCatalog);
         return Results.Ok(new CreateItemResourceResponse(pictureId, assetValue, backupPath, validation));
     }
     catch (JsonException ex)
@@ -538,7 +542,7 @@ app.MapPost("/api/static/resource", IResult (CreateResourceRequest request, stri
         });
         WriteJson(resourcesPath, resources);
 
-        var validation = ValidateContent(modWorkspace);
+        var validation = ValidateContent(modWorkspace, contentContractCatalog);
         return Results.Ok(new CreateResourceResponse(resourceId, group, assetValue, backupPath, validation));
     }
     catch (JsonException ex)
@@ -724,7 +728,7 @@ app.MapPost("/api/assets/item/upload-bind", IResult (UploadItemImageRequest requ
         File.WriteAllBytes(assetFilePath, imageBytes);
         if (resourceChanged) WriteJson(resourcesPath, resources);
 
-        var validation = ValidateContent(modWorkspace);
+        var validation = ValidateContent(modWorkspace, contentContractCatalog);
         return Results.Ok(new UploadItemImageResponse(
             itemId,
             pictureId,
@@ -1031,34 +1035,84 @@ static string? BackupAssetFile(WorkspacePaths workspace, string filePath)
     return ToRelativePath(workspace.RootPath, backupPath);
 }
 
-static ValidationResponse ValidateContent(WorkspacePaths workspace)
+static ValidationResponse ValidateContent(WorkspacePaths workspace, ContentContractCatalog contentContractCatalog)
 {
     if (!Directory.Exists(workspace.DataPath))
     {
-        return new ValidationResponse(false, $"Data directory was not found: {workspace.DataPath}");
+        var issue = new ValidationIssue(
+            "contract.data-directory",
+            "error",
+            "contract",
+            $"MOD 数据目录不存在：{workspace.DataPath}",
+            null,
+            null,
+            null);
+        return new ValidationResponse(
+            false,
+            issue.Message,
+            new ValidationSummary(0, contentContractCatalog.Contract.ContractVersion, 1, 0, 0),
+            [issue]);
     }
 
     try
     {
-        var jsonFiles = Directory
-            .EnumerateFiles(workspace.DataPath, "*.json", SearchOption.AllDirectories)
-            .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
-            .ToArray();
-        foreach (var jsonFile in jsonFiles)
+        var contractValidation = contentContractCatalog.Validate(workspace.DataPath);
+        var issues = contractValidation.Issues
+            .Select(static issue => new ValidationIssue(
+                issue.Code,
+                issue.Severity,
+                issue.Category,
+                issue.Message,
+                issue.Path,
+                issue.Line,
+                issue.DefinitionId))
+            .ToList();
+        if (Directory.Exists(workspace.AssetsPath))
         {
-            using var stream = File.OpenRead(jsonFile);
-            using var _ = JsonDocument.Parse(stream);
+            foreach (var animation in GodotSkillAnimationCatalog.List(workspace.AssetsPath)
+                         .Where(static animation => animation.Status is "invalid" or "unsupported"))
+            {
+                issues.Add(new ValidationIssue(
+                    $"resource.skill-animation.{animation.Id}",
+                    animation.Status == "invalid" ? "warning" : "suggestion",
+                    "resource",
+                    $"技能动画“{animation.Id}”无法在编辑器预览：{animation.Message}",
+                    animation.Path,
+                    null,
+                    animation.Id));
+            }
         }
 
-        return new ValidationResponse(true, $"Validated {jsonFiles.Length} JSON files successfully.");
-    }
-    catch (JsonException ex)
-    {
-        return new ValidationResponse(false, $"JSON parse failed: {ex.Message}");
+        var errorCount = issues.Count(static issue => issue.Severity == "error");
+        var warningCount = issues.Count(static issue => issue.Severity == "warning");
+        var suggestionCount = issues.Count(static issue => issue.Severity == "suggestion");
+        var summary = new ValidationSummary(
+            contractValidation.JsonFileCount,
+            contractValidation.ContractVersion,
+            errorCount,
+            warningCount,
+            suggestionCount);
+        var message = errorCount == 0
+            ? $"{contractValidation.JsonFileCount} 个 JSON 已通过游戏契约 v{contractValidation.ContractVersion} 检查"
+              + (warningCount + suggestionCount == 0 ? "。" : $"，另有 {warningCount} 个警告、{suggestionCount} 个提示。")
+            : $"游戏契约检查发现 {errorCount} 个错误、{warningCount} 个警告。";
+        return new ValidationResponse(errorCount == 0, message, summary, issues);
     }
     catch (Exception ex)
     {
-        return new ValidationResponse(false, ex.Message);
+        var issue = new ValidationIssue(
+            "validation.internal",
+            "error",
+            "contract",
+            $"内容检查无法完成：{ex.Message}",
+            null,
+            null,
+            null);
+        return new ValidationResponse(
+            false,
+            issue.Message,
+            new ValidationSummary(0, contentContractCatalog.Contract.ContractVersion, 1, 0, 0),
+            [issue]);
     }
 }
 
@@ -3444,6 +3498,26 @@ sealed record AssetResolution(string? ExistingRelativePath, string PreferredRela
 
 sealed record ImageMetadata(int Width, int Height, bool? HasAlpha);
 
-sealed record ValidationResponse(bool Ok, string Message);
+sealed record ValidationResponse(
+    bool Ok,
+    string Message,
+    ValidationSummary Summary,
+    IReadOnlyList<ValidationIssue> Issues);
+
+sealed record ValidationSummary(
+    int JsonFileCount,
+    int ContractVersion,
+    int Errors,
+    int Warnings,
+    int Suggestions);
+
+sealed record ValidationIssue(
+    string Code,
+    string Severity,
+    string Category,
+    string Message,
+    string? Path,
+    int? Line,
+    string? DefinitionId);
 
 sealed record ErrorResponse(string Message);

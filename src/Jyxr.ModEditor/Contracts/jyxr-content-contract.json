@@ -1,0 +1,1713 @@
+{
+  "format": "jyxr-content",
+  "contractVersion": 1,
+  "requiredContentFiles": [
+    {
+      "path": "battles.json",
+      "definitionType": "BattleDefinition"
+    },
+    {
+      "path": "buffs.json",
+      "definitionType": "BuffDefinition"
+    },
+    {
+      "path": "characters.json",
+      "definitionType": "CharacterDefinition"
+    },
+    {
+      "path": "equipment-random-affixes.json",
+      "definitionType": "EquipmentRandomAffixTableDefinition"
+    },
+    {
+      "path": "external-skills.json",
+      "definitionType": "ExternalSkillDefinition"
+    },
+    {
+      "path": "game-config.json",
+      "definitionType": "GameConfig"
+    },
+    {
+      "path": "game-tips.json",
+      "definitionType": "GameTipDefinition"
+    },
+    {
+      "path": "grow-templates.json",
+      "definitionType": "GrowTemplateDefinition"
+    },
+    {
+      "path": "internal-skills.json",
+      "definitionType": "InternalSkillDefinition"
+    },
+    {
+      "path": "items.json",
+      "definitionType": "ItemDefinition"
+    },
+    {
+      "path": "legend-skills.json",
+      "definitionType": "LegendSkillDefinition"
+    },
+    {
+      "path": "maps.json",
+      "definitionType": "MapDefinition"
+    },
+    {
+      "path": "resources.json",
+      "definitionType": "ResourceDefinition"
+    },
+    {
+      "path": "sects.json",
+      "definitionType": "SectDefinition"
+    },
+    {
+      "path": "shops.json",
+      "definitionType": "ShopDefinition"
+    },
+    {
+      "path": "special-skills.json",
+      "definitionType": "SpecialSkillDefinition"
+    },
+    {
+      "path": "talents.json",
+      "definitionType": "TalentDefinition"
+    },
+    {
+      "path": "towers.json",
+      "definitionType": "TowerDefinition"
+    },
+    {
+      "path": "world-triggers.json",
+      "definitionType": "WorldTriggerDefinition"
+    }
+  ],
+  "definitions": {
+    "BattleDefinition": {
+      "fields": [
+        {
+          "name": "experienceMultiplier",
+          "kind": "number",
+          "required": false
+        },
+        {
+          "name": "id",
+          "kind": "string",
+          "required": true
+        },
+        {
+          "name": "mapId",
+          "kind": "string",
+          "required": true
+        },
+        {
+          "name": "music",
+          "kind": "string",
+          "required": false
+        },
+        {
+          "name": "name",
+          "kind": "string",
+          "required": true
+        },
+        {
+          "name": "participants",
+          "kind": "array",
+          "required": false
+        },
+        {
+          "name": "randomParticipants",
+          "kind": "array",
+          "required": false
+        },
+        {
+          "name": "requiredCharacterIds",
+          "kind": "array",
+          "required": false
+        }
+      ]
+    },
+    "BuffDefinition": {
+      "fields": [
+        {
+          "name": "affixes",
+          "kind": "array",
+          "required": false
+        },
+        {
+          "name": "description",
+          "kind": "string",
+          "required": false
+        },
+        {
+          "name": "id",
+          "kind": "string",
+          "required": true
+        },
+        {
+          "name": "isDebuff",
+          "kind": "boolean",
+          "required": true
+        },
+        {
+          "name": "name",
+          "kind": "string",
+          "required": true
+        },
+        {
+          "name": "providerKind",
+          "kind": "enum",
+          "required": false
+        }
+      ]
+    },
+    "CharacterDefinition": {
+      "fields": [
+        {
+          "name": "arenaEnabled",
+          "kind": "boolean",
+          "required": false
+        },
+        {
+          "name": "equipmentIds",
+          "kind": "array",
+          "required": true
+        },
+        {
+          "name": "externalSkills",
+          "kind": "array",
+          "required": true
+        },
+        {
+          "name": "gender",
+          "kind": "enum",
+          "required": false
+        },
+        {
+          "name": "growTemplate",
+          "kind": "string",
+          "required": false
+        },
+        {
+          "name": "id",
+          "kind": "string",
+          "required": true
+        },
+        {
+          "name": "internalSkills",
+          "kind": "array",
+          "required": true
+        },
+        {
+          "name": "level",
+          "kind": "number",
+          "required": false
+        },
+        {
+          "name": "model",
+          "kind": "string",
+          "required": false
+        },
+        {
+          "name": "name",
+          "kind": "string",
+          "required": true
+        },
+        {
+          "name": "portrait",
+          "kind": "string",
+          "required": false
+        },
+        {
+          "name": "specialSkillIds",
+          "kind": "array",
+          "required": false
+        },
+        {
+          "name": "stats",
+          "kind": "object",
+          "required": true
+        },
+        {
+          "name": "talentIds",
+          "kind": "array",
+          "required": true
+        }
+      ]
+    },
+    "EquipmentDefinition": {
+      "fields": [
+        {
+          "name": "affixes",
+          "kind": "array",
+          "required": false
+        },
+        {
+          "name": "canDrop",
+          "kind": "boolean",
+          "required": false
+        },
+        {
+          "name": "cooldown",
+          "kind": "number",
+          "required": false
+        },
+        {
+          "name": "description",
+          "kind": "string",
+          "required": false
+        },
+        {
+          "name": "id",
+          "kind": "string",
+          "required": true
+        },
+        {
+          "name": "level",
+          "kind": "number",
+          "required": false
+        },
+        {
+          "name": "name",
+          "kind": "string",
+          "required": true
+        },
+        {
+          "name": "picture",
+          "kind": "string",
+          "required": false
+        },
+        {
+          "name": "price",
+          "kind": "number",
+          "required": false
+        },
+        {
+          "name": "providerKind",
+          "kind": "enum",
+          "required": false
+        },
+        {
+          "name": "requirements",
+          "kind": "array",
+          "required": false
+        },
+        {
+          "name": "slotType",
+          "kind": "enum",
+          "required": true
+        },
+        {
+          "name": "type",
+          "kind": "enum",
+          "required": false
+        },
+        {
+          "name": "useEffects",
+          "kind": "array",
+          "required": false
+        }
+      ]
+    },
+    "EquipmentRandomAffixTableDefinition": {
+      "fields": [
+        {
+          "name": "maxItemLevel",
+          "kind": "number",
+          "required": false
+        },
+        {
+          "name": "minItemLevel",
+          "kind": "number",
+          "required": false
+        },
+        {
+          "name": "options",
+          "kind": "array",
+          "required": false
+        }
+      ]
+    },
+    "ExternalSkillDefinition": {
+      "fields": [
+        {
+          "name": "affinity",
+          "kind": "number",
+          "required": false
+        },
+        {
+          "name": "affixes",
+          "kind": "array",
+          "required": false
+        },
+        {
+          "name": "animation",
+          "kind": "string",
+          "required": false
+        },
+        {
+          "name": "audio",
+          "kind": "string",
+          "required": false
+        },
+        {
+          "name": "buffs",
+          "kind": "array",
+          "required": false
+        },
+        {
+          "name": "cooldown",
+          "kind": "number",
+          "required": false
+        },
+        {
+          "name": "cost",
+          "kind": "object",
+          "required": false
+        },
+        {
+          "name": "description",
+          "kind": "string",
+          "required": false
+        },
+        {
+          "name": "formSkills",
+          "kind": "array",
+          "required": false
+        },
+        {
+          "name": "hard",
+          "kind": "number",
+          "required": false
+        },
+        {
+          "name": "icon",
+          "kind": "string",
+          "required": false
+        },
+        {
+          "name": "id",
+          "kind": "string",
+          "required": true
+        },
+        {
+          "name": "isHarmony",
+          "kind": "boolean",
+          "required": false
+        },
+        {
+          "name": "levelOverrides",
+          "kind": "array",
+          "required": false
+        },
+        {
+          "name": "name",
+          "kind": "string",
+          "required": true
+        },
+        {
+          "name": "powerBase",
+          "kind": "number",
+          "required": false
+        },
+        {
+          "name": "powerStep",
+          "kind": "number",
+          "required": false
+        },
+        {
+          "name": "targeting",
+          "kind": "object",
+          "required": false
+        },
+        {
+          "name": "type",
+          "kind": "enum",
+          "required": false
+        }
+      ]
+    },
+    "GameConfig": {
+      "fields": [
+        {
+          "name": "absoluteSkillMaxLevel",
+          "kind": "number",
+          "required": false
+        },
+        {
+          "name": "baseExternalSkillMaxLevel",
+          "kind": "number",
+          "required": false
+        },
+        {
+          "name": "baseInternalSkillMaxLevel",
+          "kind": "number",
+          "required": false
+        },
+        {
+          "name": "battleGoldDropChance",
+          "kind": "number",
+          "required": false
+        },
+        {
+          "name": "battlePlayerTeam",
+          "kind": "number",
+          "required": false
+        },
+        {
+          "name": "canzhangDropRateInternalRate",
+          "kind": "number",
+          "required": false
+        },
+        {
+          "name": "canzhangMaxHardInternalSkill",
+          "kind": "number",
+          "required": false
+        },
+        {
+          "name": "canzhangMaxHardSkill",
+          "kind": "number",
+          "required": false
+        },
+        {
+          "name": "chestBaseCapacity",
+          "kind": "number",
+          "required": false
+        },
+        {
+          "name": "chestPerRoundCapacity",
+          "kind": "number",
+          "required": false
+        },
+        {
+          "name": "consoleEnabled",
+          "kind": "boolean",
+          "required": false
+        },
+        {
+          "name": "crazyModeCanzhangDropRate",
+          "kind": "number",
+          "required": false
+        },
+        {
+          "name": "crazyModeCanzhangDropRatePerRound",
+          "kind": "number",
+          "required": false
+        },
+        {
+          "name": "defaultLargeMapPosition",
+          "kind": "object",
+          "required": false
+        },
+        {
+          "name": "defaultMaxBattleSpTime",
+          "kind": "number",
+          "required": false
+        },
+        {
+          "name": "enemyRandomTalentCrazy1Ids",
+          "kind": "array",
+          "required": false
+        },
+        {
+          "name": "enemyRandomTalentCrazy2Ids",
+          "kind": "array",
+          "required": false
+        },
+        {
+          "name": "enemyRandomTalentCrazy3Ids",
+          "kind": "array",
+          "required": false
+        },
+        {
+          "name": "enemyRandomTalentIds",
+          "kind": "array",
+          "required": false
+        },
+        {
+          "name": "hardModeCanzhangDropRate",
+          "kind": "number",
+          "required": false
+        },
+        {
+          "name": "ignoreSkillBookLevelLimit",
+          "kind": "boolean",
+          "required": false
+        },
+        {
+          "name": "initialPartyCharacterIds",
+          "kind": "array",
+          "required": false
+        },
+        {
+          "name": "initialStorySegmentId",
+          "kind": "string",
+          "required": false
+        },
+        {
+          "name": "itemRequirementStatSource",
+          "kind": "enum",
+          "required": false
+        },
+        {
+          "name": "legendEffectSfxIds",
+          "kind": "array",
+          "required": false
+        },
+        {
+          "name": "legendFemaleVoiceSfxIds",
+          "kind": "array",
+          "required": false
+        },
+        {
+          "name": "legendMaleVoiceSfxIds",
+          "kind": "array",
+          "required": false
+        },
+        {
+          "name": "mainMenuBackground",
+          "kind": "string",
+          "required": false
+        },
+        {
+          "name": "mainMenuMusic",
+          "kind": "string",
+          "required": false
+        },
+        {
+          "name": "maxAttribute",
+          "kind": "number",
+          "required": false
+        },
+        {
+          "name": "maxExternalSkillCount",
+          "kind": "number",
+          "required": false
+        },
+        {
+          "name": "maxHpMp",
+          "kind": "number",
+          "required": false
+        },
+        {
+          "name": "maxHpMpPerRound",
+          "kind": "number",
+          "required": false
+        },
+        {
+          "name": "maxInternalSkillCount",
+          "kind": "number",
+          "required": false
+        },
+        {
+          "name": "maxLevel",
+          "kind": "number",
+          "required": false
+        },
+        {
+          "name": "maximizeNewPartyCharacterSkills",
+          "kind": "boolean",
+          "required": false
+        },
+        {
+          "name": "miniGameMaxAttribute",
+          "kind": "number",
+          "required": false
+        },
+        {
+          "name": "ordinaryBattleDropChance",
+          "kind": "number",
+          "required": false
+        },
+        {
+          "name": "randomBattleMusics",
+          "kind": "array",
+          "required": false
+        },
+        {
+          "name": "roundEnemyAttackAddRatio",
+          "kind": "number",
+          "required": false
+        },
+        {
+          "name": "roundEnemyDefenceAddRatio",
+          "kind": "number",
+          "required": false
+        },
+        {
+          "name": "roundEnemyHpAddRatio",
+          "kind": "number",
+          "required": false
+        },
+        {
+          "name": "roundEnemyMpAddRatio",
+          "kind": "number",
+          "required": false
+        },
+        {
+          "name": "roundsPerMaxLevelCommandIncrease",
+          "kind": "number",
+          "required": false
+        },
+        {
+          "name": "roundsPerMaxSkillLevelIncrease",
+          "kind": "number",
+          "required": false
+        },
+        {
+          "name": "roundsPerNpcSkillLevelIncrease",
+          "kind": "number",
+          "required": false
+        },
+        {
+          "name": "selectablePortraitIds",
+          "kind": "array",
+          "required": false
+        },
+        {
+          "name": "zhenlongAccessoryRewardIds",
+          "kind": "array",
+          "required": false
+        },
+        {
+          "name": "zhenlongArmorRewardIds",
+          "kind": "array",
+          "required": false
+        },
+        {
+          "name": "zhenlongWeaponRewardIds",
+          "kind": "array",
+          "required": false
+        }
+      ]
+    },
+    "GameTipDefinition": {
+      "fields": [
+        {
+          "name": "id",
+          "kind": "string",
+          "required": true
+        },
+        {
+          "name": "text",
+          "kind": "string",
+          "required": true
+        }
+      ]
+    },
+    "GrowTemplateDefinition": {
+      "fields": [
+        {
+          "name": "id",
+          "kind": "string",
+          "required": true
+        },
+        {
+          "name": "name",
+          "kind": "string",
+          "required": true
+        },
+        {
+          "name": "statGrowth",
+          "kind": "object",
+          "required": false
+        }
+      ]
+    },
+    "InternalSkillDefinition": {
+      "fields": [
+        {
+          "name": "affixes",
+          "kind": "array",
+          "required": false
+        },
+        {
+          "name": "attackScale",
+          "kind": "number",
+          "required": false
+        },
+        {
+          "name": "criticalScale",
+          "kind": "number",
+          "required": false
+        },
+        {
+          "name": "defenceScale",
+          "kind": "number",
+          "required": false
+        },
+        {
+          "name": "description",
+          "kind": "string",
+          "required": false
+        },
+        {
+          "name": "formSkills",
+          "kind": "array",
+          "required": false
+        },
+        {
+          "name": "hard",
+          "kind": "number",
+          "required": false
+        },
+        {
+          "name": "icon",
+          "kind": "string",
+          "required": false
+        },
+        {
+          "name": "id",
+          "kind": "string",
+          "required": true
+        },
+        {
+          "name": "name",
+          "kind": "string",
+          "required": true
+        },
+        {
+          "name": "yang",
+          "kind": "number",
+          "required": false
+        },
+        {
+          "name": "yin",
+          "kind": "number",
+          "required": false
+        }
+      ]
+    },
+    "ItemDefinition": {
+      "fields": [
+        {
+          "name": "canDrop",
+          "kind": "boolean",
+          "required": false
+        },
+        {
+          "name": "cooldown",
+          "kind": "number",
+          "required": false
+        },
+        {
+          "name": "description",
+          "kind": "string",
+          "required": false
+        },
+        {
+          "name": "id",
+          "kind": "string",
+          "required": true
+        },
+        {
+          "name": "level",
+          "kind": "number",
+          "required": false
+        },
+        {
+          "name": "name",
+          "kind": "string",
+          "required": true
+        },
+        {
+          "name": "picture",
+          "kind": "string",
+          "required": false
+        },
+        {
+          "name": "price",
+          "kind": "number",
+          "required": false
+        },
+        {
+          "name": "requirements",
+          "kind": "array",
+          "required": false
+        },
+        {
+          "name": "type",
+          "kind": "enum",
+          "required": false
+        },
+        {
+          "name": "useEffects",
+          "kind": "array",
+          "required": false
+        }
+      ]
+    },
+    "LegendSkillDefinition": {
+      "fields": [
+        {
+          "name": "animation",
+          "kind": "string",
+          "required": false
+        },
+        {
+          "name": "buffs",
+          "kind": "array",
+          "required": true
+        },
+        {
+          "name": "conditions",
+          "kind": "array",
+          "required": true
+        },
+        {
+          "name": "id",
+          "kind": "string",
+          "required": true
+        },
+        {
+          "name": "name",
+          "kind": "string",
+          "required": true
+        },
+        {
+          "name": "powerExtra",
+          "kind": "number",
+          "required": false
+        },
+        {
+          "name": "probability",
+          "kind": "number",
+          "required": true
+        },
+        {
+          "name": "requiredLevel",
+          "kind": "number",
+          "required": false
+        },
+        {
+          "name": "startSkill",
+          "kind": "string",
+          "required": true
+        }
+      ]
+    },
+    "MapDefinition": {
+      "fields": [
+        {
+          "name": "description",
+          "kind": "string",
+          "required": false
+        },
+        {
+          "name": "id",
+          "kind": "string",
+          "required": true
+        },
+        {
+          "name": "kind",
+          "kind": "enum",
+          "required": false
+        },
+        {
+          "name": "locations",
+          "kind": "array",
+          "required": false
+        },
+        {
+          "name": "musics",
+          "kind": "array",
+          "required": false
+        },
+        {
+          "name": "name",
+          "kind": "string",
+          "required": true
+        },
+        {
+          "name": "picture",
+          "kind": "string",
+          "required": false
+        }
+      ]
+    },
+    "NormalItemDefinition": {
+      "fields": [
+        {
+          "name": "canDrop",
+          "kind": "boolean",
+          "required": false
+        },
+        {
+          "name": "cooldown",
+          "kind": "number",
+          "required": false
+        },
+        {
+          "name": "description",
+          "kind": "string",
+          "required": false
+        },
+        {
+          "name": "id",
+          "kind": "string",
+          "required": true
+        },
+        {
+          "name": "level",
+          "kind": "number",
+          "required": false
+        },
+        {
+          "name": "name",
+          "kind": "string",
+          "required": true
+        },
+        {
+          "name": "picture",
+          "kind": "string",
+          "required": false
+        },
+        {
+          "name": "price",
+          "kind": "number",
+          "required": false
+        },
+        {
+          "name": "requirements",
+          "kind": "array",
+          "required": false
+        },
+        {
+          "name": "type",
+          "kind": "enum",
+          "required": false
+        },
+        {
+          "name": "useEffects",
+          "kind": "array",
+          "required": false
+        }
+      ]
+    },
+    "ResourceDefinition": {
+      "fields": [
+        {
+          "name": "group",
+          "kind": "string",
+          "required": false
+        },
+        {
+          "name": "id",
+          "kind": "string",
+          "required": true
+        },
+        {
+          "name": "value",
+          "kind": "string",
+          "required": false
+        }
+      ]
+    },
+    "SectDefinition": {
+      "fields": [
+        {
+          "name": "background",
+          "kind": "string",
+          "required": false
+        },
+        {
+          "name": "description",
+          "kind": "string",
+          "required": false
+        },
+        {
+          "name": "id",
+          "kind": "string",
+          "required": true
+        },
+        {
+          "name": "masterNames",
+          "kind": "array",
+          "required": false
+        },
+        {
+          "name": "name",
+          "kind": "string",
+          "required": true
+        },
+        {
+          "name": "portrait",
+          "kind": "string",
+          "required": false
+        },
+        {
+          "name": "primaryFocus",
+          "kind": "string",
+          "required": false
+        },
+        {
+          "name": "signatureSkillNames",
+          "kind": "array",
+          "required": false
+        },
+        {
+          "name": "storyId",
+          "kind": "string",
+          "required": false
+        },
+        {
+          "name": "traitTags",
+          "kind": "array",
+          "required": false
+        }
+      ]
+    },
+    "ShopDefinition": {
+      "fields": [
+        {
+          "name": "background",
+          "kind": "string",
+          "required": false
+        },
+        {
+          "name": "id",
+          "kind": "string",
+          "required": true
+        },
+        {
+          "name": "music",
+          "kind": "string",
+          "required": false
+        },
+        {
+          "name": "name",
+          "kind": "string",
+          "required": true
+        },
+        {
+          "name": "products",
+          "kind": "array",
+          "required": false
+        }
+      ]
+    },
+    "SpecialSkillDefinition": {
+      "fields": [
+        {
+          "name": "animation",
+          "kind": "string",
+          "required": true
+        },
+        {
+          "name": "audio",
+          "kind": "string",
+          "required": true
+        },
+        {
+          "name": "buffs",
+          "kind": "array",
+          "required": true
+        },
+        {
+          "name": "cooldown",
+          "kind": "number",
+          "required": true
+        },
+        {
+          "name": "cost",
+          "kind": "object",
+          "required": true
+        },
+        {
+          "name": "description",
+          "kind": "string",
+          "required": true
+        },
+        {
+          "name": "effects",
+          "kind": "array",
+          "required": false
+        },
+        {
+          "name": "icon",
+          "kind": "string",
+          "required": true
+        },
+        {
+          "name": "id",
+          "kind": "string",
+          "required": true
+        },
+        {
+          "name": "intent",
+          "kind": "enum",
+          "required": true
+        },
+        {
+          "name": "name",
+          "kind": "string",
+          "required": true
+        },
+        {
+          "name": "speech",
+          "kind": "object",
+          "required": false
+        },
+        {
+          "name": "targeting",
+          "kind": "object",
+          "required": false
+        }
+      ]
+    },
+    "TalentDefinition": {
+      "fields": [
+        {
+          "name": "affixes",
+          "kind": "array",
+          "required": false
+        },
+        {
+          "name": "description",
+          "kind": "string",
+          "required": false
+        },
+        {
+          "name": "id",
+          "kind": "string",
+          "required": true
+        },
+        {
+          "name": "name",
+          "kind": "string",
+          "required": true
+        },
+        {
+          "name": "point",
+          "kind": "number",
+          "required": false
+        },
+        {
+          "name": "replaceTalentIds",
+          "kind": "array",
+          "required": false
+        }
+      ]
+    },
+    "TowerDefinition": {
+      "fields": [
+        {
+          "name": "description",
+          "kind": "string",
+          "required": false
+        },
+        {
+          "name": "id",
+          "kind": "string",
+          "required": true
+        },
+        {
+          "name": "name",
+          "kind": "string",
+          "required": true
+        },
+        {
+          "name": "stages",
+          "kind": "array",
+          "required": false
+        },
+        {
+          "name": "unlockConditions",
+          "kind": "array",
+          "required": false
+        }
+      ]
+    },
+    "WorldTriggerDefinition": {
+      "fields": [
+        {
+          "name": "conditions",
+          "kind": "array",
+          "required": false
+        },
+        {
+          "name": "description",
+          "kind": "string",
+          "required": false
+        },
+        {
+          "name": "id",
+          "kind": "string",
+          "required": true
+        },
+        {
+          "name": "probability",
+          "kind": "number",
+          "required": false
+        },
+        {
+          "name": "repeatMode",
+          "kind": "enum",
+          "required": false
+        },
+        {
+          "name": "targetId",
+          "kind": "string",
+          "required": false
+        },
+        {
+          "name": "type",
+          "kind": "string",
+          "required": true
+        }
+      ]
+    }
+  },
+  "polymorphicTypes": {
+    "affix": {
+      "discriminator": "type",
+      "values": [
+        "buff_level_stat_modifier",
+        "grant_model",
+        "grant_talent",
+        "hook",
+        "legend_skill_chance_modifier",
+        "skill_bonus_modifier",
+        "skill_targeting_modifier",
+        "stat_modifier",
+        "trait",
+        "weapon_bonus_modifier"
+      ]
+    },
+    "battleEffect": {
+      "discriminator": "type",
+      "values": [
+        "add_action_gauge",
+        "add_hp",
+        "add_mp",
+        "add_rage",
+        "apply_buff",
+        "cancel_hit",
+        "custom",
+        "custom_ability",
+        "extra_strike",
+        "modify_damage",
+        "modify_damage_context",
+        "modify_lifesteal",
+        "modify_mp_cost",
+        "modify_recovery",
+        "remove_buff",
+        "remove_context_buff",
+        "remove_negative_buffs",
+        "remove_positive_buffs",
+        "set_action_gauge",
+        "set_hit_success",
+        "set_rage",
+        "strengthen_context_buff"
+      ]
+    },
+    "battleHookCondition": {
+      "discriminator": "type",
+      "values": [
+        "chance",
+        "context_buff_id",
+        "context_buff_negative",
+        "context_hit_state",
+        "context_recovery_kind",
+        "context_skill_kind",
+        "context_skill_name_contains",
+        "context_skill_name_equals",
+        "context_skill_source_id",
+        "context_skill_weapon_type",
+        "context_unit_effective_talent",
+        "context_unit_equipped_internal_skill",
+        "context_unit_gender",
+        "context_unit_hp_ratio",
+        "context_unit_relation",
+        "context_unit_role",
+        "damage_positive",
+        "unit_level_chance"
+      ]
+    },
+    "battleTarget": {
+      "discriminator": "type",
+      "values": [
+        "all_allies",
+        "all_enemies",
+        "nearby_allies",
+        "nearby_enemies",
+        "self",
+        "source",
+        "target"
+      ]
+    },
+    "item": {
+      "discriminator": "category",
+      "values": [
+        "equipment",
+        "normal"
+      ]
+    },
+    "itemRequirement": {
+      "discriminator": "type",
+      "values": [
+        "stat",
+        "talent"
+      ]
+    },
+    "itemUseEffect": {
+      "discriminator": "type",
+      "values": [
+        "add_buff",
+        "add_hp",
+        "add_hp_percent",
+        "add_maxhp",
+        "add_maxmp",
+        "add_mp",
+        "add_mp_percent",
+        "add_rage",
+        "detoxify",
+        "external_skill",
+        "grant_talent",
+        "internal_skill",
+        "special_skill"
+      ]
+    }
+  },
+  "enums": {
+    "Game.Core.Affix.BattleDamageContextField": [
+      "SourceAttack",
+      "SourceAttackLow",
+      "SourceAttackHigh",
+      "TargetDefence",
+      "CriticalChance",
+      "CriticalMultiplier",
+      "FinalDamage"
+    ],
+    "Game.Core.Affix.BattleHitState": [
+      "Hit",
+      "Miss"
+    ],
+    "Game.Core.Affix.BattleHookContextUnitRole": [
+      "Source",
+      "Target"
+    ],
+    "Game.Core.Affix.BattleHookRelation": [
+      "Ally",
+      "Enemy"
+    ],
+    "Game.Core.Affix.BattleHookRounding": [
+      "Truncate",
+      "Floor",
+      "Ceiling",
+      "Round"
+    ],
+    "Game.Core.Affix.BattleRecoveryKind": [
+      "Hp",
+      "Mp"
+    ],
+    "Game.Core.Affix.HookTiming": [
+      "OnBattleStart",
+      "BeforeActionReadiness",
+      "BeforeActionStart",
+      "AfterActionEnd",
+      "AfterBuffRound",
+      "BeforeMove",
+      "AfterMove",
+      "BeforeSkillCost",
+      "BeforeHitResolved",
+      "BeforeDamageCalculation",
+      "BeforeDamageApplied",
+      "BeforeDefeated",
+      "BeforeSkillCast",
+      "AfterSkillCast",
+      "OnHitConfirmed",
+      "BeforeItemUse",
+      "AfterItemUse",
+      "BeforeRest",
+      "AfterRest",
+      "BeforeBuffApplied",
+      "OnBuffApplied",
+      "OnBuffRemoved",
+      "OnDamageTaken",
+      "OnDamageDealt",
+      "BeforeRecoveryResolved"
+    ],
+    "Game.Core.Affix.ModifierOp": [
+      "Add",
+      "Increase",
+      "More",
+      "PostAdd",
+      "Override"
+    ],
+    "Game.Core.Affix.ProviderKind": [
+      "Equipment",
+      "ExternalSkill",
+      "InternalSkill",
+      "Talent",
+      "Buff",
+      "Other"
+    ],
+    "Game.Core.Affix.SkillTargetingField": [
+      "CastSize",
+      "ImpactSize"
+    ],
+    "Game.Core.Affix.TraitId": [
+      "Swift",
+      "IgnoreZoneOfControl",
+      "CanUseItemOnAlly",
+      "IgnoreItemCooldown",
+      "Ghost",
+      "BroadLearning",
+      "DoubleExperienceGain",
+      "DoubleSkillEquipmentTenDimensionAffixes",
+      "IncreaseInternalSkillYangAffinity",
+      "MindEye",
+      "PoisonResistance",
+      "AvoidFriendlyFire",
+      "Irascible",
+      "DoubleCombatRageGain",
+      "CannotMove"
+    ],
+    "Game.Core.Battle.BattleCueKind": [
+      "SpeechRequested",
+      "FloatTextRequested"
+    ],
+    "Game.Core.Battle.BattleFacing": [
+      "Right",
+      "Left"
+    ],
+    "Game.Core.Battle.BattleFactKind": [
+      "ActionStarted",
+      "ActionSkipped",
+      "Moved",
+      "MovementRolledBack",
+      "SkillCast",
+      "SkillCooldownsReset",
+      "Damaged",
+      "ItemUsed",
+      "Rested",
+      "ActionEnded",
+      "BuffApplied",
+      "BuffResisted",
+      "BuffRemoved",
+      "Healed",
+      "Lifesteal",
+      "MpDamaged",
+      "MpRecovered",
+      "RageChanged",
+      "ActionGaugeChanged",
+      "DefeatPrevented",
+      "SkillLeveledUp",
+      "CharacterLeveledUp"
+    ],
+    "Game.Core.Battle.BattleFloatTextStyle": [
+      "Normal",
+      "Critical",
+      "Recovery",
+      "Mana",
+      "Energy",
+      "Beneficial",
+      "Harmful",
+      "Special"
+    ],
+    "Game.Core.Battle.BattleFloatTextTarget": [
+      "Owner",
+      "Source",
+      "Target"
+    ],
+    "Game.Core.Battle.BattleHookExecutionMode": [
+      "Execute",
+      "Preview"
+    ],
+    "Game.Core.Battle.BattleMainActionKind": [
+      "CastSkill",
+      "Rest"
+    ],
+    "Game.Core.Battle.BattleOutcomeKind": [
+      "Ongoing",
+      "Winner",
+      "Draw"
+    ],
+    "Game.Core.Battle.BattleSkillAvailabilityStatus": [
+      "Available",
+      "Cooldown",
+      "Disabled",
+      "NotEnoughMp",
+      "NotEnoughRage"
+    ],
+    "Game.Core.Battle.BattleSkillDisabledReason": [
+      "None",
+      "Explicit",
+      "Seal"
+    ],
+    "Game.Core.Battle.BattleSpeechSpeaker": [
+      "Owner",
+      "Source",
+      "Target"
+    ],
+    "Game.Core.Battle.BattleTraceKind": [
+      "HooksTriggered"
+    ],
+    "Game.Core.Definitions.EquipmentRandomAffixKind": [
+      "AttackCombo",
+      "DefenceCombo",
+      "RandomAttribute",
+      "Talent",
+      "Accuracy",
+      "ExternalSkillBonus",
+      "InternalSkillBonus",
+      "FormSkillBonus",
+      "LegendSkillBonus",
+      "CritChance",
+      "CritMult",
+      "Lifesteal",
+      "Speed",
+      "AntiDebuff",
+      "WeaponBonus"
+    ],
+    "Game.Core.Definitions.MapKind": [
+      "Small",
+      "Large"
+    ],
+    "Game.Core.Definitions.RepeatMode": [
+      "Once",
+      "Infinite"
+    ],
+    "Game.Core.Definitions.Skills.SkillImpactType": [
+      "Single",
+      "Plus",
+      "Star",
+      "Line",
+      "Square",
+      "Fan",
+      "Ring",
+      "X",
+      "Cleave"
+    ],
+    "Game.Core.Definitions.Skills.SpecialSkillIntent": [
+      "Offensive",
+      "Support"
+    ],
+    "Game.Core.Model.BattleAiType": [
+      "Basic",
+      "Training",
+      "AttackOnly",
+      "RestOnly"
+    ],
+    "Game.Core.Model.CharacterGender": [
+      "Male",
+      "Female",
+      "Neutral",
+      "Animal",
+      "Eunuch"
+    ],
+    "Game.Core.Model.EquipmentSlotType": [
+      "Weapon",
+      "Armor",
+      "Accessory"
+    ],
+    "Game.Core.Model.GameDifficulty": [
+      "Normal",
+      "Hard",
+      "Crazy"
+    ],
+    "Game.Core.Model.ItemRequirementStatSource": [
+      "Final",
+      "Base"
+    ],
+    "Game.Core.Model.ItemType": [
+      "Consumable",
+      "Equipment",
+      "SkillBook",
+      "QuestItem",
+      "SpecialSkillBook",
+      "TalentBook",
+      "Booster",
+      "Utility"
+    ],
+    "Game.Core.Model.Skills.FormSkillInstanceState": [
+      "Locked",
+      "Available",
+      "Disabled",
+      "SourceNotEquipped"
+    ],
+    "Game.Core.Model.Skills.SkillKind": [
+      "External",
+      "Internal",
+      "Form",
+      "Special",
+      "Legend"
+    ],
+    "Game.Core.Model.StatType": [
+      "Bili",
+      "Dingli",
+      "Fuyuan",
+      "Gengu",
+      "Jianfa",
+      "Daofa",
+      "Quanzhang",
+      "Qimen",
+      "Shenfa",
+      "Wuxing",
+      "Wuxue",
+      "MaxHp",
+      "MaxMp",
+      "Attack",
+      "Defence",
+      "Evasion",
+      "Accuracy",
+      "CritChance",
+      "CritMult",
+      "AntiCritChance",
+      "Lifesteal",
+      "AntiDebuff",
+      "Speed",
+      "Movement"
+    ],
+    "Game.Core.Model.TimeSlot": [
+      "Zi",
+      "Chou",
+      "Yin",
+      "Mao",
+      "Chen",
+      "Si",
+      "Wu",
+      "Wei",
+      "Shen",
+      "You",
+      "Xu",
+      "Hai"
+    ],
+    "Game.Core.Model.WeaponType": [
+      "Quanzhang",
+      "Jianfa",
+      "Daofa",
+      "Qimen",
+      "InternalSkill",
+      "Unknown"
+    ],
+    "Game.Core.Story.BattleOutcome": [
+      "Win",
+      "Lose",
+      "Timeout"
+    ],
+    "Game.Core.Story.ExprBinaryOperator": [
+      "And",
+      "Or",
+      "Equal",
+      "NotEqual",
+      "GreaterThan",
+      "GreaterThanOrEqual",
+      "LessThan",
+      "LessThanOrEqual"
+    ],
+    "Game.Core.Story.ExprValueKind": [
+      "Boolean",
+      "Number",
+      "String",
+      "List"
+    ]
+  },
+  "resources": {
+    "godotAssetPrefix": "res://assets/",
+    "skillAnimationDirectory": "animation/skill",
+    "skillAnimationExtensions": [
+      ".tres",
+      ".res"
+    ],
+    "atlasTextureDirectory": "art/atlas_texture"
+  }
+}
