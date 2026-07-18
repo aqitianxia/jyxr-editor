@@ -4,14 +4,19 @@ using System.Text;
 using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.Json.Nodes;
-using Game.Content.Loading;
 using JsonEditor.Services;
 using Microsoft.AspNetCore.StaticFiles;
 
-var workspace = WorkspacePaths.FromCurrentDirectory();
-
 var builder = WebApplication.CreateBuilder(args);
-builder.WebHost.UseWebRoot(Path.Combine(workspace.RootPath, "tools", "JsonEditor", "wwwroot"));
+var workspaceRoot = builder.Configuration["workspace"];
+if (string.IsNullOrWhiteSpace(workspaceRoot))
+{
+    throw new InvalidOperationException(
+        "A content workspace is required. Start the editor with --workspace /absolute/path/to/workspace.");
+}
+
+var workspace = WorkspacePaths.Open(workspaceRoot);
+builder.WebHost.UseWebRoot(Path.Combine(builder.Environment.ContentRootPath, "wwwroot"));
 if (string.IsNullOrWhiteSpace(builder.Configuration["urls"]))
 {
     builder.WebHost.UseUrls("http://localhost:5127");
@@ -1003,8 +1008,21 @@ static ValidationResponse ValidateContent(WorkspacePaths workspace)
 
     try
     {
-        _ = new JsonContentLoader().LoadFromDirectory(workspace.DataPath);
-        return new ValidationResponse(true, "Content loaded successfully.");
+        var jsonFiles = Directory
+            .EnumerateFiles(workspace.DataPath, "*.json", SearchOption.AllDirectories)
+            .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        foreach (var jsonFile in jsonFiles)
+        {
+            using var stream = File.OpenRead(jsonFile);
+            using var _ = JsonDocument.Parse(stream);
+        }
+
+        return new ValidationResponse(true, $"Validated {jsonFiles.Length} JSON files successfully.");
+    }
+    catch (JsonException ex)
+    {
+        return new ValidationResponse(false, $"JSON parse failed: {ex.Message}");
     }
     catch (Exception ex)
     {
@@ -2015,51 +2033,51 @@ static void AnalyzeStorySteps(
                 AnalyzeStoryCommand(step, node, relativePath, content, edges, diagnostics, commandCounts, edgeLabel, condition);
                 break;
             case "jump":
-            {
-                node.JumpCount += 1;
-                var target = TryGetStringProperty(step, "target");
-                if (!string.IsNullOrWhiteSpace(target))
                 {
-                    edges.Add(new StoryGraphEdge(
-                        node.Id,
-                        target,
-                        "jump",
-                        edgeLabel,
-                        condition,
-                        relativePath,
-                        FindJsonPropertyLine(content, "target", target)));
-                }
+                    node.JumpCount += 1;
+                    var target = TryGetStringProperty(step, "target");
+                    if (!string.IsNullOrWhiteSpace(target))
+                    {
+                        edges.Add(new StoryGraphEdge(
+                            node.Id,
+                            target,
+                            "jump",
+                            edgeLabel,
+                            condition,
+                            relativePath,
+                            FindJsonPropertyLine(content, "target", target)));
+                    }
 
-                if (index < steps.Count - 1)
-                {
-                diagnostics.Add(CreateStoryDiagnostic(
-                    "warn",
-                    $"剧情段落「{node.Id}」的 jump 后还有同级步骤，这些步骤不会被执行。",
-                    node.Id,
-                    relativePath,
-                    node.Line));
-                }
+                    if (index < steps.Count - 1)
+                    {
+                        diagnostics.Add(CreateStoryDiagnostic(
+                            "warn",
+                            $"剧情段落「{node.Id}」的 jump 后还有同级步骤，这些步骤不会被执行。",
+                            node.Id,
+                            relativePath,
+                            node.Line));
+                    }
 
-                return;
-            }
+                    return;
+                }
             case "call":
-            {
-                node.CallCount += 1;
-                var target = TryGetStringProperty(step, "target");
-                if (!string.IsNullOrWhiteSpace(target))
                 {
-                    edges.Add(new StoryGraphEdge(
-                        node.Id,
-                        target,
-                        "call",
-                        edgeLabel,
-                        condition,
-                        relativePath,
-                        FindJsonPropertyLine(content, "target", target)));
-                }
+                    node.CallCount += 1;
+                    var target = TryGetStringProperty(step, "target");
+                    if (!string.IsNullOrWhiteSpace(target))
+                    {
+                        edges.Add(new StoryGraphEdge(
+                            node.Id,
+                            target,
+                            "call",
+                            edgeLabel,
+                            condition,
+                            relativePath,
+                            FindJsonPropertyLine(content, "target", target)));
+                    }
 
-                break;
-            }
+                    break;
+                }
             case "return":
                 node.ReturnCount += 1;
                 if (index < steps.Count - 1)
@@ -2108,40 +2126,40 @@ static void AnalyzeStoryCommand(
     switch (name)
     {
         case "set_time_key":
-        {
-            var key = TryGetStringValue(args?.ElementAtOrDefault(0)) ?? "time_key";
-            var target = TryGetStringValue(args?.ElementAtOrDefault(2));
-            if (!string.IsNullOrWhiteSpace(target))
             {
-                edges.Add(new StoryGraphEdge(
-                    node.Id,
-                    target,
-                    "time_key",
-                    $"限时触发 {key}",
-                    condition,
-                    relativePath,
-                    FindJsonPropertyLine(content, "name", name)));
-            }
+                var key = TryGetStringValue(args?.ElementAtOrDefault(0)) ?? "time_key";
+                var target = TryGetStringValue(args?.ElementAtOrDefault(2));
+                if (!string.IsNullOrWhiteSpace(target))
+                {
+                    edges.Add(new StoryGraphEdge(
+                        node.Id,
+                        target,
+                        "time_key",
+                        $"限时触发 {key}",
+                        condition,
+                        relativePath,
+                        FindJsonPropertyLine(content, "name", name)));
+                }
 
-            break;
-        }
+                break;
+            }
         case "arena":
-        {
-            var target = TryGetStringValue(args?.ElementAtOrDefault(0));
-            if (!string.IsNullOrWhiteSpace(target))
             {
-                edges.Add(new StoryGraphEdge(
-                    node.Id,
-                    target,
-                    "dynamic",
-                    "arena 回调",
-                    condition,
-                    relativePath,
-                    FindJsonPropertyLine(content, "name", name)));
-            }
+                var target = TryGetStringValue(args?.ElementAtOrDefault(0));
+                if (!string.IsNullOrWhiteSpace(target))
+                {
+                    edges.Add(new StoryGraphEdge(
+                        node.Id,
+                        target,
+                        "dynamic",
+                        "arena 回调",
+                        condition,
+                        relativePath,
+                        FindJsonPropertyLine(content, "name", name)));
+                }
 
-            break;
-        }
+                break;
+            }
         case "xilian":
             AddFixedDynamicEdges(node, relativePath, content, edges, condition, name, "洗练", ["洗练_没有装备", "洗练选择", "洗练_洗练成功"]);
             break;
@@ -2759,7 +2777,7 @@ sealed class WorkspacePaths
         ModPath = modPath ?? Path.Combine(ModsPath, modId);
         DataPath = Path.Combine(ModPath, "data");
         AssetsPath = Path.Combine(rootPath, "assets");
-        BackupPath = Path.Combine(rootPath, "tools", "JsonEditor", ".backups");
+        BackupPath = Path.Combine(ModPath, ".jyxr-editor", "backups");
     }
 
     public string RootPath { get; }
@@ -2770,20 +2788,26 @@ sealed class WorkspacePaths
     public string AssetsPath { get; }
     public string BackupPath { get; }
 
-    public static WorkspacePaths FromCurrentDirectory()
+    public static WorkspacePaths Open(string rootPath)
     {
-        var current = new DirectoryInfo(Directory.GetCurrentDirectory());
-        while (current is not null)
+        if (string.IsNullOrWhiteSpace(rootPath))
         {
-            if (File.Exists(Path.Combine(current.FullName, "project.godot")))
-            {
-                return new WorkspacePaths(current.FullName, DefaultModId);
-            }
-
-            current = current.Parent;
+            throw new InvalidOperationException("Content workspace path is required.");
         }
 
-        throw new InvalidOperationException("Unable to find project.godot from the current directory.");
+        var fullPath = Path.GetFullPath(rootPath.Trim());
+        if (!Directory.Exists(fullPath))
+        {
+            throw new DirectoryNotFoundException($"Content workspace was not found: {fullPath}");
+        }
+
+        var modsPath = Path.Combine(fullPath, "mods");
+        if (!Directory.Exists(modsPath))
+        {
+            throw new InvalidOperationException($"Content workspace does not contain a mods directory: {fullPath}");
+        }
+
+        return new WorkspacePaths(fullPath, DefaultModId);
     }
 
     public WorkspacePaths ForMod(string? modId)

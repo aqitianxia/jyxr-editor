@@ -12,14 +12,32 @@
 - The first release supports the current MOD format only. Legacy compatibility is
   outside the initial scope.
 
-## Initial scope
+## Migrated baseline
 
-1. Open a MOD directory and read its manifest.
-2. Index definitions and resources.
-3. Validate content and report precise locations.
-4. Edit JSON with structured forms and a source view.
-5. Save changes atomically.
-6. Add story graph and map canvas workflows after the foundation is stable.
+The mature editor history has been imported from
+`archive/local-web-editor-20260717`. The current migration branch includes the
+existing character, item, shop, martial arts, talent, sect, growth, resource,
+story, and map workspaces together with their frontend tests.
+
+The editor opens an external authoring workspace with this shape:
+
+```text
+workspace/
+├── assets/
+└── mods/
+    └── <modId>/
+        ├── mod.json
+        └── data/
+```
+
+Run it with:
+
+```bash
+dotnet run --project src/Jyxr.ModEditor/Jyxr.ModEditor.csproj -- \
+  --workspace /absolute/path/to/workspace
+```
+
+Then open `http://localhost:5127`.
 
 ## Branches
 
@@ -27,6 +45,6 @@
 - Work is developed on short-lived `feat/*`, `fix/*`, or `codex/*` branches.
 - There is no permanent development branch.
 
-The legacy implementation remains archived in the game repository at
-`archive/local-web-editor-20260717` and is reference material, not a migration
-base.
+The original game worktree remains untouched. Its editor-only history is now
+reachable through the migration subtree, while `codex/editor-bootstrap`
+retains the smaller rewrite as a rollback point.

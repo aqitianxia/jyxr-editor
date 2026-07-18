@@ -10,7 +10,8 @@ The editor currently focuses on task-oriented static content authoring and valid
 - Discover MODs from `mods/*/mod.json` and route reads/writes through the active MOD id.
 - Browse and edit JSON files under the selected MOD data directory.
 - Preview assets under root `assets`.
-- Validate content through `Game.Content.Loading.JsonContentLoader`.
+- Validate every JSON file without referencing the game source tree; domain-level
+  contract validation will be added through a versioned editor contract.
 - Merge `.story` and paired `.story.json` files into one story document with a single writable source.
 - Provide DSL, JSON, and read-only flow projections for story authoring.
 - Build story flow projections from the current unsaved draft with neighborhood, group, file, and repository scopes.
@@ -58,8 +59,8 @@ Important endpoints:
   - Reads a JSON data file.
 - `PUT /api/data/file?modId=...`
   - Formats and saves a JSON data file.
-  - Creates a timestamped backup under `tools/JsonEditor/.backups`.
-  - Runs full content validation after save.
+  - Creates a timestamped backup under the active MOD's `.jyxr-editor/backups`.
+  - Runs full JSON-directory validation after save.
 - `GET /api/validate?modId=...`
   - Runs content validation without saving.
 - `GET /api/story/graph?modId=...`
@@ -247,10 +248,9 @@ The current order is:
 Light checks for tool work:
 
 ```bash
-node --check tools/JsonEditor/wwwroot/app.js
-cd tools/JsonEditor && npm test
-dotnet build tools/JsonEditor/JsonEditor.csproj --no-restore
-dotnet test
+node --check src/Jyxr.ModEditor/wwwroot/app.js
+cd src/Jyxr.ModEditor && npm test
+dotnet build Jyxr.ModEditor.slnx --no-restore
 ```
 
 Story UI changes must also be checked at 1024px and 1440px desktop widths. Confirm that the flow canvas is non-empty, the toolbar does not overflow, and the browser console has no errors.

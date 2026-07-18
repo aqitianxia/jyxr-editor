@@ -1,6 +1,6 @@
 # JYXR JSON 编辑器使用说明
 
-JYXR JSON 编辑器是一个本地网页工具，用来编辑当前 Godot 工程里的 MOD JSON 内容。它会发现 `mods/*/mod.json`，读取所选 MOD 的 `data/` 目录，并从仓库根目录的 `assets/` 读取图片、音频等资源用于预览和复制路径。
+JYXR MOD 编辑器是一个独立的本地网页工具，用来编辑外部创作工作区里的 MOD 内容。它会发现 `<workspace>/mods/*/mod.json`，读取所选 MOD 的 `data/` 目录，并从 `<workspace>/assets/` 读取图片、音频等资源用于预览和复制路径。
 
 工具只在本机运行，默认地址固定为：
 
@@ -13,7 +13,7 @@ http://localhost:5127
 ## 运行前准备
 
 1. 安装 `.NET 10 SDK`。
-2. 确认已经拿到完整工程目录，目录里应有 `project.godot`。
+2. 准备一个创作工作区根目录；它不要求包含游戏源码或 `project.godot`。
 3. 确认要编辑的 MOD 位于 `mods/<modId>`，并且至少包含：
 
 ```text
@@ -21,24 +21,24 @@ mods/<modId>/mod.json
 mods/<modId>/data/
 ```
 
-4. 如果需要预览头像、物品图、音乐等资源，确认资源位于仓库根目录的 `assets/`。
+4. 如果需要预览头像、物品图、音乐等资源，确认资源位于创作工作区根目录的 `assets/`。
 
-推荐从仓库根目录启动。工具后端会从当前目录向上查找 `project.godot`，所以在仓库子目录里启动通常也可以；在仓库外启动会失败。
+启动时必须通过 `--workspace` 显式传入创作工作区绝对路径。编辑器代码目录与内容工作区彼此独立。
 
 ## Windows 启动
 
 PowerShell：
 
 ```powershell
-cd C:\path\to\jyxr-web-editor
-dotnet run --project .\tools\JsonEditor\JsonEditor.csproj
+cd C:\path\to\jyxr-editor
+dotnet run --project .\src\Jyxr.ModEditor\Jyxr.ModEditor.csproj -- --workspace C:\path\to\content-workspace
 ```
 
 CMD：
 
 ```cmd
-cd /d C:\path\to\jyxr-web-editor
-dotnet run --project tools\JsonEditor\JsonEditor.csproj
+cd /d C:\path\to\jyxr-editor
+dotnet run --project src\Jyxr.ModEditor\Jyxr.ModEditor.csproj -- --workspace C:\path\to\content-workspace
 ```
 
 看到类似 `Now listening on: http://localhost:5127` 后，打开浏览器访问：
@@ -54,8 +54,9 @@ http://localhost:5127
 Terminal / zsh：
 
 ```bash
-cd /path/to/jyxr-web-editor
-dotnet run --project tools/JsonEditor/JsonEditor.csproj
+cd /path/to/jyxr-editor
+dotnet run --project src/Jyxr.ModEditor/Jyxr.ModEditor.csproj -- \
+  --workspace /absolute/path/to/content-workspace
 ```
 
 看到类似 `Now listening on: http://localhost:5127` 后，打开浏览器访问：
@@ -77,47 +78,29 @@ dotnet --list-sdks
 启动 JSON 编辑器：
 
 ```bash
-dotnet run --project tools/JsonEditor/JsonEditor.csproj
+dotnet run --project src/Jyxr.ModEditor/Jyxr.ModEditor.csproj -- --workspace /absolute/path/to/workspace
 ```
 
 只编译 JSON 编辑器：
 
 ```bash
-dotnet build tools/JsonEditor/JsonEditor.csproj
+dotnet build Jyxr.ModEditor.slnx
 ```
 
 检查前端 JavaScript 语法：
 
 ```bash
-node --check tools/JsonEditor/wwwroot/app.js
+node --check src/Jyxr.ModEditor/wwwroot/app.js
 ```
 
 运行编辑器前端纯逻辑测试：
 
 ```bash
-cd tools/JsonEditor
+cd src/Jyxr.ModEditor
 npm test
 ```
 
-运行编辑器后端资源写入策略测试：
-
-```bash
-dotnet test tools/JsonEditor.Tests/JsonEditor.Tests.csproj
-```
-
-运行项目测试：
-
-```bash
-dotnet test
-```
-
-编译 Godot C# 宿主项目：
-
-```bash
-dotnet build engine-free-rpg.csproj
-```
-
-如果只是改 JSON 内容，通常只需要启动编辑器并使用页面右上角的“检查”按钮；改了工具代码后再跑 `dotnet build tools/JsonEditor/JsonEditor.csproj`、前端测试和后端编辑器测试。
+如果只是改 JSON 内容，通常只需要启动编辑器并使用页面右上角的“检查”按钮；改了工具代码后再运行独立仓的构建和前端测试。
 
 ## 基本使用流程
 
@@ -126,13 +109,13 @@ dotnet build engine-free-rpg.csproj
 3. 在左侧进入角色、地图、剧情、物品、商店、资源或高级数据等工作区。
 4. 专用工作区提供对应的结构化创作流程；高级数据继续保留原始 JSON。文本编辑区使用 Monaco，支持行号、缩略代码地图、JSON/DSL 高亮、错误标记和光标定位。
 5. 修改后点击“格式化”检查 JSON 格式。
-6. 点击右上角“检查”运行完整内容检查。
+6. 点击右上角“检查”运行全目录 JSON 检查，并结合各专用工作区的静态诊断处理引用问题。
 7. 确认无误后点击“保存”。
 
 保存时工具会：
 
 - 格式化 JSON。
-- 在 `tools/JsonEditor/.backups` 下创建时间戳备份。
+- 在当前 MOD 的 `.jyxr-editor/backups` 下创建时间戳备份。
 - 自动运行一次内容校验。
 
 ## MOD 切换
@@ -396,7 +379,7 @@ story speaker -> characters.json -> portrait -> resources.json -> assets/art
 
 ### 端口 5127 被占用
 
-当前端口在 `tools/JsonEditor/Program.cs` 中固定为 `http://localhost:5127`。请先关闭另一个正在使用 5127 的进程，再重新启动。
+当前默认端口在 `src/Jyxr.ModEditor/Program.cs` 中设置为 `http://localhost:5127`。请先关闭另一个正在使用 5127 的进程，再重新启动。
 
 macOS 可查看占用：
 
@@ -410,9 +393,9 @@ Windows 可查看占用：
 netstat -ano | findstr :5127
 ```
 
-### 提示找不到 `project.godot`
+### 提示缺少创作工作区
 
-说明启动命令不是在工程目录或其子目录执行的。先 `cd` 到 `jyxr-web-editor` 仓库根目录，再运行启动命令。
+确认启动命令包含 `--workspace`，并且目标目录下存在 `mods/`。
 
 ### 页面没有显示 MOD
 
@@ -425,12 +408,12 @@ netstat -ano | findstr :5127
 
 ### 保存失败或检查失败
 
-先看右侧检查信息。常见原因包括 JSON 语法错误、引用了不存在的角色/物品/资源/剧情段，或字段类型不符合内容加载器要求。
+先看右侧检查信息。常见原因包括 JSON 语法错误，或专用工作区发现不存在的角色、物品、资源和剧情段引用。
 
 保存前工具会备份旧文件，备份目录为：
 
 ```text
-tools/JsonEditor/.backups
+mods/<modId>/.jyxr-editor/backups
 ```
 
 ### 改了资源但游戏里没变化
@@ -442,5 +425,5 @@ JSON 编辑器只改 loose data 和辅助查看根 `assets/`。Godot 资源导�
 架构、接口、数据规则和已知限制见：
 
 ```text
-tools/JsonEditor/DEVELOPMENT.md
+src/Jyxr.ModEditor/DEVELOPMENT.md
 ```
