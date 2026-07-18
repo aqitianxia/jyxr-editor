@@ -40,6 +40,8 @@ Then open `http://localhost:5127` and choose the authoring workspace. Pass
 `--workspace /absolute/path/to/workspace` only when a script should open one
 workspace directly.
 
+For a step-by-step Chinese user guide, see [docs/使用教程.md](docs/使用教程.md).
+
 ## Game compatibility contract
 
 The game owns the canonical content types and exports them with
