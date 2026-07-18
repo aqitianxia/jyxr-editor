@@ -118,6 +118,9 @@ const elements = {
   workspaceLauncherClearRecent: document.getElementById("workspaceLauncherClearRecent"),
   workspaceLauncherCancel: document.getElementById("workspaceLauncherCancel"),
   workspaceSwitchButton: document.getElementById("workspaceSwitchButton"),
+  workspaceContextName: document.getElementById("workspaceContextName"),
+  dataShortcutButton: document.getElementById("dataShortcutButton"),
+  assetsShortcutButton: document.getElementById("assetsShortcutButton"),
   editorVersion: document.getElementById("editorVersion"),
   coreLoadState: document.getElementById("coreLoadState"),
   workspacePath: document.getElementById("workspacePath"),
@@ -334,7 +337,14 @@ elements.workspaceLauncherForm.addEventListener("submit", (event) => {
 elements.workspaceLauncherBrowse.addEventListener("click", pickWorkspaceFolder);
 elements.workspaceLauncherClearRecent.addEventListener("click", clearRecentWorkspaces);
 elements.workspaceLauncherCancel.addEventListener("click", hideWorkspaceLauncher);
+elements.workspaceLauncher.addEventListener("click", (event) => {
+  if (event.target === elements.workspaceLauncher && elements.workspaceLauncher.classList.contains("overlay")) {
+    hideWorkspaceLauncher();
+  }
+});
 elements.workspaceSwitchButton.addEventListener("click", requestWorkspaceSwitch);
+elements.dataShortcutButton.addEventListener("click", () => requestWorkspaceChange("data"));
+elements.assetsShortcutButton.addEventListener("click", () => requestWorkspaceChange("assets"));
 bindImeSafeInput(elements.contentSearch, () => {
   if (state.mode === "story") {
     renderStoryView();
@@ -976,10 +986,14 @@ async function loadWorkspace(workspace = null) {
 function showWorkspaceLauncher({ message = "", error = false } = {}) {
   const recent = readRecentWorkspaces();
   const currentPath = state.workspace?.rootPath || "";
+  const overlay = Boolean(state.workspace?.isOpen && !elements.appShell.hidden);
   elements.workspaceLauncherPath.value = currentPath || recent[0] || "";
   elements.workspaceLauncherCancel.hidden = !state.workspace?.isOpen;
+  elements.workspaceLauncherCancel.textContent = overlay ? "关闭" : "返回当前工作区";
+  elements.workspaceLauncher.classList.toggle("overlay", overlay);
   elements.workspaceLauncher.hidden = false;
-  elements.appShell.hidden = true;
+  elements.appShell.hidden = !overlay;
+  document.body.classList.toggle("workspace-launcher-open", overlay);
   renderRecentWorkspaces(recent);
   setWorkspaceLauncherStatus(message || "尚未打开工作区。", error ? "error" : "");
   requestAnimationFrame(() => elements.workspaceLauncherPath.focus({ preventScroll: true }));
@@ -991,7 +1005,9 @@ function hideWorkspaceLauncher() {
   }
 
   elements.workspaceLauncher.hidden = true;
+  elements.workspaceLauncher.classList.remove("overlay");
   elements.appShell.hidden = false;
+  document.body.classList.remove("workspace-launcher-open");
   setWorkspaceLauncherBusy(false);
   scheduleEditorLayout();
 }
@@ -1150,6 +1166,24 @@ function renderWorkspacePath() {
   const summary = `正在编辑：${modText} · ${validationText}  |  共享资产：${state.workspace.assetsPath}`;
   elements.workspacePath.textContent = summary;
   elements.workspacePath.title = summary;
+  renderProjectContext();
+}
+
+function renderProjectContext() {
+  const rootPath = state.workspace?.rootPath || "";
+  const activeMod = getActiveMod();
+  const dataPath = activeMod ? `${activeMod.path}/data` : "尚未选择 MOD";
+  const assetsPath = state.workspace?.assetsPath || "尚未打开工作区";
+  elements.workspaceContextName.textContent = rootPath ? getWorkspaceName(rootPath) : "未打开";
+  elements.workspaceSwitchButton.title = rootPath
+    ? `切换工作区：${rootPath}`
+    : "打开工作区";
+  elements.dataShortcutButton.title = `打开数据文件：${dataPath}`;
+  elements.assetsShortcutButton.title = `打开资产文件：${assetsPath}`;
+  elements.dataShortcutButton.classList.toggle("active", state.mode === "data");
+  elements.assetsShortcutButton.classList.toggle("active", state.mode === "assets");
+  elements.dataShortcutButton.setAttribute("aria-pressed", String(state.mode === "data"));
+  elements.assetsShortcutButton.setAttribute("aria-pressed", String(state.mode === "assets"));
 }
 
 async function switchMod(modId) {
@@ -1381,6 +1415,7 @@ function setMode(mode) {
   elements.dataTab.classList.toggle("active", mode === "data");
   elements.storyTab.classList.toggle("active", isStory);
   elements.assetsTab.classList.toggle("active", mode === "assets");
+  renderProjectContext();
   elements.homeView.classList.toggle("hidden", mode !== "home");
   elements.problemCenterView.classList.toggle("hidden", mode !== "problems");
   elements.characterWorkspaceView.classList.toggle("hidden", !isCharacters);
@@ -11766,6 +11801,13 @@ function jumpSearch(direction) {
 }
 
 function handleGlobalKeydown(event) {
+  if (event.key === "Escape" && elements.workspaceLauncher.classList.contains("overlay")) {
+    event.preventDefault();
+    hideWorkspaceLauncher();
+    elements.workspaceSwitchButton.focus({ preventScroll: true });
+    return;
+  }
+
   if (event.key === "Escape" && state.portraitPicker.open) {
     event.preventDefault();
     closePortraitPicker();

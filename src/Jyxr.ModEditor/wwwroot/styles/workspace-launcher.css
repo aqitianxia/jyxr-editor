@@ -11,6 +11,41 @@
   color: var(--color-text);
 }
 
+body.workspace-launcher-open {
+  overflow: hidden;
+}
+
+.workspace-launcher.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr);
+  padding: 76px 24px 24px;
+  background: rgb(24 37 54 / 42%);
+}
+
+.workspace-launcher.overlay .workspace-launcher-header {
+  display: none;
+}
+
+.workspace-launcher.overlay .workspace-launcher-main {
+  width: min(760px, 100%);
+  max-height: calc(100vh - 100px);
+  margin: 0 auto;
+  padding: 28px 32px 32px;
+  overflow-y: auto;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-surface);
+  box-shadow: 0 24px 64px rgb(20 32 48 / 28%);
+}
+
+.workspace-launcher.overlay .workspace-launcher-heading {
+  margin-bottom: 24px;
+}
+
 .workspace-launcher-header {
   display: flex;
   align-items: center;
@@ -206,5 +241,14 @@
   .workspace-launcher-recent-path {
     grid-column: 1 / -1;
     grid-row: 2;
+  }
+
+  .workspace-launcher.overlay {
+    padding: 12px;
+  }
+
+  .workspace-launcher.overlay .workspace-launcher-main {
+    max-height: calc(100vh - 24px);
+    padding: 24px 18px;
   }
 }

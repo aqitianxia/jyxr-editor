@@ -9,7 +9,7 @@ body {
 .topbar {
   min-height: var(--topbar-height);
   display: grid;
-  grid-template-columns: minmax(210px, 1fr) minmax(240px, 390px) minmax(360px, 1fr);
+  grid-template-columns: minmax(210px, 1fr) minmax(290px, 360px) minmax(240px, 390px) minmax(360px, 1fr);
   align-items: center;
   gap: var(--space-4);
   padding: 0 var(--space-4);
@@ -32,6 +32,11 @@ body {
   justify-content: flex-end;
 }
 
+.top-actions > button {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
 .brand-block {
   min-width: 0;
 }
@@ -49,6 +54,62 @@ body {
   color: var(--color-text-subtle);
   font-size: 11px;
   white-space: nowrap;
+}
+
+.project-context {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.workspace-context-button {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: var(--space-2);
+  border-color: var(--color-border);
+  background: var(--color-surface-muted);
+  text-align: left;
+}
+
+.workspace-context-label {
+  color: var(--color-text-subtle);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.workspace-context-button strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.project-context-shortcuts {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-muted);
+}
+
+.project-context-shortcuts button {
+  min-height: var(--control-height-sm);
+  border: 0;
+  background: transparent;
+  padding: 0 var(--space-2);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.project-context-shortcuts button.active {
+  background: var(--color-surface);
+  color: var(--color-primary);
+  box-shadow: 0 1px 3px rgb(24 37 54 / 12%);
 }
 
 .mod-selector {
@@ -119,6 +180,12 @@ body {
 
 .menu-item:hover {
   background: var(--color-surface-muted);
+}
+
+@media (max-width: 1400px) {
+  #inspectorToggleButton {
+    display: none;
+  }
 }
 
 .workspace-grid,
@@ -560,7 +627,7 @@ body.story-mode .statusbar {
   }
 
   .topbar {
-    grid-template-columns: minmax(190px, auto) minmax(210px, 1fr) auto;
+    grid-template-columns: minmax(190px, auto) minmax(240px, 1fr) minmax(210px, 1fr) auto;
   }
 
   .brand-caption,
@@ -585,12 +652,13 @@ body.story-mode .statusbar {
   }
 
   .topbar {
-    grid-template-columns: auto minmax(180px, 1fr) auto;
+    grid-template-columns: auto minmax(210px, 1fr) minmax(180px, 1fr) auto;
     gap: var(--space-2);
     padding: 0 var(--space-2);
   }
 
   .brand,
+  .workspace-context-label,
   .mod-selector > span,
   #validateButton,
   .dirty-state {
@@ -635,6 +703,12 @@ body.story-mode .statusbar {
   }
 
   #inspectorToggleButton,
+  #problemCenterButton,
+  #undoButton,
+  #redoButton,
+  .topbar .brand-meta,
+  .mod-selector,
+  .project-context-shortcuts,
   .topbar-more {
     display: none;
   }
