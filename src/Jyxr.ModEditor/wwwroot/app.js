@@ -1,4 +1,4 @@
-import { state } from "./core/state.js?v=20260716-map-events-2";
+import { state } from "./core/state.js?v=20260722-battle-links-1";
 import { editorVersion } from "./core/version.js?v=20260711-stage9-1";
 import { createEditorApi } from "./core/api.js?v=20260711-core-17";
 import { createCommandRegistry } from "./core/commands.js?v=20260711-core-17";
@@ -40,6 +40,20 @@ import { createItemDefinition, effectTypes, statChoices, weaponTypes } from "./d
 import { renderItemWorkspace } from "./workspaces/items.js?v=20260711-stage6-2";
 import { createShopDefinition, createShopProduct, ensureShopShape as ensureShopWorkspaceShape, moveShopProduct as moveShopProductEntry } from "./domain/shops.js?v=20260711-stage7-1";
 import { renderShopWorkspace } from "./workspaces/shops.js?v=20260711-stage7-2";
+import {
+  addBattleUnit,
+  createBattleDefinition,
+  deleteBattleUnit,
+  duplicateBattleUnit,
+  ensureBattleShape,
+  findBattleReferences as findBattleReferencesInContent,
+  getBattleIssues,
+  getBattleUnit,
+  getBattleUnits,
+  moveBattleUnit,
+  setBattleUnitKind,
+} from "./domain/battles.js?v=20260722-battle-links-1";
+import { renderBattleWorkspace } from "./workspaces/battles.js?v=20260722-battle-links-1";
 import {
   buildMartialIndex,
   cloneJson as cloneMartialJson,
@@ -148,6 +162,7 @@ const elements = {
   sectsTab: document.getElementById("sectsTab"),
   itemsTab: document.getElementById("itemsTab"),
   shopsTab: document.getElementById("shopsTab"),
+  battlesTab: document.getElementById("battlesTab"),
   martialTab: document.getElementById("martialTab"),
   talentsTab: document.getElementById("talentsTab"),
   sidebarBrowser: document.getElementById("sidebarBrowser"),
@@ -160,6 +175,7 @@ const elements = {
   sectWorkspaceView: document.getElementById("sectWorkspaceView"),
   itemWorkspaceView: document.getElementById("itemWorkspaceView"),
   shopWorkspaceView: document.getElementById("shopWorkspaceView"),
+  battleWorkspaceView: document.getElementById("battleWorkspaceView"),
   martialWorkspaceView: document.getElementById("martialWorkspaceView"),
   talentWorkspaceView: document.getElementById("talentWorkspaceView"),
   resourceWorkspaceView: document.getElementById("resourceWorkspaceView"),
@@ -306,6 +322,7 @@ elements.growthTab.addEventListener("click", () => requestWorkspaceChange("growt
 elements.sectsTab.addEventListener("click", () => requestWorkspaceChange("sects"));
 elements.itemsTab.addEventListener("click", () => requestWorkspaceChange("items"));
 elements.shopsTab.addEventListener("click", () => requestWorkspaceChange("shops"));
+elements.battlesTab.addEventListener("click", () => requestWorkspaceChange("battles"));
 elements.martialTab.addEventListener("click", () => requestWorkspaceChange("martial"));
 elements.talentsTab.addEventListener("click", () => requestWorkspaceChange("talents"));
 elements.dataTab.addEventListener("click", () => requestWorkspaceChange("data"));
@@ -1380,6 +1397,7 @@ function setMode(mode) {
   const isSects = mode === "sects";
   const isItems = mode === "items";
   const isShops = mode === "shops";
+  const isBattles = mode === "battles";
   const isMartial = mode === "martial";
   const isTalents = mode === "talents";
   const isResources = mode === "assets";
@@ -1397,6 +1415,7 @@ function setMode(mode) {
   document.body.classList.toggle("sects-mode", isSects);
   document.body.classList.toggle("items-mode", isItems);
   document.body.classList.toggle("shops-mode", isShops);
+  document.body.classList.toggle("battles-mode", isBattles);
   document.body.classList.toggle("martial-mode", isMartial);
   document.body.classList.toggle("talents-mode", isTalents);
   document.body.classList.toggle("resources-mode", isResources);
@@ -1410,6 +1429,7 @@ function setMode(mode) {
   elements.sectsTab.classList.toggle("active", isSects);
   elements.itemsTab.classList.toggle("active", isItems);
   elements.shopsTab.classList.toggle("active", isShops);
+  elements.battlesTab.classList.toggle("active", isBattles);
   elements.martialTab.classList.toggle("active", isMartial);
   elements.talentsTab.classList.toggle("active", isTalents);
   elements.dataTab.classList.toggle("active", mode === "data");
@@ -1424,12 +1444,13 @@ function setMode(mode) {
   elements.sectWorkspaceView.classList.toggle("hidden", !isSects);
   elements.itemWorkspaceView.classList.toggle("hidden", !isItems);
   elements.shopWorkspaceView.classList.toggle("hidden", !isShops);
+  elements.battleWorkspaceView.classList.toggle("hidden", !isBattles);
   elements.martialWorkspaceView.classList.toggle("hidden", !isMartial);
   elements.talentWorkspaceView.classList.toggle("hidden", !isTalents);
   elements.resourceWorkspaceView.classList.toggle("hidden", !isResources);
-  elements.workspacePaneHeader.classList.toggle("hidden", isOverview || isStory || isCharacters || isMaps || isGrowth || isSects || isItems || isShops || isMartial || isTalents || isResources);
-  elements.editorTools.classList.toggle("hidden", isOverview || isStory || isCharacters || isMaps || isGrowth || isSects || isItems || isShops || isMartial || isTalents || isResources);
-  elements.editorStatusbar.classList.toggle("hidden", isOverview || isStory || isCharacters || isMaps || isGrowth || isSects || isItems || isShops || isMartial || isTalents || isResources);
+  elements.workspacePaneHeader.classList.toggle("hidden", isOverview || isStory || isCharacters || isMaps || isGrowth || isSects || isItems || isShops || isBattles || isMartial || isTalents || isResources);
+  elements.editorTools.classList.toggle("hidden", isOverview || isStory || isCharacters || isMaps || isGrowth || isSects || isItems || isShops || isBattles || isMartial || isTalents || isResources);
+  elements.editorStatusbar.classList.toggle("hidden", isOverview || isStory || isCharacters || isMaps || isGrowth || isSects || isItems || isShops || isBattles || isMartial || isTalents || isResources);
 
   elements.fileSearch.value = "";
   elements.fileSearch.placeholder = isStory
@@ -1438,7 +1459,7 @@ function setMode(mode) {
       ? "搜索资产"
       : "搜索文件";
   const canSaveStory = isStory && (isStorySourceFile() || isStoryJsonFile());
-  elements.saveButton.disabled = mode !== "data" && !canSaveStory && !isCharacters && !isMaps && !isGrowth && !isSects && !isItems && !isShops && !isMartial && !isTalents;
+  elements.saveButton.disabled = mode !== "data" && !canSaveStory && !isCharacters && !isMaps && !isGrowth && !isSects && !isItems && !isShops && !isBattles && !isMartial && !isTalents;
   elements.formatButton.disabled = mode !== "data";
   renderMapHistoryControls();
 
@@ -1480,6 +1501,11 @@ function setMode(mode) {
     setTextEditorVisible(false);
     elements.currentPath.textContent = "shops.json";
     renderShopWorkspaceView();
+  } else if (isBattles) {
+    elements.storyView.classList.add("hidden");
+    setTextEditorVisible(false);
+    elements.currentPath.textContent = "battles.json";
+    renderBattleWorkspaceView();
   } else if (isMartial) {
     elements.storyView.classList.add("hidden");
     setTextEditorVisible(false);
@@ -1517,7 +1543,7 @@ function setMode(mode) {
 
   updateStorySourceButton();
   renderShellContext();
-  if (!isOverview && !isCharacters && !isMaps && !isGrowth && !isItems && !isShops && !isMartial && !isTalents && !isResources) {
+  if (!isOverview && !isCharacters && !isMaps && !isGrowth && !isItems && !isShops && !isBattles && !isMartial && !isTalents && !isResources) {
     renderFileList();
     renderCurrentFileInfo();
   }
@@ -1665,6 +1691,29 @@ async function requestWorkspaceChange(mode) {
     }
     return;
   }
+  const switchingBattleSurface = isBattleFile()
+    && ((state.mode === "battles" && mode === "data") || (state.mode === "data" && mode === "battles"));
+  if (switchingBattleSurface) {
+    if (mode === "battles") {
+      try {
+        const records = parseJsonText(getEditorValue());
+        if (!Array.isArray(records) || !records.every((record) => record && typeof record === "object" && !Array.isArray(record))) {
+          throw new Error("battles.json 顶层必须是战斗对象数组。");
+        }
+        state.records = records;
+        state.records.forEach(ensureBattleShape);
+        state.selectedRecordIndex = Math.min(state.selectedRecordIndex, Math.max(0, records.length - 1));
+        ensureSelectedBattleUnit();
+        setMode("battles");
+      } catch (error) {
+        showValidation(false, error instanceof SyntaxError ? formatJsonError(error) : error.message);
+      }
+    } else {
+      setMode("data");
+      setViewMode("json");
+    }
+    return;
+  }
   if (dirtyStateController.isDirty()) {
     if (!(await confirmDiscardChanges())) return;
     await reloadCurrentDataFile();
@@ -1681,6 +1730,8 @@ async function requestWorkspaceChange(mode) {
     await openItemWorkspace();
   } else if (mode === "shops") {
     await openShopWorkspace();
+  } else if (mode === "battles") {
+    await openBattleWorkspace();
   } else if (mode === "martial") {
     await openMartialWorkspace();
   } else if (mode === "talents") {
@@ -2484,6 +2535,428 @@ async function openShopWorkspace() {
   setMode("shops");
 }
 
+async function openBattleWorkspace() {
+  if (state.mode === "battles" && isBattleFile() && state.records.length > 0) {
+    renderBattleWorkspaceView();
+    return;
+  }
+  if (!state.dataFiles.some((file) => file.path === "battles.json")) {
+    showValidation(false, "当前 MOD 缺少 battles.json。");
+    return;
+  }
+  await openDataFile("battles.json", { initializeEditor: false });
+  if (!isBattleFile()) return;
+  state.records.forEach(ensureBattleShape);
+  ensureSelectedBattleUnit();
+  setMode("battles");
+}
+
+function getBattleCharacterOptions() {
+  const options = [];
+  for (const definitions of state.contentIndex.definitionsById.values()) {
+    for (const definition of definitions) {
+      if (definition.type !== "characters") continue;
+      options.push(createReferenceOption(definition, {
+        typeLabel: "角色",
+        subtitle: definition.record?.name && definition.record.name !== definition.id ? definition.id : "",
+      }));
+    }
+  }
+  return Array.from(new Map(options.map((option) => [option.id, option])).values())
+    .sort((left, right) => left.name.localeCompare(right.name, "zh-Hans-CN") || left.id.localeCompare(right.id, "zh-Hans-CN"));
+}
+
+function getBattleBackgroundOptions() {
+  const byId = new Map();
+  for (const file of state.assetFiles) {
+    const path = String(file?.path || "").replaceAll("\\", "/");
+    const match = path.match(/(?:^|\/)art\/battle_bg\/([^/]+)\.(png|jpe?g|webp)$/iu);
+    if (!match || byId.has(match[1])) continue;
+    byId.set(match[1], { id: match[1], label: match[1], path });
+  }
+  return Array.from(byId.values()).sort((left, right) => left.label.localeCompare(right.label, "zh-Hans-CN"));
+}
+
+function getBattleMusicOptions() {
+  return state.contentIndex.resourceRecords
+    .map((resource) => ({
+      resource,
+      path: typeof resource?.value === "string" ? findAssetPath(resource.value, { audio: true }) : "",
+    }))
+    .filter(({ resource, path }) => resource?.id && path && isAudioAsset(path))
+    .map(({ resource, path }) => ({
+      id: resource.id,
+      name: resource.id,
+      typeLabel: resource.group || "音乐",
+      subtitle: resource.value || path,
+      description: path,
+      searchText: [resource.id, resource.group, resource.value, path].filter(Boolean).join(" "),
+    }))
+    .sort((left, right) => left.name.localeCompare(right.name, "zh-Hans-CN"));
+}
+
+function getBattleReferences(record) {
+  const id = typeof record?.id === "string" ? record.id.trim() : "";
+  if (!id) return [];
+  return (state.contentIndex.battleReferencesById?.get(id) || [])
+    .filter((reference) => !(reference.path === "battles.json" && reference.ownerDefinitionId === record.id))
+    .sort((left, right) => left.path.localeCompare(right.path, "zh-Hans-CN") || left.fieldPath.localeCompare(right.fieldPath));
+}
+
+async function revealBattleReference(reference) {
+  if (reference.kind === "map" && reference.path === "maps.json") {
+    await openMapWorkspace();
+    if (state.mode !== "maps") return;
+    const mapIndex = Number.isInteger(reference.mapIndex)
+      ? reference.mapIndex
+      : state.records.findIndex((record) => record?.id === reference.ownerDefinitionId);
+    if (mapIndex >= 0 && state.records[mapIndex]) {
+      state.selectedRecordIndex = mapIndex;
+      state.mapEditor.selectedLocationIndex = Math.max(0, Number(reference.locationIndex) || 0);
+      state.mapEditor.tab = "locations";
+      renderMapWorkspaceView();
+      elements.mapWorkspaceView
+        .querySelector(`[data-event-index="${Math.max(0, Number(reference.eventIndex) || 0)}"]`)
+        ?.scrollIntoView({ block: "center" });
+    }
+    return;
+  }
+
+  if (reference.kind === "story" || reference.path.endsWith(".story.json")) {
+    const documentPath = getStorySourcePathForJson(reference.path) || reference.path;
+    state.storyWorkspace.selectedDocumentPath = documentPath;
+    state.storyWorkspace.selectedSegmentId = reference.ownerDefinitionId || "";
+    await openStoryWorkspace();
+    if (state.mode !== "story") return;
+    state.storyWorkspace.selectedSegmentId = reference.ownerDefinitionId || state.storyWorkspace.selectedSegmentId;
+    state.storyWorkspace.selectedGraphNodeId = state.storyWorkspace.selectedSegmentId;
+    state.storyWorkspace.view = isStorySourceFile(state.currentPath) ? "dsl" : "json";
+    setViewMode(state.storyWorkspace.view);
+    renderStoryView();
+    if (state.storyWorkspace.selectedSegmentId) selectStorySegment(state.storyWorkspace.selectedSegmentId);
+    return;
+  }
+
+  const opened = await openDataFile(reference.path);
+  if (!opened) return;
+  setMode("data");
+  setViewMode("json");
+  selectLine(reference.line || 1);
+}
+
+function getBattleIssueContext(record, characterOptions, backgroundOptions, musicOptions) {
+  const idCounts = new Map();
+  for (const candidate of state.records) {
+    const id = String(candidate?.id || "").trim();
+    if (id) idCounts.set(id, (idCounts.get(id) || 0) + 1);
+  }
+  return {
+    idCounts,
+    characterIds: new Set(characterOptions.map((option) => option.id)),
+    backgroundIds: new Set(backgroundOptions.map((option) => option.id)),
+    musicIds: new Set(musicOptions.map((option) => option.id)),
+    referenceCount: getBattleReferences(record).length,
+  };
+}
+
+function ensureSelectedBattleUnit() {
+  const record = state.records[state.selectedRecordIndex];
+  if (!record) {
+    state.battleWorkspace.selectedUnitKey = "";
+    return;
+  }
+  if (getBattleUnit(record, state.battleWorkspace.selectedUnitKey)) return;
+  state.battleWorkspace.selectedUnitKey = getBattleUnits(record)[0]?.key || "";
+}
+
+function renderBattleWorkspaceView() {
+  if (state.mode !== "battles") return;
+  const record = state.records[state.selectedRecordIndex];
+  if (record) ensureBattleShape(record);
+  ensureSelectedBattleUnit();
+  const characterOptions = getBattleCharacterOptions();
+  const backgroundOptions = getBattleBackgroundOptions();
+  const musicOptions = getBattleMusicOptions();
+  renderBattleWorkspace(elements.battleWorkspaceView, {
+    state,
+    characterOptions,
+    characterMap: state.contentIndex.charactersByIdOrName,
+    backgroundOptions,
+    musicOptions,
+    getReferences: getBattleReferences,
+    getIssueContext: (battle) => getBattleIssueContext(battle, characterOptions, backgroundOptions, musicOptions),
+    onSelectBattle: (index) => {
+      state.selectedRecordIndex = index;
+      state.battleWorkspace.tab = "deployment";
+      state.battleWorkspace.selectedUnitKey = "";
+      ensureSelectedBattleUnit();
+      renderBattleWorkspaceView();
+      renderProblemIndicators();
+    },
+    onSearch: (value) => {
+      const search = elements.battleWorkspaceView.querySelector('.battle-workspace-catalog input[type="search"]');
+      state.battleWorkspace.search = value;
+      rerenderSearchResults(search, renderBattleWorkspaceView,
+        () => elements.battleWorkspaceView.querySelector('.battle-workspace-catalog input[type="search"]'), "battles:list");
+    },
+    onFilter: (value) => {
+      state.battleWorkspace.filter = value;
+      renderBattleWorkspaceView();
+    },
+    onTab: (value) => {
+      state.battleWorkspace.tab = value;
+      renderBattleWorkspaceView();
+    },
+    onSelectUnit: (key) => {
+      state.battleWorkspace.selectedUnitKey = key;
+      state.battleWorkspace.tab = "deployment";
+      renderBattleWorkspaceView();
+    },
+    onPatchBattle: (patch) => {
+      const current = state.records[state.selectedRecordIndex];
+      if (!current) return;
+      Object.assign(current, patch);
+      syncRecordsToEditor();
+      renderBattleWorkspaceView();
+    },
+    onReplaceBattle: (next) => {
+      state.records[state.selectedRecordIndex] = ensureBattleShape(next);
+      state.battleWorkspace.selectedUnitKey = "";
+      ensureSelectedBattleUnit();
+      syncRecordsToEditor();
+      renderBattleWorkspaceView();
+    },
+    onAddUnit: addWorkspaceBattleUnit,
+    onPatchUnit: patchWorkspaceBattleUnit,
+    onMoveUnit: moveWorkspaceBattleUnit,
+    onSetUnitKind: convertWorkspaceBattleUnit,
+    onDuplicateUnit: duplicateWorkspaceBattleUnit,
+    onDeleteUnit: deleteWorkspaceBattleUnit,
+    onAddRequiredCharacter: addBattleRequiredCharacter,
+    onRemoveRequiredCharacter: removeBattleRequiredCharacter,
+    onOpenReference: revealBattleReference,
+    onRename: renameBattleRecord,
+    onCreate: createBattleRecord,
+    onDuplicate: duplicateBattleRecord,
+    onDelete: deleteBattleRecord,
+  });
+}
+
+function createBattleRecord() {
+  const id = createUniqueId("新战斗");
+  const battle = createBattleDefinition(id);
+  const firstBackground = getBattleBackgroundOptions()[0];
+  if (firstBackground) battle.mapId = firstBackground.id;
+  state.records.push(battle);
+  state.selectedRecordIndex = state.records.length - 1;
+  state.battleWorkspace.search = "";
+  state.battleWorkspace.filter = "all";
+  state.battleWorkspace.tab = "deployment";
+  state.battleWorkspace.selectedUnitKey = "participant:0";
+  syncRecordsToEditor();
+  renderBattleWorkspaceView();
+}
+
+async function createBattleForReference(preferredId = "") {
+  const requestedId = preferredId || window.prompt("新战斗 ID", "新战斗");
+  const id = String(requestedId || "").trim();
+  if (!id) return "";
+  if (id.includes("\n") || id.includes("\r")) {
+    showValidation(false, "战斗 ID 不能包含换行符。");
+    return "";
+  }
+  if (hasDefinition("battles", id)) {
+    showValidation(true, `战斗「${id}」已经存在，将直接使用现有定义。`);
+    return id;
+  }
+
+  try {
+    const file = await requestJson(`/api/data/file?path=${encodeURIComponent("battles.json")}`);
+    const records = parseJsonText(file.content);
+    if (!Array.isArray(records)) throw new Error("battles.json 顶层必须是数组。");
+    if (records.some((record) => String(record?.id || "").trim() === id)) {
+      showValidation(true, `战斗「${id}」已经存在，将直接使用现有定义。`);
+      return id;
+    }
+    const battle = createBattleDefinition(id);
+    const firstBackground = getBattleBackgroundOptions()[0];
+    if (firstBackground) battle.mapId = firstBackground.id;
+    records.push(battle);
+    const result = await requestJson("/api/data/file", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ path: "battles.json", content: JSON.stringify(records) }),
+    });
+    await loadDataFiles();
+    await rebuildContentIndex();
+    showValidation(result.validation.ok, `已创建战斗「${id}」，可从当前调用位置继续配置。`);
+    return id;
+  } catch (error) {
+    showValidation(false, error instanceof Error ? error.message : String(error));
+    return "";
+  }
+}
+
+async function renameBattleRecord() {
+  const current = state.records[state.selectedRecordIndex];
+  const oldId = String(current?.id || "").trim();
+  if (!current || !oldId) {
+    showValidation(false, "当前战斗缺少可重命名的 ID。");
+    return;
+  }
+  const newId = String(window.prompt("新的战斗 ID", oldId) || "").trim();
+  if (!newId || newId === oldId) return;
+  if (newId.includes("\n") || newId.includes("\r")) {
+    showValidation(false, "战斗 ID 不能包含换行符。");
+    return;
+  }
+  if (state.records.some((record) => record !== current && String(record?.id || "").trim() === newId)) {
+    showValidation(false, `战斗 ID 已存在：${newId}`);
+    return;
+  }
+
+  const references = getBattleReferences(current);
+  const referenceSummary = references.length
+    ? `已识别 ${references.length} 处已保存引用，将同步更新。`
+    : "没有发现已保存的静态引用。";
+  const dirtySummary = state.dirty ? "当前 battles.json 的其他未保存修改也会一起保存。" : "";
+  if (!confirmAction(`确认将战斗 ID「${oldId}」改为「${newId}」？\n\n${referenceSummary}\n${dirtySummary}\n地图、剧情源与编译 JSON、塔层和世界触发器会在同一事务中更新。`)) return;
+
+  try {
+    const result = await requestJson("/api/static/battle/rename", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ oldId, newId, battlesContent: JSON.stringify(state.records) }),
+    });
+    setEditorValue(result.content);
+    state.records = parseJsonText(result.content);
+    state.records.forEach(ensureBattleShape);
+    state.recordsPath = "battles.json";
+    state.selectedRecordIndex = Math.max(0, state.records.findIndex((record) => record?.id === newId));
+    state.battleWorkspace.selectedUnitKey = "";
+    ensureSelectedBattleUnit();
+    dirtyStateController.markClean({ render: false });
+    elements.saveState.textContent = `已重命名并更新 ${result.updatedReferences} 处引用`;
+    state.problemCenter.validation = result.validation;
+    projectProblemsCache = null;
+    await loadDataFiles();
+    await rebuildContentIndex();
+    await loadStoryGraph();
+    renderDirtyState();
+    renderBattleWorkspaceView();
+    renderFileList();
+    showValidation(result.validation.ok,
+      `战斗已重命名为「${newId}」，更新 ${result.updatedReferences} 处引用，涉及 ${result.changedFiles.length} 个文件。`);
+  } catch (error) {
+    showValidation(false, error instanceof Error ? error.message : String(error));
+  }
+}
+
+function duplicateBattleRecord() {
+  const current = state.records[state.selectedRecordIndex];
+  if (!current) return;
+  const copy = structuredCloneCompat(current);
+  copy.id = createUniqueId(`${String(current.id || "新战斗")}_copy`);
+  copy.name = `${String(current.name || current.id || "新战斗")} 副本`;
+  state.records.splice(state.selectedRecordIndex + 1, 0, copy);
+  state.selectedRecordIndex += 1;
+  state.battleWorkspace.selectedUnitKey = "";
+  ensureSelectedBattleUnit();
+  syncRecordsToEditor();
+  renderBattleWorkspaceView();
+}
+
+function deleteBattleRecord() {
+  const current = state.records[state.selectedRecordIndex];
+  if (!current) return;
+  const references = getBattleReferences(current);
+  const summary = references.length
+    ? `静态扫描找到 ${references.length} 处引用。\n\n${references.slice(0, 5).map((item) => `${item.path} · ${item.fieldPath}`).join("\n")}\n\n`
+    : "静态扫描未找到引用，但无法覆盖动态脚本或运行时引用。\n\n";
+  if (!confirmAction(`${summary}确认删除战斗「${current.name || current.id}」？此操作会留在未保存状态。`)) return;
+  state.records.splice(state.selectedRecordIndex, 1);
+  state.selectedRecordIndex = Math.max(0, Math.min(state.selectedRecordIndex, state.records.length - 1));
+  state.battleWorkspace.selectedUnitKey = "";
+  ensureSelectedBattleUnit();
+  syncRecordsToEditor();
+  renderBattleWorkspaceView();
+}
+
+function addWorkspaceBattleUnit(kind) {
+  const record = state.records[state.selectedRecordIndex];
+  if (!record) return;
+  const characterId = (kind === "ally" || kind === "enemy") ? getBattleCharacterOptions()[0]?.id || "" : undefined;
+  state.battleWorkspace.selectedUnitKey = addBattleUnit(record, kind, { characterId });
+  state.battleWorkspace.tab = "deployment";
+  syncRecordsToEditor();
+  renderBattleWorkspaceView();
+}
+
+function patchWorkspaceBattleUnit(key, patch) {
+  const record = state.records[state.selectedRecordIndex];
+  const entry = record ? getBattleUnit(record, key) : null;
+  if (!entry) return;
+  Object.assign(entry.unit, patch);
+  syncRecordsToEditor();
+  renderBattleWorkspaceView();
+}
+
+function moveWorkspaceBattleUnit(key, position) {
+  const record = state.records[state.selectedRecordIndex];
+  if (!record || !moveBattleUnit(record, key, position)) return;
+  state.battleWorkspace.selectedUnitKey = key;
+  syncRecordsToEditor();
+  renderBattleWorkspaceView();
+}
+
+function convertWorkspaceBattleUnit(key, kind) {
+  const record = state.records[state.selectedRecordIndex];
+  if (!record) return;
+  const characterId = (kind === "ally" || kind === "enemy") ? getBattleCharacterOptions()[0]?.id || "" : undefined;
+  const nextKey = setBattleUnitKind(record, key, kind, { characterId });
+  if (!nextKey) return;
+  state.battleWorkspace.selectedUnitKey = nextKey;
+  syncRecordsToEditor();
+  renderBattleWorkspaceView();
+}
+
+function duplicateWorkspaceBattleUnit(key) {
+  const record = state.records[state.selectedRecordIndex];
+  if (!record) return;
+  const nextKey = duplicateBattleUnit(record, key);
+  if (!nextKey) return;
+  state.battleWorkspace.selectedUnitKey = nextKey;
+  syncRecordsToEditor();
+  renderBattleWorkspaceView();
+}
+
+function deleteWorkspaceBattleUnit(key) {
+  const record = state.records[state.selectedRecordIndex];
+  const entry = record ? getBattleUnit(record, key) : null;
+  if (!entry || !confirmAction("确认删除这个部署单位？")) return;
+  if (!deleteBattleUnit(record, key)) return;
+  state.battleWorkspace.selectedUnitKey = "";
+  ensureSelectedBattleUnit();
+  syncRecordsToEditor();
+  renderBattleWorkspaceView();
+}
+
+function addBattleRequiredCharacter(characterId) {
+  const record = state.records[state.selectedRecordIndex];
+  if (!record || record.requiredCharacterIds.includes(characterId)) return;
+  record.requiredCharacterIds.push(characterId);
+  syncRecordsToEditor();
+  renderBattleWorkspaceView();
+}
+
+function removeBattleRequiredCharacter(index) {
+  const record = state.records[state.selectedRecordIndex];
+  if (!record || index < 0 || index >= record.requiredCharacterIds.length) return;
+  record.requiredCharacterIds.splice(index, 1);
+  syncRecordsToEditor();
+  renderBattleWorkspaceView();
+}
+
 function renderShopWorkspaceView() {
   if (state.mode !== "shops") return;
   const record = state.records[state.selectedRecordIndex];
@@ -3137,6 +3610,7 @@ function renderProjectHomeWorkspace() {
       { label: "剧情与任务", detail: "查看剧情图谱与静态诊断", icon: "文", mode: "story", available: true },
       { label: "物品与装备", detail: "编辑物品、装备和效果", icon: "物", mode: "data", path: "items.json", available: false },
       { label: "商店与经济", detail: "编辑商店商品、价格和限购", icon: "商", mode: "data", path: "shops.json", available: false },
+      { label: "战斗编排", detail: "编辑队伍、敌人、站位与背景", icon: "战", mode: "battles", path: "battles.json", available: true },
       { label: "浏览共享资源", detail: "预览项目图片、音频与文件", icon: "◇", mode: "assets", available: true },
       { label: "高级数据", detail: "打开完整文件树与原始 JSON", icon: "▦", mode: "data", available: true },
       { label: "问题中心", detail: "执行检查并定位内容问题", icon: "!", mode: "problems", available: true },
@@ -3259,6 +3733,37 @@ function collectProjectProblems() {
     }));
   }
 
+  const knownBattleIds = new Set(getDefinitionsByType("battles").map((definition) => definition.id));
+  if (isBattleFile()) {
+    for (const record of state.records) {
+      const id = String(record?.id || "").trim();
+      if (id) knownBattleIds.add(id);
+    }
+  }
+  for (const [battleId, references] of state.contentIndex.battleReferencesById || []) {
+    if (knownBattleIds.has(battleId)) continue;
+    for (const reference of references) {
+      const contentType = reference.kind === "map" ? "map" : reference.kind === "story" ? "story" : "data";
+      problems.push(createProblem({
+        id: `battle-reference:${reference.path}:${reference.fieldPath}:${battleId}`,
+        severity: "error",
+        source: "battle-reference",
+        sourceLabel: "战斗调用检查",
+        contentType,
+        contentTypeLabel: contentType === "map" ? "地图" : contentType === "story" ? "剧情" : "高级数据",
+        message: `引用的战斗不存在：${battleId}`,
+        detail: `${reference.path} · ${reference.fieldPath}`,
+        location: {
+          workspace: reference.kind === "map" ? "maps" : reference.kind === "story" ? "story" : "data",
+          path: reference.path,
+          line: reference.line,
+          definitionId: reference.ownerDefinitionId,
+          definitionTypes: reference.kind === "map" ? ["maps"] : reference.kind === "story" ? ["story"] : [],
+        },
+      }));
+    }
+  }
+
   for (const diagnostic of state.storyGraph?.diagnostics || []) {
     problems.push(createProblem({
       id: `story-graph:${diagnostic.path}:${diagnostic.line || 1}:${diagnostic.message}`,
@@ -3340,6 +3845,28 @@ function collectProjectProblems() {
         }));
       }
     }
+  } else if (isBattleFile() && state.records.length > 0) {
+    const characterOptions = getBattleCharacterOptions();
+    const backgroundOptions = getBattleBackgroundOptions();
+    const musicOptions = getBattleMusicOptions();
+    for (let index = 0; index < state.records.length; index += 1) {
+      const record = state.records[index];
+      const recordId = String(record?.id || record?.name || `#${index + 1}`);
+      const context = getBattleIssueContext(record, characterOptions, backgroundOptions, musicOptions);
+      for (const issue of getBattleIssues(record, context).filter((candidate) => candidate.code !== "reference.unused")) {
+        problems.push(createProblem({
+          id: `form:battles.json:${recordId}:${issue.code}:${issue.unitKey || "battle"}`,
+          severity: issue.severity,
+          source: "form-check",
+          sourceLabel: "战斗工作区检查",
+          contentType: "battle",
+          contentTypeLabel: "战斗",
+          message: issue.message,
+          detail: issue.unitKey ? `部署单位：${issue.unitKey}` : "",
+          location: { workspace: "battles", path: "battles.json", definitionId: recordId },
+        }));
+      }
+    }
   } else if (isItemFile() && state.records.length > 0) {
     appendCurrentRecordProblems(problems, "item", "物品", getItemValidationIssues);
   }
@@ -3379,6 +3906,7 @@ function getProblemContentType(path) {
   if (normalized.endsWith("maps.json")) return { contentType: "map", contentTypeLabel: "地图" };
   if (normalized.endsWith("items.json")) return { contentType: "item", contentTypeLabel: "物品" };
   if (normalized.endsWith("shops.json")) return { contentType: "shop", contentTypeLabel: "商店" };
+  if (normalized.endsWith("battles.json")) return { contentType: "battle", contentTypeLabel: "战斗" };
   if (normalized.endsWith("resources.json")) return { contentType: "resource", contentTypeLabel: "资源" };
   return { contentType: "data", contentTypeLabel: "高级数据" };
 }
@@ -3424,6 +3952,10 @@ async function openQuickStart(item) {
   }
   if (item.mode === "maps") {
     await openMapWorkspace();
+    return;
+  }
+  if (item.mode === "battles") {
+    await openBattleWorkspace();
     return;
   }
   if (item.mode === "story" || item.mode === "assets") {
@@ -3481,6 +4013,18 @@ async function locateProblem(problem) {
       state.selectedRecordIndex = index;
       state.mapEditor.selectedLocationIndex = 0;
       renderMapWorkspaceView();
+    }
+    return;
+  }
+  if (location.workspace === "battles" || location.path === "battles.json") {
+    await openBattleWorkspace();
+    const index = state.records.findIndex((record) => record?.id === location.definitionId || record?.name === location.definitionId);
+    if (index >= 0) {
+      state.selectedRecordIndex = index;
+      state.battleWorkspace.tab = "deployment";
+      state.battleWorkspace.selectedUnitKey = "";
+      ensureSelectedBattleUnit();
+      renderBattleWorkspaceView();
     }
     return;
   }
@@ -4339,6 +4883,7 @@ function createStoryWorkspaceStage(documentModel, workspaceGraph) {
     ? "保存时只写入当前源文件"
     : documentModel.sourceKind === "dsl" ? "由 DSL 草稿实时编译" : "由 JSON 草稿实时反编译";
   note.append(label, detail);
+  if (isWritable) codeStage.appendChild(createStoryBattleAuthoringBar(documentModel));
   const host = document.createElement("div");
   host.className = "story-code-host";
   placeStoryEditor(host);
@@ -4346,6 +4891,74 @@ function createStoryWorkspaceStage(documentModel, workspaceGraph) {
   stage.appendChild(codeStage);
   setTextEditorVisible(true);
   return stage;
+}
+
+function createStoryBattleAuthoringBar(documentModel) {
+  const bar = document.createElement("div");
+  bar.className = "story-battle-authoring";
+  const label = document.createElement("strong");
+  label.textContent = "插入战斗";
+  const picker = createReferencePicker({
+    options: getMapEventTargetOptions("battle"),
+    placeholder: "搜索战斗名称或 ID",
+    compact: true,
+    showSelected: false,
+    onSelect: (battleId) => insertStoryBattleReference(documentModel, battleId),
+  });
+  const create = createActionButton("新建战斗", async () => {
+    const battleId = await createBattleForReference();
+    if (battleId) insertStoryBattleReference(documentModel, battleId);
+  });
+  bar.append(label, picker, create);
+  return bar;
+}
+
+function insertStoryBattleReference(documentModel, battleId) {
+  const normalizedId = String(battleId || "").trim();
+  if (!normalizedId) return;
+  if (documentModel.sourceKind === "json") {
+    try {
+      const root = parseJsonText(getEditorValue());
+      const segments = Array.isArray(root?.segments) ? root.segments : [];
+      const segment = segments.find((candidate) => candidate?.name === state.storyWorkspace.selectedSegmentId) || segments[0];
+      if (!segment) throw new Error("当前 Story JSON 没有可插入战斗的剧情段。");
+      if (!Array.isArray(segment.steps)) segment.steps = [];
+      segment.steps.push({ kind: "battle", battleId: normalizedId, outcomes: { win: [], lose: [] } });
+      setEditorValue(`${JSON.stringify(root, null, 2)}\n`);
+      handleTextEditorInput();
+      showValidation(true, `已向剧情段「${segment.name}」添加战斗「${normalizedId}」。`);
+    } catch (error) {
+      showValidation(false, error instanceof Error ? error.message : String(error));
+    }
+    return;
+  }
+
+  const editor = monacoState.editor;
+  if (editor && window.monaco) {
+    const position = editor.getPosition() || { lineNumber: 1, column: 1 };
+    const line = editor.getModel()?.getLineContent(position.lineNumber) || "";
+    const indent = /^\s*/u.exec(line)?.[0] || "";
+    const text = `${indent}battle ${normalizedId}\n${indent}- win\n${indent}- lose\n`;
+    editor.executeEdits("battle-reference-picker", [{
+      range: new monaco.Range(position.lineNumber, 1, position.lineNumber, 1),
+      text,
+      forceMoveMarkers: true,
+    }]);
+    editor.setPosition({ lineNumber: position.lineNumber, column: indent.length + 8 });
+    editor.focus();
+  } else {
+    const source = elements.editor.value;
+    const cursor = elements.editor.selectionStart || 0;
+    const lineStart = source.lastIndexOf("\n", Math.max(0, cursor - 1)) + 1;
+    const lineEnd = source.indexOf("\n", lineStart);
+    const line = source.slice(lineStart, lineEnd < 0 ? source.length : lineEnd);
+    const indent = /^\s*/u.exec(line)?.[0] || "";
+    const text = `${indent}battle ${normalizedId}\n${indent}- win\n${indent}- lose\n`;
+    elements.editor.setRangeText(text, lineStart, lineStart, "end");
+    handleTextEditorInput();
+    elements.editor.focus();
+  }
+  showValidation(true, `已插入战斗「${normalizedId}」的胜负分支。`);
 }
 
 function createStoryFlowStage(documentModel, workspaceGraph) {
@@ -4691,7 +5304,7 @@ async function saveCurrentFile() {
     await saveMartialWorkspace();
     return;
   }
-  if (!state.currentPath || (state.mode !== "data" && state.mode !== "story" && state.mode !== "characters" && state.mode !== "maps" && state.mode !== "growth" && state.mode !== "sects" && state.mode !== "items" && state.mode !== "shops" && state.mode !== "talents")) {
+  if (!state.currentPath || (state.mode !== "data" && state.mode !== "story" && state.mode !== "characters" && state.mode !== "maps" && state.mode !== "growth" && state.mode !== "sects" && state.mode !== "items" && state.mode !== "shops" && state.mode !== "battles" && state.mode !== "talents")) {
     showValidation(false, "请选择可保存的数据工作区。");
     return;
   }
@@ -4748,6 +5361,8 @@ async function saveCurrentFile() {
       renderItemWorkspaceView();
     } else if (state.mode === "shops") {
       renderShopWorkspaceView();
+    } else if (state.mode === "battles") {
+      renderBattleWorkspaceView();
     } else if (state.mode === "talents") {
       renderTalentWorkspaceView();
     }
@@ -6952,6 +7567,31 @@ function createMapEventTargetField(record, mapEvent) {
   });
   clear.disabled = !mapEvent.targetId;
   actions.appendChild(clear);
+  if (mapEvent.type === "battle") {
+    const targetExists = hasMapEventTarget("battle", String(mapEvent.targetId || "").trim());
+    const open = createActionButton("打开战斗", async () => {
+      const battleId = String(mapEvent.targetId || "").trim();
+      await openBattleWorkspace();
+      if (state.mode !== "battles") return;
+      const index = state.records.findIndex((battle) => battle?.id === battleId);
+      if (index >= 0) {
+        state.selectedRecordIndex = index;
+        state.battleWorkspace.tab = "deployment";
+        state.battleWorkspace.selectedUnitKey = "";
+        ensureSelectedBattleUnit();
+        renderBattleWorkspaceView();
+      }
+    });
+    open.disabled = !targetExists;
+    const create = createActionButton(mapEvent.targetId && !targetExists ? "创建此战斗" : "新建战斗", async () => {
+      const battleId = await createBattleForReference(targetExists ? "" : mapEvent.targetId);
+      if (!battleId) return;
+      mapEvent.targetId = battleId;
+      syncRecordsToEditor();
+      renderMapWorkspaceView();
+    });
+    actions.append(open, create);
+  }
   field.appendChild(actions);
   return field;
 }
@@ -7687,7 +8327,11 @@ function getMapEventTargetOptions(type) {
     const definitionRecord = definition.record || {};
     const metadata = [];
     if (type === "shop") metadata.push(`${(definitionRecord.products || []).length} 件商品`);
-    if (type === "battle") metadata.push(`${(definitionRecord.enemies || definitionRecord.units || []).length} 个敌方单位`);
+    if (type === "battle") {
+      const fixedEnemies = (definitionRecord.participants || []).filter((participant) => Number(participant?.team) !== 1).length;
+      const randomEnemies = (definitionRecord.randomParticipants || []).filter((participant) => Number(participant?.team) !== 1).length;
+      metadata.push(`${fixedEnemies + randomEnemies} 个敌方单位`);
+    }
     byId.set(definition.id, {
       id: definition.id,
       name: definition.displayName || definition.id,
@@ -7820,6 +8464,10 @@ function matchesMapFilter(record, filter) {
 
 function isShopFile() {
   return state.currentPath === "shops.json";
+}
+
+function isBattleFile() {
+  return state.currentPath === "battles.json";
 }
 
 function isGrowthFile() {
@@ -8430,6 +9078,7 @@ function isEquipmentId(id) {
   else if (state.mode === "sects") renderSectWorkspaceView();
   else if (state.mode === "items") renderItemWorkspaceView();
   else if (state.mode === "shops") renderShopWorkspaceView();
+  else if (state.mode === "battles") renderBattleWorkspaceView();
 }
 
 function addMapRecord() {
@@ -8754,6 +9403,7 @@ async function rebuildContentIndex() {
   const itemsById = new Map();
   const storySpeakers = new Map();
   const referencesByValue = new Map();
+  const battleReferencesById = new Map();
 
   for (const file of state.dataFiles) {
     if (isStorySourceFile(file.path)) {
@@ -8769,6 +9419,12 @@ async function rebuildContentIndex() {
       const json = parseJsonText(response.content);
       const lineIndex = createJsonPropertyLineIndex(response.content);
       indexStaticStringReferences(referencesByValue, file.path, json);
+      for (const reference of findBattleReferencesInContent(file.path, json)) {
+        reference.line = lineIndex.find(reference.fieldPath.endsWith("battleId") ? "battleId" : "targetId", reference.value);
+        const entries = battleReferencesById.get(reference.value) || [];
+        entries.push(reference);
+        battleReferencesById.set(reference.value, entries);
+      }
       if (file.path === "resources.json" && Array.isArray(json)) {
         for (const resource of json) {
           resourceRecords.push(resource);
@@ -8844,6 +9500,7 @@ async function rebuildContentIndex() {
     itemsById,
     storySpeakers,
     referencesByValue,
+    battleReferencesById,
   };
   invalidateContentAnalysis();
   state.resourceValues = resourceValues;

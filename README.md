@@ -16,8 +16,8 @@
 
 The mature editor history has been imported from
 `archive/local-web-editor-20260717`. The current migration branch includes the
-existing character, item, shop, martial arts, talent, sect, growth, resource,
-story, and map workspaces together with their frontend tests.
+existing character, item, shop, battle, martial arts, talent, sect, growth,
+resource, story, and map workspaces together with their frontend tests.
 
 The editor opens an external authoring workspace with this shape:
 

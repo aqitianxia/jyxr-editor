@@ -84,6 +84,12 @@ export function createEditorState() {
       tab: "products",
       selectedProductIndex: 0,
     },
+    battleWorkspace: {
+      search: "",
+      filter: "all",
+      tab: "deployment",
+      selectedUnitKey: "",
+    },
     martialArtsWorkspace: {
       documents: { external: [], internal: [], special: [], legend: [] },
       baselines: { external: "", internal: "", special: "", legend: "" },
@@ -183,6 +189,7 @@ export function createEditorState() {
       itemsById: new Map(),
       storySpeakers: new Map(),
       referencesByValue: new Map(),
+      battleReferencesById: new Map(),
     },
   };
 }

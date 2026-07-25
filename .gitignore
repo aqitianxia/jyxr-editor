@@ -19,3 +19,5 @@ coverage/
 
 # Local MOD workspaces
 workspaces/
+!src/Jyxr.ModEditor/wwwroot/workspaces/
+!src/Jyxr.ModEditor/wwwroot/workspaces/**

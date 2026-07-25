@@ -11,6 +11,10 @@ test("天赋工作区是有效路由", () => {
   assert.equal(normalizeWorkspaceMode("talents"), "talents");
 });
 
+test("战斗工作区是有效路由", () => {
+  assert.equal(normalizeWorkspaceMode("battles"), "battles");
+});
+
 test("未知工作区仍回退到项目首页", () => {
   assert.equal(normalizeWorkspaceMode("missing-workspace"), "home");
 });

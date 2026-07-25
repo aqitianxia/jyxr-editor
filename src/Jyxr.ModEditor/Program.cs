@@ -253,6 +253,114 @@ app.MapPost("/api/story/source/new", IResult (CreateStorySourceRequest request, 
     }
 });
 
+app.MapPost("/api/static/battle/rename", IResult (RenameBattleRequest request, string? modId) =>
+{
+    try
+    {
+        var modWorkspace = workspaceSession.RequireCurrent().ForMod(modId);
+        if (!Directory.Exists(modWorkspace.DataPath))
+        {
+            return Results.BadRequest(new ErrorResponse($"Data directory was not found: {modWorkspace.DataPath}"));
+        }
+
+        var oldId = NormalizeBattleId(request.OldId, "Current battle id");
+        var newId = NormalizeBattleId(request.NewId, "New battle id");
+        if (string.Equals(oldId, newId, StringComparison.Ordinal))
+        {
+            return Results.BadRequest(new ErrorResponse("The new battle id is unchanged."));
+        }
+
+        var battles = JsonNode.Parse(request.BattlesContent) as JsonArray
+            ?? throw new InvalidOperationException("battles.json must be a top-level JSON array.");
+        var sourceMatches = battles.OfType<JsonObject>()
+            .Where(record => string.Equals(TryGetStringProperty(record, "id"), oldId, StringComparison.Ordinal))
+            .ToArray();
+        if (sourceMatches.Length != 1)
+        {
+            throw new InvalidOperationException($"Expected exactly one battle named '{oldId}', found {sourceMatches.Length}.");
+        }
+        if (battles.OfType<JsonObject>().Any(record =>
+                !ReferenceEquals(record, sourceMatches[0]) &&
+                string.Equals(TryGetStringProperty(record, "id"), newId, StringComparison.Ordinal)))
+        {
+            throw new InvalidOperationException($"Battle id already exists: {newId}");
+        }
+        sourceMatches[0]["id"] = newId;
+
+        var changedFiles = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["battles.json"] = FormatJson(battles.ToJsonString()),
+        };
+        var updatedReferences = 0;
+        foreach (var file in ListDataFiles(modWorkspace.DataPath))
+        {
+            if (string.Equals(file.Path, "battles.json", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            var filePath = modWorkspace.ResolveDataTextFile(file.Path);
+            var content = File.ReadAllText(filePath, Encoding.UTF8);
+            if (file.Path.EndsWith(".story", StringComparison.OrdinalIgnoreCase))
+            {
+                var updatedSource = RenameStoryBattleReferences(content, oldId, newId, out var sourceCount);
+                if (sourceCount > 0)
+                {
+                    changedFiles[file.Path] = updatedSource;
+                    updatedReferences += sourceCount;
+                }
+                continue;
+            }
+
+            var root = JsonNode.Parse(content);
+            var jsonCount = RenameJsonBattleReferences(root, oldId, newId);
+            if (jsonCount > 0)
+            {
+                changedFiles[file.Path] = FormatJson(root!.ToJsonString());
+                updatedReferences += jsonCount;
+            }
+        }
+
+        var backupPaths = new List<string>();
+        ValidationResponse? validation = null;
+        using var transaction = new FileWriteTransaction();
+        foreach (var (relativePath, content) in changedFiles)
+        {
+            var targetPath = modWorkspace.ResolveDataTextFile(relativePath);
+            var backupPath = BackupFile(modWorkspace, targetPath);
+            if (backupPath is not null) backupPaths.Add(backupPath);
+            transaction.StageText(targetPath, content, Encoding.UTF8);
+        }
+        var committed = transaction.TryCommit(() =>
+        {
+            validation = ValidateContent(modWorkspace, contentContractCatalog);
+            return validation.Ok;
+        });
+        if (!committed)
+        {
+            return Results.BadRequest(new ErrorResponse(
+                $"Content validation failed; all renamed files were restored: {validation?.Message}"));
+        }
+
+        return Results.Ok(new RenameBattleResponse(
+            oldId,
+            newId,
+            changedFiles["battles.json"],
+            changedFiles.Keys.OrderBy(static path => path, StringComparer.OrdinalIgnoreCase).ToArray(),
+            updatedReferences,
+            backupPaths,
+            validation!));
+    }
+    catch (JsonException ex)
+    {
+        return Results.BadRequest(new ErrorResponse($"JSON parse failed: {ex.Message}"));
+    }
+    catch (Exception ex)
+    {
+        return Results.BadRequest(new ErrorResponse(ex.Message));
+    }
+});
+
 app.MapGet("/api/contract", () => Results.Ok(contentContractCatalog.Contract));
 
 app.MapGet("/api/validate", (string? modId) =>
@@ -1156,6 +1264,74 @@ static string NormalizeRequiredId(string value, string fieldName)
     }
 
     return trimmed;
+}
+
+static string NormalizeBattleId(string value, string fieldName)
+{
+    if (string.IsNullOrWhiteSpace(value))
+    {
+        throw new InvalidOperationException($"{fieldName} is required.");
+    }
+    var id = value.Trim();
+    if (id.Any(char.IsControl))
+    {
+        throw new InvalidOperationException($"{fieldName} must not contain control characters.");
+    }
+    return id;
+}
+
+static int RenameJsonBattleReferences(JsonNode? node, string oldId, string newId)
+{
+    if (node is JsonArray array)
+    {
+        return array.Sum(child => RenameJsonBattleReferences(child, oldId, newId));
+    }
+    if (node is not JsonObject record)
+    {
+        return 0;
+    }
+
+    var count = 0;
+    if (string.Equals(TryGetStringProperty(record, "battleId"), oldId, StringComparison.Ordinal))
+    {
+        record["battleId"] = newId;
+        count += 1;
+    }
+    if (string.Equals(TryGetStringProperty(record, "type"), "battle", StringComparison.Ordinal) &&
+        string.Equals(TryGetStringProperty(record, "targetId"), oldId, StringComparison.Ordinal))
+    {
+        record["targetId"] = newId;
+        count += 1;
+    }
+    foreach (var child in record.Select(static property => property.Value).ToArray())
+    {
+        count += RenameJsonBattleReferences(child, oldId, newId);
+    }
+    return count;
+}
+
+static string RenameStoryBattleReferences(string source, string oldId, string newId, out int count)
+{
+    var normalized = source.Replace("\r\n", "\n", StringComparison.Ordinal);
+    var lines = normalized.Split('\n');
+    count = 0;
+    for (var index = 0; index < lines.Length; index += 1)
+    {
+        var line = lines[index];
+        var contentStart = 0;
+        while (contentStart < line.Length && char.IsWhiteSpace(line[contentStart])) contentStart += 1;
+        var content = line[contentStart..];
+        if (!content.StartsWith("battle ", StringComparison.Ordinal)) continue;
+        var payload = content["battle ".Length..];
+        var commentIndex = payload.IndexOf("//", StringComparison.Ordinal);
+        var candidate = (commentIndex >= 0 ? payload[..commentIndex] : payload).Trim();
+        if (!string.Equals(candidate, oldId, StringComparison.Ordinal)) continue;
+        var comment = commentIndex >= 0 ? $" {payload[commentIndex..].TrimStart()}" : string.Empty;
+        lines[index] = $"{line[..contentStart]}battle {newId}{comment}";
+        count += 1;
+    }
+    var newline = source.Contains("\r\n", StringComparison.Ordinal) ? "\r\n" : "\n";
+    return string.Join(newline, lines);
 }
 
 static string NormalizePortraitResourceId(string value)
@@ -3216,6 +3392,17 @@ sealed record SaveFileResponse(
     string Path,
     string Content,
     string? BackupPath,
+    ValidationResponse Validation);
+
+sealed record RenameBattleRequest(string OldId, string NewId, string BattlesContent);
+
+sealed record RenameBattleResponse(
+    string OldId,
+    string NewId,
+    string Content,
+    IReadOnlyList<string> ChangedFiles,
+    int UpdatedReferences,
+    IReadOnlyList<string> BackupPaths,
     ValidationResponse Validation);
 
 sealed record SaveStorySourceRequest(
