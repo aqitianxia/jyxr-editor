@@ -10,7 +10,7 @@
   <link rel="stylesheet" href="/styles/components.css?v=20260711-shell-1">
   <link rel="stylesheet" href="/styles/shell.css?v=20260718-workspace-toolbar-1">
   <link rel="stylesheet" href="/styles/stage3.css?v=20260711-stage3-1">
-  <link rel="stylesheet" href="/styles/stage4.css?v=20260711-stage4-8">
+  <link rel="stylesheet" href="/styles/stage4.css?v=20260726-richtext-1">
   <link rel="stylesheet" href="/styles/stage5.css?v=20260711-stage5b-1">
   <link rel="stylesheet" href="/styles/stage6.css?v=20260711-stage6-2">
   <link rel="stylesheet" href="/styles/stage7.css?v=20260711-stage7-1">
@@ -21,6 +21,7 @@
   <link rel="stylesheet" href="/styles/stage13.css?v=20260713-talents-1">
   <link rel="stylesheet" href="/styles/stage14.css?v=20260722-battle-links-2">
   <link rel="stylesheet" href="/styles/workspace-launcher.css?v=20260718-workspace-toolbar-1">
+  <link rel="stylesheet" href="/styles/stage15.css?v=20260726-achievements-1">
 </head>
 <body data-editor-version="0.9.0">
   <section id="workspaceLauncher" class="workspace-launcher" aria-labelledby="workspaceLauncherTitle">
@@ -163,6 +164,13 @@
               <small>DSL、JSON 与流程</small>
             </span>
             </button>
+            <button id="achievementsTab" type="button" class="navigation-item">
+            <span class="navigation-icon" aria-hidden="true">成</span>
+            <span class="navigation-copy">
+              <strong>成就与触发</strong>
+              <small>成就、剧情入口与条件</small>
+            </span>
+            </button>
             <button id="growthTab" type="button" class="navigation-item">
             <span class="navigation-icon" aria-hidden="true">长</span>
             <span class="navigation-copy">
@@ -259,6 +267,7 @@
         <div id="homeView" class="project-home-view"></div>
         <div id="problemCenterView" class="problem-center-view hidden"></div>
         <div id="characterWorkspaceView" class="character-workspace-view hidden"></div>
+        <div id="achievementWorkspaceView" class="achievement-workspace-view hidden"></div>
         <div id="mapWorkspaceView" class="map-workspace-view hidden"></div>
         <div id="growthWorkspaceView" class="growth-workspace-view hidden"></div>
         <div id="sectWorkspaceView" class="sect-workspace-view hidden"></div>
@@ -353,6 +362,6 @@
   <script src="/vendor/konva/konva.min.js?v=10.3.0"></script>
   <script src="/vendor/monaco/vs/loader.js?v=20260708-monaco-1"></script>
   <script src="/story-dsl.js?v=20260713-story-author-1"></script>
-  <script src="/bootstrap.js?v=20260722-battle-links-1"></script>
+  <script src="/bootstrap.js?v=20260726-achievements-1"></script>
 </body>
 </html>

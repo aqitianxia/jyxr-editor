@@ -61,6 +61,17 @@ export function createEditorState() {
       tab: "overview",
       referencesOpen: false,
       focusField: "",
+      biographyDrafts: new Map(),
+    },
+    achievementWorkspace: {
+      tab: "achievements",
+      search: "",
+      selectedAchievementId: "",
+      selectedTriggerIndex: 0,
+      resources: [],
+      worldTriggers: [],
+      sourcesById: new Map(),
+      storyOptions: [],
     },
     growthWorkspace: {
       search: "",
@@ -190,6 +201,7 @@ export function createEditorState() {
       storySpeakers: new Map(),
       referencesByValue: new Map(),
       battleReferencesById: new Map(),
+      achievementSourcesById: new Map(),
     },
   };
 }

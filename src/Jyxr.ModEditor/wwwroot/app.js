@@ -1,4 +1,4 @@
-import { state } from "./core/state.js?v=20260722-battle-links-1";
+import { state } from "./core/state.js?v=20260726-achievements-1";
 import { editorVersion } from "./core/version.js?v=20260711-stage9-1";
 import { createEditorApi } from "./core/api.js?v=20260711-core-17";
 import { createCommandRegistry } from "./core/commands.js?v=20260711-core-17";
@@ -7,7 +7,7 @@ import { createDirtyStateController } from "./core/dirty-state.js?v=20260711-cor
 import { createEventBus } from "./core/events.js?v=20260711-core-17";
 import { createPreferences, storageKeys } from "./core/preferences.js?v=20260718-workspace-launcher-1";
 import { rememberDataDocumentSelection, restoreDataDocumentSelection } from "./core/data-document-context.js?v=20260714-workspace-context-1";
-import { normalizeWorkspaceMode } from "./core/router.js?v=20260713-adapt-1";
+import { normalizeWorkspaceMode } from "./core/router.js?v=20260726-achievements-1";
 import { createJsonPropertyLineIndex } from "./domain/json-source-index.js?v=20260712-performance-1";
 import {
   getWorkspaceName,
@@ -28,7 +28,7 @@ import { createMapCanvas } from "./ui/map-canvas.js?v=20260716-map-data-safety-1
 import { createReferencePicker } from "./ui/reference-picker.js?v=20260711-core-17";
 import { renderProjectHome } from "./ui/home.js?v=20260711-core-17";
 import { renderProblemCenter } from "./ui/problem-center.js?v=20260711-core-17";
-import { renderCharacterWorkspace } from "./ui/characters.js?v=20260711-stage6-2";
+import { renderCharacterWorkspace } from "./ui/characters.js?v=20260726-richtext-1";
 import { createEmbeddedJsonEditor, disposeEmbeddedCodeEditors } from "./ui/code-editor.js?v=20260711-stage6-1";
 import { createGrowthTemplate, ensureGrowthTemplateShape } from "./domain/growth-templates.js?v=20260711-stage9-1";
 import { renderGrowthTemplateWorkspace } from "./workspaces/growth-templates.js?v=20260711-stage9-2";
@@ -36,6 +36,17 @@ import { cloneJson as cloneSectJson, createSectDefinition, ensureSectShape, getS
 import { renderSectWorkspace } from "./workspaces/sects.js?v=20260711-stage9-2";
 import { createMapDefinition, createMapEventDefinition, describeMapCondition, findMapReferences, getMapConditionReferences, getMapConditionValueIssue, mapConditionDefinitions, mapConditionTypes, matchesMapSearch, moveMapEventToLocation as moveMapEventToLocationEntry, moveMapEventWithinLocation, moveMapLocation as moveMapLocationEntry, renameMapId } from "./domain/maps.js?v=20260718-map-runtime-keys-1";
 import { characterStatFields } from "./domain/characters.js?v=20260712-navigation-2";
+import { resolveCharacterBiography } from "./domain/character-biographies.js?v=20260726-biography-1";
+import {
+  achievementGroup,
+  collectAchievementUnlockSources,
+  createAchievementResource,
+  createWorldTriggerDefinition,
+  getAchievementTitle,
+  getMissingAchievementReferences,
+  indexAchievementUnlockSources,
+  isAchievementResource,
+} from "./domain/achievements.js?v=20260726-achievements-1";
 import { createItemDefinition, effectTypes, statChoices, weaponTypes } from "./domain/items.js?v=20260711-stage6-1";
 import { renderItemWorkspace } from "./workspaces/items.js?v=20260711-stage6-2";
 import { createShopDefinition, createShopProduct, ensureShopShape as ensureShopWorkspaceShape, moveShopProduct as moveShopProductEntry } from "./domain/shops.js?v=20260711-stage7-1";
@@ -80,8 +91,9 @@ import {
   isAudioAsset,
   isImageAsset,
   normalizeArtAssetValue,
-} from "./domain/resource-catalog.js?v=20260711-stage5b-1";
+} from "./domain/resource-catalog.js?v=20260726-biography-1";
 import { renderResourcesWorkspace } from "./workspaces/resources.js?v=20260711-stage5b-2";
+import { renderAchievementWorkspace } from "./workspaces/achievements.js?v=20260726-achievements-1";
 import { createResourcePickerModel } from "./domain/resource-picker.js?v=20260711-stage5c-1";
 import { bindResourcePickerKeyboard, restoreResourcePickerKeyboardFocus } from "./ui/resource-picker-keyboard.js?v=20260711-stage5c-1";
 import { bindScrollMemory, resetScrollMemory } from "./ui/scroll-memory.js?v=20260712-search-1";
@@ -157,6 +169,7 @@ const elements = {
   homeTab: document.getElementById("homeTab"),
   problemsTab: document.getElementById("problemsTab"),
   charactersTab: document.getElementById("charactersTab"),
+  achievementsTab: document.getElementById("achievementsTab"),
   mapsTab: document.getElementById("mapsTab"),
   growthTab: document.getElementById("growthTab"),
   sectsTab: document.getElementById("sectsTab"),
@@ -170,6 +183,7 @@ const elements = {
   homeView: document.getElementById("homeView"),
   problemCenterView: document.getElementById("problemCenterView"),
   characterWorkspaceView: document.getElementById("characterWorkspaceView"),
+  achievementWorkspaceView: document.getElementById("achievementWorkspaceView"),
   mapWorkspaceView: document.getElementById("mapWorkspaceView"),
   growthWorkspaceView: document.getElementById("growthWorkspaceView"),
   sectWorkspaceView: document.getElementById("sectWorkspaceView"),
@@ -317,6 +331,7 @@ elements.problemCenterButton.addEventListener("click", () => requestWorkspaceCha
 elements.homeTab.addEventListener("click", () => requestWorkspaceChange("home"));
 elements.problemsTab.addEventListener("click", () => requestWorkspaceChange("problems"));
 elements.charactersTab.addEventListener("click", () => requestWorkspaceChange("characters"));
+elements.achievementsTab.addEventListener("click", () => requestWorkspaceChange("achievements"));
 elements.mapsTab.addEventListener("click", () => requestWorkspaceChange("maps"));
 elements.growthTab.addEventListener("click", () => requestWorkspaceChange("growth"));
 elements.sectsTab.addEventListener("click", () => requestWorkspaceChange("sects"));
@@ -638,6 +653,11 @@ function storyCommandArgumentCompletionItems(command, argumentIndex, range) {
     options = storyDefinitionCompletionOptions("grow-templates");
   } else if (command === "menpai" && argumentIndex === 0) {
     options = storyDefinitionCompletionOptions("sects");
+  } else if (command === "nick" && argumentIndex === 0) {
+    options = (state.contentIndex.resourcesByGroup.get("nick") || []).map((resource) => {
+      const id = String(resource.id || "").replace(/^nick\./u, "");
+      return { id, name: id, type: resource.value ? `成就 · ${resource.value}` : "成就" };
+    });
   } else if (command === "set_game_mode" && argumentIndex === 0) {
     options = ["normal", "hard", "crazy"].map((id) => ({ id, type: "难度" }));
   } else if (["toast", "world_trigger"].includes(command) && argumentIndex === 0) {
@@ -944,7 +964,7 @@ async function boot() {
 
     setWorkspaceLauncherStatus("正在载入工作区...", "busy");
     await loadWorkspace(workspace);
-    await loadDataFiles();
+    await Promise.all([loadDataFiles(), initializeMonacoEditor()]);
     state.recentEntries = recentItemsStore.read(state.activeModId);
     await rebuildContentIndex();
     rememberCurrentWorkspace();
@@ -1220,6 +1240,7 @@ async function switchMod(modId) {
   dirtyStateController.markClean({ render: false });
   state.records = [];
   state.recordsPath = "";
+  state.characterWorkspace.biographyDrafts.clear();
   invalidateContentAnalysis();
   state.selectedRecordIndex = 0;
   state.dataDocumentContexts.clear();
@@ -1392,6 +1413,7 @@ function setMode(mode) {
   const isOverview = mode === "home" || mode === "problems";
   const isStory = mode === "story";
   const isCharacters = mode === "characters";
+  const isAchievements = mode === "achievements";
   const isMaps = mode === "maps";
   const isGrowth = mode === "growth";
   const isSects = mode === "sects";
@@ -1410,6 +1432,7 @@ function setMode(mode) {
 
   document.body.classList.toggle("story-mode", isStory);
   document.body.classList.toggle("characters-mode", isCharacters);
+  document.body.classList.toggle("achievements-mode", isAchievements);
   document.body.classList.toggle("maps-mode", isMaps);
   document.body.classList.toggle("growth-mode", isGrowth);
   document.body.classList.toggle("sects-mode", isSects);
@@ -1424,6 +1447,7 @@ function setMode(mode) {
   elements.homeTab.classList.toggle("active", mode === "home");
   elements.problemsTab.classList.toggle("active", mode === "problems");
   elements.charactersTab.classList.toggle("active", isCharacters);
+  elements.achievementsTab.classList.toggle("active", isAchievements);
   elements.mapsTab.classList.toggle("active", isMaps);
   elements.growthTab.classList.toggle("active", isGrowth);
   elements.sectsTab.classList.toggle("active", isSects);
@@ -1439,6 +1463,7 @@ function setMode(mode) {
   elements.homeView.classList.toggle("hidden", mode !== "home");
   elements.problemCenterView.classList.toggle("hidden", mode !== "problems");
   elements.characterWorkspaceView.classList.toggle("hidden", !isCharacters);
+  elements.achievementWorkspaceView.classList.toggle("hidden", !isAchievements);
   elements.mapWorkspaceView.classList.toggle("hidden", !isMaps);
   elements.growthWorkspaceView.classList.toggle("hidden", !isGrowth);
   elements.sectWorkspaceView.classList.toggle("hidden", !isSects);
@@ -1448,9 +1473,9 @@ function setMode(mode) {
   elements.martialWorkspaceView.classList.toggle("hidden", !isMartial);
   elements.talentWorkspaceView.classList.toggle("hidden", !isTalents);
   elements.resourceWorkspaceView.classList.toggle("hidden", !isResources);
-  elements.workspacePaneHeader.classList.toggle("hidden", isOverview || isStory || isCharacters || isMaps || isGrowth || isSects || isItems || isShops || isBattles || isMartial || isTalents || isResources);
-  elements.editorTools.classList.toggle("hidden", isOverview || isStory || isCharacters || isMaps || isGrowth || isSects || isItems || isShops || isBattles || isMartial || isTalents || isResources);
-  elements.editorStatusbar.classList.toggle("hidden", isOverview || isStory || isCharacters || isMaps || isGrowth || isSects || isItems || isShops || isBattles || isMartial || isTalents || isResources);
+  elements.workspacePaneHeader.classList.toggle("hidden", isOverview || isStory || isCharacters || isAchievements || isMaps || isGrowth || isSects || isItems || isShops || isBattles || isMartial || isTalents || isResources);
+  elements.editorTools.classList.toggle("hidden", isOverview || isStory || isCharacters || isAchievements || isMaps || isGrowth || isSects || isItems || isShops || isBattles || isMartial || isTalents || isResources);
+  elements.editorStatusbar.classList.toggle("hidden", isOverview || isStory || isCharacters || isAchievements || isMaps || isGrowth || isSects || isItems || isShops || isBattles || isMartial || isTalents || isResources);
 
   elements.fileSearch.value = "";
   elements.fileSearch.placeholder = isStory
@@ -1459,7 +1484,7 @@ function setMode(mode) {
       ? "搜索资产"
       : "搜索文件";
   const canSaveStory = isStory && (isStorySourceFile() || isStoryJsonFile());
-  elements.saveButton.disabled = mode !== "data" && !canSaveStory && !isCharacters && !isMaps && !isGrowth && !isSects && !isItems && !isShops && !isBattles && !isMartial && !isTalents;
+  elements.saveButton.disabled = mode !== "data" && !canSaveStory && !isCharacters && !isAchievements && !isMaps && !isGrowth && !isSects && !isItems && !isShops && !isBattles && !isMartial && !isTalents;
   elements.formatButton.disabled = mode !== "data";
   renderMapHistoryControls();
 
@@ -1476,6 +1501,11 @@ function setMode(mode) {
     setTextEditorVisible(false);
     elements.currentPath.textContent = "characters.json";
     renderCharacterWorkspaceView();
+  } else if (isAchievements) {
+    elements.storyView.classList.add("hidden");
+    setTextEditorVisible(false);
+    elements.currentPath.textContent = "resources.json · world-triggers.json";
+    renderAchievementWorkspaceView();
   } else if (isMaps) {
     elements.storyView.classList.add("hidden");
     setTextEditorVisible(false);
@@ -1720,6 +1750,8 @@ async function requestWorkspaceChange(mode) {
   }
   if (mode === "characters") {
     await openCharacterWorkspace();
+  } else if (mode === "achievements") {
+    await openAchievementWorkspace();
   } else if (mode === "maps") {
     await openMapWorkspace();
   } else if (mode === "growth") {
@@ -1752,6 +1784,7 @@ async function reloadCurrentDataFile() {
   }
   const file = await requestJson(`/api/data/file?path=${encodeURIComponent(state.currentPath)}`);
   setEditorValue(file.content);
+  if (isCharacterFile()) state.characterWorkspace.biographyDrafts.clear();
   dirtyStateController.markClean({ render: false });
   refreshRecordsFromEditor();
   renderDirtyState();
@@ -1840,6 +1873,143 @@ function renderResourceWorkspaceView() {
   });
 }
 
+async function openAchievementWorkspace() {
+  const requiredPaths = ["resources.json", "world-triggers.json"];
+  const missingPath = requiredPaths.find((path) => !state.dataFiles.some((file) => file.path === path));
+  if (missingPath) {
+    showValidation(false, `当前 MOD 缺少 ${missingPath}。`);
+    return;
+  }
+  try {
+    const [resourcesFile, triggersFile] = await Promise.all(requiredPaths.map((path) => (
+      requestJson(`/api/data/file?path=${encodeURIComponent(path)}`)
+    )));
+    const resources = parseJsonText(resourcesFile.content);
+    const worldTriggers = parseJsonText(triggersFile.content);
+    if (!Array.isArray(resources) || !Array.isArray(worldTriggers)) throw new Error("成就资源与世界触发器文件必须是数组。");
+    const workspace = state.achievementWorkspace;
+    workspace.resources = resources;
+    workspace.worldTriggers = worldTriggers;
+    workspace.sourcesById = state.contentIndex.achievementSourcesById || new Map();
+    workspace.storyOptions = storyDefinitionCompletionOptions("story")
+      .sort((left, right) => left.id.localeCompare(right.id, "zh-CN"));
+    const achievements = resources.filter(isAchievementResource);
+    if (!achievements.some((entry) => entry.id === workspace.selectedAchievementId)) {
+      workspace.selectedAchievementId = achievements[0]?.id || "";
+    }
+    workspace.selectedTriggerIndex = Math.min(workspace.selectedTriggerIndex, Math.max(0, worldTriggers.length - 1));
+    workspace.search = "";
+    state.currentPath = "resources.json";
+    state.records = [];
+    state.recordsPath = "";
+    dirtyStateController.markClean({ render: false });
+    setMode("achievements");
+  } catch (error) {
+    showValidation(false, error instanceof Error ? error.message : String(error));
+  }
+}
+
+function getAchievementWorkspaceRecords() {
+  return state.achievementWorkspace.resources.filter(isAchievementResource);
+}
+
+function findLastAchievementResourceIndex(resources) {
+  for (let index = resources.length - 1; index >= 0; index -= 1) {
+    if (isAchievementResource(resources[index])) return index;
+  }
+  return -1;
+}
+
+function renderAchievementWorkspaceView() {
+  if (state.mode !== "achievements") return;
+  const workspace = state.achievementWorkspace;
+  const markDirty = (path, detail, rerender) => {
+    dirtyStateController.markDirty({ render: false, path, detail });
+    renderDirtyState();
+    if (rerender) renderAchievementWorkspaceView();
+  };
+  renderAchievementWorkspace(elements.achievementWorkspaceView, {
+    state,
+    achievements: getAchievementWorkspaceRecords(),
+    worldTriggers: workspace.worldTriggers,
+    sourcesById: workspace.sourcesById,
+    storyOptions: workspace.storyOptions,
+    onTab: (tab) => {
+      workspace.tab = tab;
+      workspace.search = "";
+      renderAchievementWorkspaceView();
+    },
+    onSearch: (value) => { workspace.search = value; renderAchievementWorkspaceView(); },
+    onSelectAchievement: (id) => { workspace.selectedAchievementId = id; renderAchievementWorkspaceView(); },
+    onCreateAchievement: (requestedTitle) => {
+      const existingTitles = new Set(getAchievementWorkspaceRecords().map(getAchievementTitle));
+      const base = String(requestedTitle || "新成就").trim() || "新成就";
+      let title = base;
+      for (let index = 2; existingTitles.has(title); index += 1) title = `${base}_${index}`;
+      const resource = createAchievementResource(title);
+      const lastAchievementIndex = findLastAchievementResourceIndex(workspace.resources);
+      workspace.resources.splice(lastAchievementIndex + 1, 0, resource);
+      workspace.selectedAchievementId = resource.id;
+      markDirty("resources.json", `新建成就：${title}`, true);
+    },
+    onCreateFromReference: (title) => {
+      const resource = createAchievementResource(title);
+      const lastAchievementIndex = findLastAchievementResourceIndex(workspace.resources);
+      workspace.resources.splice(lastAchievementIndex + 1, 0, resource);
+      workspace.selectedAchievementId = resource.id;
+      markDirty("resources.json", `补建成就：${title}`, true);
+    },
+    onMutateAchievement: (resource, key, value, rerender) => {
+      const oldId = resource.id;
+      resource[key] = value;
+      if (key === "id" && workspace.selectedAchievementId === oldId) workspace.selectedAchievementId = value;
+      markDirty("resources.json", `成就：${getAchievementTitle(resource) || "未命名"}`, rerender);
+    },
+    onDeleteAchievement: (resource) => {
+      const title = getAchievementTitle(resource);
+      const sourceCount = workspace.sourcesById.get(title)?.length || 0;
+      if (!confirmAction(`确认删除成就“${title}”？${sourceCount ? `\n\n仍有 ${sourceCount} 处剧情或爬塔解锁引用。` : ""}`)) return;
+      const index = workspace.resources.indexOf(resource);
+      if (index >= 0) workspace.resources.splice(index, 1);
+      workspace.selectedAchievementId = getAchievementWorkspaceRecords()[0]?.id || "";
+      markDirty("resources.json", `删除成就：${title}`, true);
+    },
+    onOpenSource: openAchievementUnlockSource,
+    onSelectTrigger: (index) => { workspace.selectedTriggerIndex = index; renderAchievementWorkspaceView(); },
+    onCreateTrigger: () => {
+      const existing = new Set(workspace.worldTriggers.map((trigger) => trigger?.id));
+      let id = "新世界触发器";
+      for (let index = 2; existing.has(id); index += 1) id = `新世界触发器_${index}`;
+      workspace.worldTriggers.push(createWorldTriggerDefinition(id));
+      workspace.selectedTriggerIndex = workspace.worldTriggers.length - 1;
+      markDirty("world-triggers.json", `新建世界触发器：${id}`, true);
+    },
+    onMutateTrigger: (rerender) => {
+      const trigger = workspace.worldTriggers[workspace.selectedTriggerIndex];
+      markDirty("world-triggers.json", `世界触发器：${trigger?.id || "未命名"}`, rerender);
+    },
+    onDeleteTrigger: (trigger) => {
+      if (!confirmAction(`确认删除世界触发器“${trigger.id || "未命名"}”？`)) return;
+      const index = workspace.worldTriggers.indexOf(trigger);
+      if (index >= 0) workspace.worldTriggers.splice(index, 1);
+      workspace.selectedTriggerIndex = Math.min(workspace.selectedTriggerIndex, Math.max(0, workspace.worldTriggers.length - 1));
+      markDirty("world-triggers.json", `删除世界触发器：${trigger.id || "未命名"}`, true);
+    },
+    onReplaceTrigger: (value) => {
+      workspace.worldTriggers[workspace.selectedTriggerIndex] = value;
+      markDirty("world-triggers.json", `世界触发器 JSON：${value.id || "未命名"}`, true);
+    },
+  });
+}
+
+async function openAchievementUnlockSource(source) {
+  if (source.kind === "story" && source.segmentId) {
+    await revealDefinitionById(source.segmentId, ["story"]);
+  } else if (source.kind === "tower" && source.ownerId) {
+    await revealDefinitionById(source.ownerId, ["towers"]);
+  }
+}
+
 function revealAssetInResourceWorkspace(assetPath) {
   state.resourceWorkspace.tab = "assets";
   state.resourceWorkspace.search = "";
@@ -1875,6 +2045,11 @@ function renderCharacterWorkspaceView(renderOptions = {}) {
     matchesRecordFilter: matchesCharacterFilter,
     getReferences: getCharacterReferences,
     referenceOptions: getCharacterReferenceOptions(),
+    getBiography: (record) => resolveCharacterBiography(
+      record,
+      state.contentIndex.resourcesById,
+      state.characterWorkspace.biographyDrafts,
+    ),
     onSelect: (index) => {
       state.selectedRecordIndex = index;
       state.characterWorkspace.referencesOpen = false;
@@ -1903,6 +2078,16 @@ function renderCharacterWorkspaceView(renderOptions = {}) {
       state.records[state.selectedRecordIndex] = record;
       syncRecordsToEditor();
       renderCharacterWorkspaceView();
+    },
+    onBiographyChange: (id, value) => {
+      state.characterWorkspace.biographyDrafts.set(id, value);
+      dirtyStateController.markDirty({
+        render: false,
+        path: "resources.json",
+        detail: `角色列传：${state.records[state.selectedRecordIndex]?.name || state.records[state.selectedRecordIndex]?.id || id}`,
+      });
+      elements.saveState.textContent = "角色列传已修改，尚未保存";
+      renderDirtyState();
     },
     onPickPortrait: () => openPortraitPicker(getCurrentCharacterPortraitAssetPath()),
     onCreate: createCharacterRecord,
@@ -3783,6 +3968,32 @@ function collectProjectProblems() {
     }));
   }
 
+  const achievementResources = state.contentIndex.resourcesByGroup.get(achievementGroup) || [];
+  const missingAchievements = getMissingAchievementReferences(
+    achievementResources,
+    state.contentIndex.achievementSourcesById,
+  );
+  for (const missing of missingAchievements) {
+    for (const source of missing.sources) {
+      problems.push(createProblem({
+        id: `achievement-reference:${source.path}:${source.kind}:${missing.id}`,
+        severity: "error",
+        source: "achievement-reference",
+        sourceLabel: "成就引用检查",
+        contentType: source.kind === "story" ? "story" : "data",
+        contentTypeLabel: source.kind === "story" ? "剧情" : "高级数据",
+        message: `引用的成就不存在：${missing.id}`,
+        detail: source.detail || "",
+        location: {
+          workspace: source.kind === "story" ? "story" : "data",
+          path: source.path,
+          definitionId: source.ownerId || missing.id,
+          definitionTypes: source.kind === "story" ? ["story"] : ["towers"],
+        },
+      }));
+    }
+  }
+
   for (const issue of state.portraitCheck?.issues || []) {
     problems.push(createProblem({
       id: `portrait:${issue.area}:${issue.definitionId || ""}:${issue.dataPath || ""}:${issue.message}`,
@@ -5300,8 +5511,16 @@ function previewAsset(path) {
 }
 
 async function saveCurrentFile() {
+  if (state.mode === "achievements") {
+    await saveAchievementWorkspace();
+    return;
+  }
   if (state.mode === "martial") {
     await saveMartialWorkspace();
+    return;
+  }
+  if (state.mode === "characters" || (isCharacterFile() && state.characterWorkspace.biographyDrafts.size > 0)) {
+    await saveCharacterWorkspace();
     return;
   }
   if (!state.currentPath || (state.mode !== "data" && state.mode !== "story" && state.mode !== "characters" && state.mode !== "maps" && state.mode !== "growth" && state.mode !== "sects" && state.mode !== "items" && state.mode !== "shops" && state.mode !== "battles" && state.mode !== "talents")) {
@@ -5366,6 +5585,76 @@ async function saveCurrentFile() {
     } else if (state.mode === "talents") {
       renderTalentWorkspaceView();
     }
+  } catch (error) {
+    showValidation(false, error instanceof SyntaxError ? formatJsonError(error) : error.message);
+  } finally {
+    elements.saveButton.disabled = false;
+  }
+}
+
+async function saveAchievementWorkspace() {
+  const workspace = state.achievementWorkspace;
+  elements.saveButton.disabled = true;
+  try {
+    const result = await requestJson("/api/story-systems", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        resourcesContent: `${JSON.stringify(workspace.resources, null, 2)}\n`,
+        worldTriggersContent: `${JSON.stringify(workspace.worldTriggers, null, 2)}\n`,
+      }),
+    });
+    workspace.resources = parseJsonText(result.resourcesContent);
+    workspace.worldTriggers = parseJsonText(result.worldTriggersContent);
+    dirtyStateController.markClean({ render: false });
+    renderDirtyState();
+    elements.saveState.textContent = result.backupPaths?.length
+      ? `已保存成就与世界触发器，备份 ${result.backupPaths.length} 个文件`
+      : "已保存成就与世界触发器";
+    showValidation(result.validation.ok, result.validation.message);
+    await loadDataFiles();
+    await rebuildContentIndex();
+    workspace.sourcesById = state.contentIndex.achievementSourcesById || new Map();
+    renderFileList();
+    renderAchievementWorkspaceView();
+  } catch (error) {
+    showValidation(false, error instanceof Error ? error.message : String(error));
+  } finally {
+    elements.saveButton.disabled = false;
+  }
+}
+
+async function saveCharacterWorkspace() {
+  elements.saveButton.disabled = true;
+  try {
+    const content = getEditorValue();
+    const records = parseJsonText(content);
+    if (!Array.isArray(records) || !records.every((record) => record && typeof record === "object" && !Array.isArray(record))) {
+      throw new Error("characters.json 顶层必须是角色对象数组。");
+    }
+    const result = await requestJson("/api/characters", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        content,
+        biographies: [...state.characterWorkspace.biographyDrafts].map(([id, value]) => ({ id, value })),
+      }),
+    });
+
+    setEditorValue(result.content);
+    state.characterWorkspace.biographyDrafts.clear();
+    dirtyStateController.markClean({ render: false });
+    refreshRecordsFromEditor();
+    renderDirtyState();
+    renderCursorState();
+    elements.saveState.textContent = result.backupPaths?.length
+      ? `已保存 characters.json 与列传资源，备份 ${result.backupPaths.length} 个文件`
+      : "已保存 characters.json 与列传资源";
+    showValidation(result.validation.ok, result.validation.message);
+    await loadDataFiles();
+    await rebuildContentIndex();
+    renderFileList();
+    if (state.mode === "characters") renderCharacterWorkspaceView();
   } catch (error) {
     showValidation(false, error instanceof SyntaxError ? formatJsonError(error) : error.message);
   } finally {
@@ -6154,6 +6443,16 @@ function analyzeStoryDslCommand(statement, diagnostics) {
       break;
     case "shop":
       validateStoryDslDefinitionArg(diagnostics, firstArg, "shops", "商店", statement.span, statement.name);
+      break;
+    case "nick":
+      for (const value of getStoryDslLiteralArgValues(firstArg)) {
+        const resource = state.contentIndex.resourcesById.get(`nick.${value}`);
+        addMissingReferenceDiagnostic(
+          diagnostics,
+          resource?.group === "nick",
+          `nick 引用的成就不存在：${value}`,
+          statement.span);
+      }
       break;
   }
 }
@@ -9404,6 +9703,7 @@ async function rebuildContentIndex() {
   const storySpeakers = new Map();
   const referencesByValue = new Map();
   const battleReferencesById = new Map();
+  const achievementSources = [];
 
   for (const file of state.dataFiles) {
     if (isStorySourceFile(file.path)) {
@@ -9419,6 +9719,7 @@ async function rebuildContentIndex() {
       const json = parseJsonText(response.content);
       const lineIndex = createJsonPropertyLineIndex(response.content);
       indexStaticStringReferences(referencesByValue, file.path, json);
+      achievementSources.push(...collectAchievementUnlockSources(file.path, json));
       for (const reference of findBattleReferencesInContent(file.path, json)) {
         reference.line = lineIndex.find(reference.fieldPath.endsWith("battleId") ? "battleId" : "targetId", reference.value);
         const entries = battleReferencesById.get(reference.value) || [];
@@ -9501,6 +9802,7 @@ async function rebuildContentIndex() {
     storySpeakers,
     referencesByValue,
     battleReferencesById,
+    achievementSourcesById: indexAchievementUnlockSources(achievementSources),
   };
   invalidateContentAnalysis();
   state.resourceValues = resourceValues;

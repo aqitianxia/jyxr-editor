@@ -17,6 +17,7 @@ test("资源组区分图片、音频、文本和未知类型", () => {
   assert.equal(getResourceGroupContract("头像").kind, resourceKinds.image);
   assert.equal(getResourceGroupContract("战斗音乐").kind, resourceKinds.audio);
   assert.equal(getResourceGroupContract("nick").kind, resourceKinds.text);
+  assert.equal(getResourceGroupContract("人物").kind, resourceKinds.text);
   assert.equal(getResourceGroupContract("自定义组").kind, resourceKinds.unknown);
 });
 
@@ -61,6 +62,7 @@ test("保持现有图片和音频路径回退行为", () => {
 
 test("文本资源不被错误解析为资产", () => {
   assert.equal(resolveResourceAssetPath({ group: "nick", value: "一段称号说明" }, files), "");
+  assert.equal(resolveResourceAssetPath({ group: "人物", value: "一段人物列传" }, files), "");
 });
 
 test("艺术资源 value 规范化保持现有写入格式", () => {

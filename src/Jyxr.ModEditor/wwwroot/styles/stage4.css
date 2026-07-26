@@ -46,6 +46,38 @@
 .character-list-textarea, .character-json-textarea { width: 100%; resize: vertical; font-family: var(--font-mono); }
 .character-json-editor { display: grid; gap: 10px; align-content: start; }
 .character-advanced-notice p { color: var(--color-text-muted); }
+.character-biography-editor { display: grid; gap: 14px; }
+.character-biography-editor .character-section-heading { align-items: flex-start; }
+.character-biography-editor .character-section-heading > div { display: grid; min-width: 0; gap: 5px; }
+.character-biography-editor .character-section-heading h3 { margin: 0; }
+.character-biography-resource-id { color: var(--color-text-muted); overflow-wrap: anywhere; }
+.character-biography-status { flex: 0 0 auto; padding: 3px 7px; border-radius: 4px; background: var(--color-surface-muted); font-size: 12px; }
+.character-biography-status.ok { color: var(--color-success); }
+.character-biography-status.muted { color: var(--color-text-muted); }
+.character-biography-toolbar { display: flex; align-items: center; min-height: 38px; gap: 6px; padding: 5px; border: 1px solid var(--color-border); background: var(--color-surface-muted); }
+.character-biography-format { width: 32px; height: 28px; padding: 0; border: 1px solid transparent; background: transparent; color: var(--color-text); cursor: pointer; font: inherit; }
+.character-biography-format:hover { border-color: var(--color-border-strong); background: var(--color-surface); }
+.character-biography-format.bold { font-weight: 800; }
+.character-biography-format.italic { font-style: italic; }
+.character-biography-format.underline { text-decoration: underline; }
+.character-biography-format.strike { text-decoration: line-through; }
+.character-biography-toolbar-divider { width: 1px; height: 20px; margin: 0 3px; background: var(--color-border); }
+.character-biography-color { width: 22px; height: 22px; padding: 0; border: 2px solid white; outline: 1px solid var(--color-border-strong); cursor: pointer; }
+.character-biography-composer { display: grid; grid-template-columns: minmax(0, 1fr) minmax(340px, 0.8fr); gap: 12px; }
+.character-biography-pane { display: grid; grid-template-rows: auto minmax(360px, 1fr); min-width: 0; gap: 7px; }
+.character-biography-preview-pane { grid-template-rows: auto minmax(320px, 1fr) auto; }
+.character-biography-pane-title { color: var(--color-text-muted); font-size: 12px; }
+.character-biography-textarea { width: 100%; min-height: 360px; resize: vertical; line-height: 1.75; font-family: var(--font-mono); }
+.character-biography-preview { min-height: 360px; overflow: auto; padding: 16px 18px; border: 1px solid var(--color-border); background: var(--color-surface); color: var(--color-text); line-height: 1.75; white-space: normal; }
+.character-biography-diagnostics { display: flex; flex-wrap: wrap; min-height: 20px; gap: 6px 12px; font-size: 12px; }
+.character-biography-diagnostics .ok { color: var(--color-success); }
+.character-biography-diagnostics .bad { color: var(--color-danger); }
+.character-bbcode-block { display: block; }
+.character-bbcode-indent { padding-left: 24px; }
+.character-bbcode-link { color: var(--color-primary); text-decoration: underline; }
+.character-biography-footer { display: flex; justify-content: space-between; gap: 16px; color: var(--color-text-muted); }
+.character-biography-footer small:first-child { max-width: 720px; line-height: 1.5; }
+.character-biography-count { flex: 0 0 auto; }
 .character-reference-select { min-width: 0; width: 100%; }
 .character-reference-editor, .character-skill-editor { display: grid; gap: var(--space-3); align-content: start; }
 .character-selected-references { display: grid; gap: var(--space-2); }

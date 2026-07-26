@@ -1,5 +1,5 @@
 import { bindImeSafeInput, rerenderPreservingInput } from "../core/input-composition.js?v=20260712-search-1";
-import { isAudioAsset, isImageAsset, resourceKinds } from "../domain/resource-catalog.js?v=20260711-stage5b-1";
+import { isAudioAsset, isImageAsset, resourceKinds } from "../domain/resource-catalog.js?v=20260726-biography-1";
 import { bindScrollMemory, resetScrollMemory } from "../ui/scroll-memory.js?v=20260712-search-1";
 
 const el = (tag, className = "", text = "") => {

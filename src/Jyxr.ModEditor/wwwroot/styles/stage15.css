@@ -1,0 +1,53 @@
+.achievement-workspace-view { min-height: 0; height: 100%; overflow: hidden; background: var(--color-canvas); }
+.achievement-workspace-header { display: flex; align-items: center; justify-content: space-between; min-height: 86px; gap: 24px; padding: 16px 24px; border-bottom: 1px solid var(--color-border); background: var(--color-surface); }
+.achievement-workspace-heading { display: grid; min-width: 0; gap: 8px; }
+.achievement-workspace-heading h1 { margin: 0; font-size: 23px; letter-spacing: 0; }
+.achievement-metrics { display: flex; flex-wrap: wrap; gap: 8px 18px; color: var(--color-text-muted); font-size: 12px; }
+.achievement-metrics .ok { color: var(--color-success); }
+.achievement-metrics .bad { color: var(--color-danger); }
+.achievement-workspace-layout { display: grid; grid-template-columns: 330px minmax(0, 1fr); min-height: 0; height: calc(100% - 86px); }
+.achievement-workspace-list { display: grid; grid-template-rows: auto auto minmax(0, 1fr); align-content: start; min-height: 0; gap: 10px; padding: 14px; border-right: 1px solid var(--color-border); background: var(--color-surface); overflow: hidden; }
+.achievement-list-tools { display: grid; gap: 8px; }
+.achievement-list-tools input { width: 100%; }
+.achievement-list-summary { color: var(--color-text-muted); font-size: 12px; }
+.achievement-record-list { display: grid; align-content: start; min-height: 0; gap: 3px; overflow: auto; }
+.achievement-record-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; width: 100%; min-height: 64px; gap: 10px; padding: 8px 9px; border: 1px solid transparent; border-radius: 5px; background: transparent; color: inherit; text-align: left; cursor: pointer; }
+.achievement-record-row:hover { background: var(--color-surface-muted); }
+.achievement-record-row.active { border-color: var(--color-primary); background: var(--color-primary-soft); }
+.achievement-record-copy { display: grid; min-width: 0; gap: 4px; }
+.achievement-record-copy strong,.achievement-record-copy small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.achievement-record-copy small { color: var(--color-text-muted); font-size: 11px; }
+.achievement-source-count { color: var(--color-text-muted); font-size: 11px; white-space: nowrap; }
+.achievement-issue-count { display: grid; place-items: center; min-width: 21px; height: 21px; padding: 0 5px; border-radius: 50%; background: var(--color-danger); color: white; font-size: 11px; font-weight: 700; }
+.achievement-missing-list { display: grid; max-height: 180px; gap: 4px; padding: 9px; border-left: 3px solid var(--color-danger); background: var(--color-danger-soft); overflow: auto; font-size: 12px; }
+.achievement-missing-row { display: flex; align-items: center; justify-content: space-between; min-width: 0; gap: 8px; }
+.achievement-missing-row span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.achievement-workspace-list:has(.achievement-missing-list) { grid-template-rows: auto auto auto minmax(0, 1fr); }
+.achievement-workspace-detail { min-width: 0; min-height: 0; padding: 22px 28px 50px; overflow: auto; }
+.achievement-detail-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; padding-bottom: 18px; }
+.achievement-detail-header > div { display: grid; min-width: 0; gap: 4px; }
+.achievement-detail-header h2 { margin: 0; font-size: 25px; letter-spacing: 0; }
+.achievement-detail-header code { overflow-wrap: anywhere; color: var(--color-text-muted); }
+.achievement-eyebrow { color: var(--color-primary); font-size: 12px; font-weight: 700; }
+.achievement-detail-section { display: grid; gap: 13px; padding: 20px 0; border-top: 1px solid var(--color-border); }
+.achievement-detail-section h3 { margin: 0; font-size: 17px; letter-spacing: 0; }
+.achievement-field { display: grid; min-width: 0; gap: 6px; }
+.achievement-field-label { font-size: 13px; font-weight: 700; }
+.achievement-field-hint { color: var(--color-text-muted); font-size: 11px; line-height: 1.5; }
+.achievement-description { min-height: 180px; resize: vertical; line-height: 1.65; }
+.achievement-section-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.achievement-source-list { display: grid; }
+.achievement-source-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 12px; padding: 11px 0; border-top: 1px solid var(--color-border); }
+.achievement-source-row:first-child { border-top: 0; }
+.achievement-source-row > div { display: grid; min-width: 0; gap: 4px; }
+.achievement-source-row code { overflow: hidden; color: var(--color-text-muted); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.achievement-empty { display: grid; place-items: center; min-height: 130px; padding: 20px; color: var(--color-text-muted); text-align: center; }
+.achievement-empty.compact { min-height: 70px; }
+.achievement-empty.detail { min-height: 320px; }
+.achievement-issues { margin: 0 0 12px; padding: 12px 12px 12px 32px; background: var(--color-danger-soft); color: var(--color-danger); font-size: 13px; }
+.achievement-field-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.world-trigger-condition-list { display: grid; gap: 7px; }
+.world-trigger-condition-row { display: grid; grid-template-columns: minmax(180px, .55fr) minmax(220px, 1fr) 34px; align-items: start; gap: 7px; }
+.world-trigger-condition-row small { grid-column: 1 / -1; color: var(--color-text-muted); line-height: 1.5; }
+.world-trigger-condition-row small.bad { color: var(--color-danger); }
+body.achievements-mode .editor-pane { min-height: 0; overflow: hidden; }

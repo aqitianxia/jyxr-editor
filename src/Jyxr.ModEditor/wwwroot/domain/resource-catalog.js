@@ -5,9 +5,9 @@ export const resourceKinds = Object.freeze({
   unknown: "unknown",
 });
 
-const imageGroups = new Set(["UI", "ui", "town", "touch", "人物", "地图", "场景", "头像", "物品"]);
+const imageGroups = new Set(["UI", "ui", "town", "touch", "地图", "场景", "头像", "物品"]);
 const audioGroups = new Set(["战斗音乐", "音乐", "音效"]);
-const textGroups = new Set(["ItemTrigger", "nick"]);
+const textGroups = new Set(["ItemTrigger", "nick", "人物"]);
 const genericRegistrableGroups = new Set(["场景", "地图", "音乐", "音效", "物品", "头像"]);
 const imageExtensions = Object.freeze([".png", ".jpg", ".jpeg", ".webp", ".bmp", ".gif"]);
 const audioExtensions = Object.freeze([".ogg", ".mp3", ".wav", ".flac"]);

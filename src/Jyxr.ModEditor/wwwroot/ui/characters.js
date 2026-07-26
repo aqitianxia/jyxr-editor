@@ -3,6 +3,11 @@ import { bindImeSafeInput } from "../core/input-composition.js?v=20260712-search
 import { createEmbeddedJsonEditor, disposeEmbeddedCodeEditors } from "./code-editor.js?v=20260711-stage6-1";
 import { bindScrollMemory } from "./scroll-memory.js?v=20260712-search-1";
 import { characterStatFields } from "../domain/characters.js?v=20260712-navigation-2";
+import {
+  analyzeGodotBbcode,
+  applyGodotBbcodeFormat,
+  tokenizeGodotBbcode,
+} from "../domain/godot-bbcode.js?v=20260726-richtext-1";
 
 const CHARACTER_FILTERS = Object.freeze([
   { value: "all", label: "全部" },
@@ -18,6 +23,7 @@ const CHARACTER_TABS = Object.freeze([
   { value: "stats", label: "属性" },
   { value: "skills", label: "武学与成长" },
   { value: "equipment", label: "装备与天赋" },
+  { value: "biography", label: "列传" },
   { value: "advanced", label: "高级 JSON" },
 ]);
 
@@ -366,6 +372,165 @@ function renderEquipment(parent, context) {
   parent.appendChild(columns);
 }
 
+function renderBiography(parent, context) {
+  const { biography, onBiographyChange } = context;
+  const section = el("section", "character-section-card character-biography-editor");
+  const heading = el("div", "character-section-heading");
+  const copy = el("div");
+  copy.appendChild(el("h3", "", "人物列传"));
+  copy.appendChild(el("code", "character-biography-resource-id", biography.id));
+  heading.appendChild(copy);
+  heading.appendChild(el(
+    "span",
+    `character-biography-status ${biography.exists ? "ok" : "muted"}`,
+    biography.exists ? "已有资源" : "保存时新建",
+  ));
+  section.appendChild(heading);
+
+  const toolbar = el("div", "character-biography-toolbar");
+  const editorPane = el("div", "character-biography-pane");
+  editorPane.appendChild(el("strong", "character-biography-pane-title", "BBCode 编辑"));
+  const textarea = document.createElement("textarea");
+  textarea.className = "input character-biography-textarea";
+  textarea.value = biography.value;
+  textarea.placeholder = "暂无人物列传";
+  textarea.spellcheck = false;
+
+  const previewPane = el("div", "character-biography-pane character-biography-preview-pane");
+  previewPane.appendChild(el("strong", "character-biography-pane-title", "游戏内预览"));
+  const preview = el("div", "character-biography-preview");
+  const diagnostics = el("div", "character-biography-diagnostics");
+  previewPane.append(preview, diagnostics);
+
+  const count = el("small", "character-biography-count");
+  const updatePreview = () => {
+    renderGodotBbcodePreview(preview, textarea.value);
+    const issues = analyzeGodotBbcode(textarea.value);
+    diagnostics.replaceChildren();
+    if (issues.length === 0) {
+      diagnostics.appendChild(el("span", "ok", "BBCode 标签完整"));
+    } else {
+      for (const issue of issues.slice(0, 4)) diagnostics.appendChild(el("span", "bad", issue.message));
+    }
+    count.textContent = `${textarea.value.length} 字`;
+  };
+
+  const applyFormat = (openTag, closeTag) => {
+    const result = applyGodotBbcodeFormat(
+      textarea.value,
+      textarea.selectionStart,
+      textarea.selectionEnd,
+      openTag,
+      closeTag,
+    );
+    textarea.value = result.value;
+    textarea.focus();
+    textarea.setSelectionRange(result.selectionStart, result.selectionEnd);
+    onBiographyChange(biography.id, textarea.value);
+    updatePreview();
+  };
+  const addFormatButton = (label, title, openTag, closeTag, className = "") => {
+    const control = button(label, `character-biography-format${className ? ` ${className}` : ""}`, () => applyFormat(openTag, closeTag));
+    control.title = title;
+    control.setAttribute("aria-label", title);
+    toolbar.appendChild(control);
+  };
+  addFormatButton("B", "粗体", "[b]", "[/b]", "bold");
+  addFormatButton("I", "斜体", "[i]", "[/i]", "italic");
+  addFormatButton("U", "下划线", "[u]", "[/u]", "underline");
+  addFormatButton("S", "删除线", "[s]", "[/s]", "strike");
+  const divider = el("span", "character-biography-toolbar-divider");
+  toolbar.appendChild(divider);
+  for (const color of [
+    ["#c62828", "红色"], ["#19733b", "绿色"], ["#235ec9", "蓝色"], ["#8a5a00", "金色"],
+  ]) {
+    const swatch = button("", "character-biography-color", () => applyFormat(`[color=${color[0]}]`, "[/color]"));
+    swatch.style.backgroundColor = color[0];
+    swatch.title = color[1];
+    swatch.setAttribute("aria-label", color[1]);
+    toolbar.appendChild(swatch);
+  }
+  toolbar.appendChild(divider.cloneNode());
+  addFormatButton("≡", "居中", "[center]", "[/center]", "align");
+
+  bindImeSafeInput(textarea, (value) => {
+    onBiographyChange(biography.id, value);
+    updatePreview();
+  });
+  editorPane.appendChild(textarea);
+  const composer = el("div", "character-biography-composer");
+  composer.append(editorPane, previewPane);
+  section.append(toolbar, composer);
+  updatePreview();
+
+  const footer = el("div", "character-biography-footer");
+  footer.appendChild(el("small", "", "保存为 Godot BBCode；留空并保存会删除这条人物资源。"));
+  footer.appendChild(count);
+  section.appendChild(footer);
+  parent.appendChild(section);
+}
+
+function renderGodotBbcodePreview(container, value) {
+  container.replaceChildren();
+  const stack = [{ name: "root", node: container }];
+  const appendText = (text) => {
+    const parts = text.split("\n");
+    parts.forEach((part, index) => {
+      if (index > 0) stack.at(-1).node.appendChild(document.createElement("br"));
+      if (part) stack.at(-1).node.appendChild(document.createTextNode(part));
+    });
+  };
+  for (const token of tokenizeGodotBbcode(value)) {
+    if (token.type === "text") {
+      appendText(token.value);
+      continue;
+    }
+    if (token.selfClosing) {
+      stack.at(-1).node.appendChild(document.createElement("br"));
+      continue;
+    }
+    if (token.closing) {
+      const index = stack.findLastIndex((entry) => entry.name === token.name);
+      if (index > 0) stack.splice(index);
+      else appendText(token.value);
+      continue;
+    }
+    const node = createGodotBbcodeNode(token);
+    stack.at(-1).node.appendChild(node);
+    stack.push({ name: token.name, node });
+  }
+  if (!container.textContent && !container.querySelector("br")) {
+    container.appendChild(el("span", "muted", "暂无人物列传"));
+  }
+}
+
+function createGodotBbcodeNode(token) {
+  const semanticTags = { b: "strong", i: "em", u: "u", s: "s", url: "span" };
+  const node = document.createElement(semanticTags[token.name] || "span");
+  if (["left", "center", "right"].includes(token.name)) {
+    node.className = "character-bbcode-block";
+    node.style.textAlign = token.name;
+  } else if (token.name === "indent") {
+    node.className = "character-bbcode-block character-bbcode-indent";
+  } else if (token.name === "color" || token.name === "bgcolor") {
+    const color = normalizePreviewColor(token.argument);
+    if (color) node.style[token.name === "color" ? "color" : "backgroundColor"] = color;
+  } else if (token.name === "font_size") {
+    const size = Number(token.argument);
+    if (Number.isFinite(size)) node.style.fontSize = `${Math.max(10, Math.min(36, size))}px`;
+  } else if (token.name === "url") {
+    node.className = "character-bbcode-link";
+  }
+  return node;
+}
+
+function normalizePreviewColor(value) {
+  const color = String(value || "").trim().toLowerCase();
+  if (/^#[0-9a-f]{3,8}$/u.test(color)) return color;
+  const names = new Set(["black", "white", "red", "green", "blue", "yellow", "orange", "gray", "grey", "purple", "pink"]);
+  return names.has(color) ? color : "";
+}
+
 function renderAdvanced(parent, context) {
   const { record, replaceRecord, onOpenAdvancedData } = context;
   const notice = el("div", "character-advanced-notice");
@@ -416,7 +581,7 @@ function renderReferences(container, references, onClose) {
 
 function renderDetail(container, options) {
   const { state, getIssues, getPortraitInfo, getReferences, onMutate, onReplaceRecord, onPickPortrait,
-    referenceOptions, onDuplicate, onDelete, onOpenAdvancedData, onOpenProblems, onOpenReferences, onCloseReferences, onTab } = options;
+    referenceOptions, getBiography, onBiographyChange, onDuplicate, onDelete, onOpenAdvancedData, onOpenProblems, onOpenReferences, onCloseReferences, onTab } = options;
   const record = state.records[state.selectedRecordIndex];
   if (!record) {
     renderEmpty(container, "没有可编辑的角色", "点击左侧“新建”创建第一条角色定义。" );
@@ -448,6 +613,7 @@ function renderDetail(container, options) {
   const body = el("div", "character-detail-body");
   const context = {
     record, issues, portraitInfo, references: referenceOptions, onPickPortrait, onOpenProblems, onOpenAdvancedData,
+    biography: getBiography(record), onBiographyChange,
     mutate: (key, value) => onMutate(record, key, value),
     mutateNested: (owner, key, value) => onMutate(record, owner, { ...(record[owner] || {}), [key]: value }),
     replaceField: (key, value) => onMutate(record, key, value),
@@ -456,6 +622,7 @@ function renderDetail(container, options) {
   if (state.characterWorkspace.tab === "stats") renderStats(body, context);
   else if (state.characterWorkspace.tab === "skills") renderSkills(body, context);
   else if (state.characterWorkspace.tab === "equipment") renderEquipment(body, context);
+  else if (state.characterWorkspace.tab === "biography") renderBiography(body, context);
   else if (state.characterWorkspace.tab === "advanced") renderAdvanced(body, context);
   else renderOverview(body, context);
   container.appendChild(body);

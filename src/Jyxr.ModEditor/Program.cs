@@ -127,6 +127,219 @@ app.MapPut("/api/data/file", IResult (SaveFileRequest request, string? modId) =>
     }
 });
 
+app.MapPut("/api/characters", IResult (SaveCharactersRequest request, string? modId) =>
+{
+    try
+    {
+        var modWorkspace = workspaceSession.RequireCurrent().ForMod(modId);
+        var charactersPath = modWorkspace.ResolveDataFile("characters.json");
+        var characterRoot = JsonNode.Parse(request.Content);
+        if (characterRoot is not JsonArray)
+        {
+            return Results.BadRequest(new ErrorResponse("characters.json must be a top-level array."));
+        }
+
+        var formattedCharacters = FormatJson(characterRoot.ToJsonString());
+        var resourcesPath = modWorkspace.ResolveDataFile("resources.json");
+        JsonArray? resources = null;
+        var resourcesChanged = false;
+        var biographyChanges = request.Biographies ?? Array.Empty<CharacterBiographyChange>();
+        var duplicateChange = biographyChanges
+            .GroupBy(static change => change.Id, StringComparer.Ordinal)
+            .FirstOrDefault(static group => group.Count() > 1);
+        if (duplicateChange is not null)
+        {
+            return Results.BadRequest(new ErrorResponse($"Duplicate biography change: {duplicateChange.Key}"));
+        }
+
+        if (biographyChanges.Count > 0)
+        {
+            resources = ReadJsonArray(resourcesPath, "resources.json");
+            foreach (var change in biographyChanges)
+            {
+                var resourceId = NormalizeRequiredId(change.Id, "Biography resource id");
+                if (!resourceId.StartsWith("人物.", StringComparison.Ordinal) || resourceId.Length <= "人物.".Length)
+                {
+                    return Results.BadRequest(new ErrorResponse("Biography resource id must use the format '人物.<角色名或ID>'."));
+                }
+
+                var matches = resources.OfType<JsonObject>()
+                    .Where(record => string.Equals(TryGetStringProperty(record, "id"), resourceId, StringComparison.Ordinal))
+                    .ToArray();
+                if (matches.Length > 1)
+                {
+                    return Results.BadRequest(new ErrorResponse($"Biography resource '{resourceId}' has duplicate definitions."));
+                }
+
+                var existing = matches.FirstOrDefault();
+                if (existing is not null &&
+                    !string.Equals(TryGetStringProperty(existing, "group"), "人物", StringComparison.Ordinal))
+                {
+                    return Results.BadRequest(new ErrorResponse($"Resource '{resourceId}' does not belong to group '人物'."));
+                }
+
+                var value = change.Value?.Trim() ?? string.Empty;
+                if (value.Length == 0)
+                {
+                    if (existing is not null)
+                    {
+                        resources.Remove(existing);
+                        resourcesChanged = true;
+                    }
+                    continue;
+                }
+
+                if (existing is null)
+                {
+                    resources.Add(new JsonObject
+                    {
+                        ["id"] = resourceId,
+                        ["group"] = "人物",
+                        ["value"] = value,
+                    });
+                    resourcesChanged = true;
+                }
+                else if (!string.Equals(TryGetStringProperty(existing, "value"), value, StringComparison.Ordinal))
+                {
+                    existing["value"] = value;
+                    resourcesChanged = true;
+                }
+            }
+        }
+
+        var backupPaths = new List<string>();
+        ValidationResponse? validation = null;
+        using var transaction = new FileWriteTransaction();
+        var charactersBackup = BackupFile(modWorkspace, charactersPath);
+        if (charactersBackup is not null) backupPaths.Add(charactersBackup);
+        transaction.StageText(charactersPath, formattedCharacters, Encoding.UTF8);
+        if (resourcesChanged && resources is not null)
+        {
+            var resourcesBackup = BackupFile(modWorkspace, resourcesPath);
+            if (resourcesBackup is not null) backupPaths.Add(resourcesBackup);
+            transaction.StageText(resourcesPath, FormatJson(resources.ToJsonString()), Encoding.UTF8);
+        }
+
+        var committed = transaction.TryCommit(() =>
+        {
+            validation = ValidateContent(modWorkspace, contentContractCatalog);
+            return validation.Ok;
+        });
+        if (!committed)
+        {
+            return Results.BadRequest(new ErrorResponse(
+                $"Content validation failed; characters and biographies were restored: {validation?.Message}"));
+        }
+
+        var changedFiles = resourcesChanged
+            ? new[] { "characters.json", "resources.json" }
+            : new[] { "characters.json" };
+        return Results.Ok(new SaveCharactersResponse(
+            formattedCharacters,
+            changedFiles,
+            backupPaths,
+            validation!));
+    }
+    catch (JsonException ex)
+    {
+        return Results.BadRequest(new ErrorResponse($"JSON parse failed: {ex.Message}"));
+    }
+    catch (Exception ex)
+    {
+        return Results.BadRequest(new ErrorResponse(ex.Message));
+    }
+});
+
+app.MapPut("/api/story-systems", IResult (SaveStorySystemsRequest request, string? modId) =>
+{
+    try
+    {
+        var modWorkspace = workspaceSession.RequireCurrent().ForMod(modId);
+        var resourcesRoot = JsonNode.Parse(request.ResourcesContent);
+        var triggersRoot = JsonNode.Parse(request.WorldTriggersContent);
+        if (resourcesRoot is not JsonArray resources)
+        {
+            return Results.BadRequest(new ErrorResponse("resources.json must be a top-level array."));
+        }
+        if (triggersRoot is not JsonArray worldTriggers)
+        {
+            return Results.BadRequest(new ErrorResponse("world-triggers.json must be a top-level array."));
+        }
+
+        var achievementIds = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var resource in resources.OfType<JsonObject>())
+        {
+            if (!string.Equals(TryGetStringProperty(resource, "group"), "nick", StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            var id = NormalizeRequiredId(TryGetStringProperty(resource, "id") ?? string.Empty, "Achievement resource id");
+            if (!id.StartsWith("nick.", StringComparison.Ordinal) || id.Length <= "nick.".Length)
+            {
+                return Results.BadRequest(new ErrorResponse("Achievement resource id must use the format 'nick.<成就名称>'."));
+            }
+            if (!achievementIds.Add(id))
+            {
+                return Results.BadRequest(new ErrorResponse($"Duplicate achievement resource: {id}"));
+            }
+        }
+
+        var triggerIds = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var trigger in worldTriggers.OfType<JsonObject>())
+        {
+            var id = NormalizeRequiredId(TryGetStringProperty(trigger, "id") ?? string.Empty, "World trigger id");
+            if (!triggerIds.Add(id))
+            {
+                return Results.BadRequest(new ErrorResponse($"Duplicate world trigger: {id}"));
+            }
+        }
+        if (worldTriggers.Any(static node => node is not JsonObject))
+        {
+            return Results.BadRequest(new ErrorResponse("Every world trigger must be an object."));
+        }
+
+        var formattedResources = FormatJson(resources.ToJsonString());
+        var formattedWorldTriggers = FormatJson(worldTriggers.ToJsonString());
+        var resourcesPath = modWorkspace.ResolveDataFile("resources.json");
+        var triggersPath = modWorkspace.ResolveDataFile("world-triggers.json");
+        var backupPaths = new List<string>();
+        var resourcesBackup = BackupFile(modWorkspace, resourcesPath);
+        var triggersBackup = BackupFile(modWorkspace, triggersPath);
+        if (resourcesBackup is not null) backupPaths.Add(resourcesBackup);
+        if (triggersBackup is not null) backupPaths.Add(triggersBackup);
+
+        ValidationResponse? validation = null;
+        using var transaction = new FileWriteTransaction();
+        transaction.StageText(resourcesPath, formattedResources, Encoding.UTF8);
+        transaction.StageText(triggersPath, formattedWorldTriggers, Encoding.UTF8);
+        var committed = transaction.TryCommit(() =>
+        {
+            validation = ValidateContent(modWorkspace, contentContractCatalog);
+            return validation.Ok;
+        });
+        if (!committed)
+        {
+            return Results.BadRequest(new ErrorResponse(
+                $"Content validation failed; achievements and world triggers were restored: {validation?.Message}"));
+        }
+
+        return Results.Ok(new SaveStorySystemsResponse(
+            formattedResources,
+            formattedWorldTriggers,
+            backupPaths,
+            validation!));
+    }
+    catch (JsonException ex)
+    {
+        return Results.BadRequest(new ErrorResponse($"JSON parse failed: {ex.Message}"));
+    }
+    catch (Exception ex)
+    {
+        return Results.BadRequest(new ErrorResponse(ex.Message));
+    }
+});
+
 app.MapPut("/api/story/source", IResult (SaveStorySourceRequest request, string? modId) =>
 {
     try
@@ -3392,6 +3605,28 @@ sealed record SaveFileResponse(
     string Path,
     string Content,
     string? BackupPath,
+    ValidationResponse Validation);
+
+sealed record CharacterBiographyChange(string Id, string? Value);
+
+sealed record SaveCharactersRequest(
+    string Content,
+    IReadOnlyList<CharacterBiographyChange>? Biographies);
+
+sealed record SaveCharactersResponse(
+    string Content,
+    IReadOnlyList<string> ChangedFiles,
+    IReadOnlyList<string> BackupPaths,
+    ValidationResponse Validation);
+
+sealed record SaveStorySystemsRequest(
+    string ResourcesContent,
+    string WorldTriggersContent);
+
+sealed record SaveStorySystemsResponse(
+    string ResourcesContent,
+    string WorldTriggersContent,
+    IReadOnlyList<string> BackupPaths,
     ValidationResponse Validation);
 
 sealed record RenameBattleRequest(string OldId, string NewId, string BattlesContent);
