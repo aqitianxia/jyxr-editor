@@ -5,6 +5,7 @@ export function createEditorState() {
     mods: [],
     activeModId: "",
     modValidationById: new Map(),
+    contentContract: null,
     dataFiles: [],
     assetFiles: [],
     currentPath: "",
@@ -202,6 +203,7 @@ export function createEditorState() {
       referencesByValue: new Map(),
       battleReferencesById: new Map(),
       achievementSourcesById: new Map(),
+      storyVariableNames: new Set(),
     },
   };
 }

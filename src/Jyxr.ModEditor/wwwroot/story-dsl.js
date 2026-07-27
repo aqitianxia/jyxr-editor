@@ -1,5 +1,6 @@
 (function () {
   const numberPattern = /^[+-]?\d+(?:\.\d+)?$/u;
+  let zeroArgumentPredicates = new Set();
   const reservedCommandNames = new Set([
     "if", "elif", "else", "battle", "when", "call", "return",
     "and", "or", "not", "win", "lose", "timeout",
@@ -16,6 +17,12 @@
       ir: hasErrors ? null : compileResult.ir,
       jsonText: hasErrors ? null : `${JSON.stringify(compileResult.ir, null, 2)}\n`,
     };
+  }
+
+  function configureRuntimeContract(contract) {
+    zeroArgumentPredicates = new Set((contract?.predicates || [])
+      .filter((predicate) => predicate.minimumArguments === 0)
+      .flatMap((predicate) => [predicate.name, ...(predicate.aliases || [])]));
   }
 
   function parseStory(text) {
@@ -764,6 +771,9 @@
     if (raw.startsWith("$") && raw.length > 1) {
       return { type: "variable", name: raw.slice(1), span };
     }
+    if (raw === "true" || raw === "false") {
+      return { type: "literal", value: raw === "true", valueType: "boolean", span };
+    }
     if (numberPattern.test(raw)) {
       return { type: "literal", value: Number(raw), valueType: "number", span };
     }
@@ -1033,7 +1043,7 @@
         while (this.canConsumePredicateArgument()) {
           args.push(parseValueArg(this.advance().lexeme, this.span));
         }
-        if (args.length > 0) {
+        if (args.length > 0 || zeroArgumentPredicates.has(identifierToken.lexeme)) {
           return { type: "predicate", name: identifierToken.lexeme, args, span: this.span };
         }
         return { type: "literal", value: identifierToken.lexeme, valueType: "string", span: this.span };
@@ -1339,5 +1349,6 @@
     parseStory,
     compileScript,
     decompileStoryJson,
+    configureRuntimeContract,
   };
 })();

@@ -1709,5 +1709,2340 @@
       ".res"
     ],
     "atlasTextureDirectory": "art/atlas_texture"
+  },
+  "story": {
+    "commands": [
+      {
+        "name": "animation",
+        "aliases": [],
+        "minimumArguments": 2,
+        "maximumArguments": 2,
+        "parameters": [
+          {
+            "name": "characterId",
+            "kind": "string",
+            "required": true,
+            "variadic": false,
+            "defaultValue": null,
+            "referenceType": "characters",
+            "allowedValues": []
+          },
+          {
+            "name": "modelId",
+            "kind": "string",
+            "required": true,
+            "variadic": false,
+            "defaultValue": null,
+            "referenceType": null,
+            "allowedValues": []
+          }
+        ]
+      },
+      {
+        "name": "arena",
+        "aliases": [],
+        "minimumArguments": 0,
+        "maximumArguments": 1,
+        "parameters": [
+          {
+            "name": "callbackStoryId",
+            "kind": "string",
+            "required": false,
+            "variadic": false,
+            "defaultValue": null,
+            "referenceType": "story",
+            "allowedValues": []
+          }
+        ]
+      },
+      {
+        "name": "background",
+        "aliases": [],
+        "minimumArguments": 1,
+        "maximumArguments": 1,
+        "parameters": [
+          {
+            "name": "backgroundId",
+            "kind": "string",
+            "required": true,
+            "variadic": false,
+            "defaultValue": null,
+            "referenceType": "resources",
+            "allowedValues": []
+          }
+        ]
+      },
+      {
+        "name": "clear_flag",
+        "aliases": [],
+        "minimumArguments": 1,
+        "maximumArguments": 1,
+        "parameters": [
+          {
+            "name": "variableName",
+            "kind": "string",
+            "required": true,
+            "variadic": false,
+            "defaultValue": null,
+            "referenceType": null,
+            "allowedValues": []
+          }
+        ]
+      },
+      {
+        "name": "clear_time_key",
+        "aliases": [],
+        "minimumArguments": 1,
+        "maximumArguments": 1,
+        "parameters": [
+          {
+            "name": "key",
+            "kind": "string",
+            "required": true,
+            "variadic": false,
+            "defaultValue": null,
+            "referenceType": null,
+            "allowedValues": []
+          }
+        ]
+      },
+      {
+        "name": "cost_day",
+        "aliases": [],
+        "minimumArguments": 1,
+        "maximumArguments": 1,
+        "parameters": [
+          {
+            "name": "days",
+            "kind": "number",
+            "required": true,
+            "variadic": false,
+            "defaultValue": null,
+            "referenceType": null,
+            "allowedValues": []
+          }
+        ]
+      },
+      {
+        "name": "cost_item",
+        "aliases": [],
+        "minimumArguments": 1,
+        "maximumArguments": 2,
+        "parameters": [
+          {
+            "name": "itemId",
+            "kind": "string",
+            "required": true,
+            "variadic": false,
+            "defaultValue": null,
+            "referenceType": "items",
+            "allowedValues": []
+          },
+          {
+            "name": "quantity",
+            "kind": "number",
+            "required": false,
+            "variadic": false,
+            "defaultValue": 1,
+            "referenceType": null,
+            "allowedValues": []
+          }
+        ]
+      },
+      {
+        "name": "cost_money",
+        "aliases": [],
+        "minimumArguments": 1,
+        "maximumArguments": 1,
+        "parameters": [
+          {
+            "name": "amount",
+            "kind": "number",
+            "required": true,
+            "variadic": false,
+            "defaultValue": null,
+            "referenceType": null,
+            "allowedValues": []
+          }
+        ]
+      },
+      {
+        "name": "daode",
+        "aliases": [],
+        "minimumArguments": 1,
+        "maximumArguments": 1,
+        "parameters": [
+          {
+            "name": "delta",
+            "kind": "number",
+            "required": true,
+            "variadic": false,
+            "defaultValue": null,
+            "referenceType": null,
+            "allowedValues": []
+          }
+        ]
+      },
+      {
+        "name": "effect",
+        "aliases": [],
+        "minimumArguments": 1,
+        "maximumArguments": 1,
+        "parameters": [
+          {
+            "name": "effectId",
+            "kind": "string",
+            "required": true,
+            "variadic": false,
+            "defaultValue": null,
+            "referenceType": "resources",
+            "allowedValues": []
+          }
+        ]
+      },
+      {
+        "name": "follow",
+        "aliases": [],
+        "minimumArguments": 1,
+        "maximumArguments": 1,
+        "parameters": [
+          {
+            "name": "characterId",
+            "kind": "string",
+            "required": true,
+            "variadic": false,
+            "defaultValue": null,
+            "referenceType": "characters",
+            "allowedValues": []
+          }
+        ]
+      },
+      {
+        "name": "game",
+        "aliases": [],
+        "minimumArguments": 1,
+        "maximumArguments": 1,
+        "parameters": [
+          {
+            "name": "gameId",
+            "kind": "string",
+            "required": true,
+            "variadic": false,
+            "defaultValue": null,
+            "referenceType": null,
+            "allowedValues": []
+          }
+        ]
+      },
+      {
+        "name": "gamefin",
+        "aliases": [],
+        "minimumArguments": 0,
+        "maximumArguments": 0,
+        "parameters": []
+      },
+      {
+        "name": "gameover",
+        "aliases": [],
+        "minimumArguments": 0,
+        "maximumArguments": 0,
+        "parameters": []
+      },
+      {
+        "name": "get_money",
+        "aliases": [],
+        "minimumArguments": 1,
+        "maximumArguments": 1,
+        "parameters": [
+          {
+            "name": "amount",
+            "kind": "number",
+            "required": true,
+            "variadic": false,
+            "defaultValue": null,
+            "referenceType": null,
+            "allowedValues": []
+          }
+        ]
+      },
+      {
+        "name": "grant_exp",
+        "aliases": [
+          "get_exp"
+        ],
+        "minimumArguments": 2,
+        "maximumArguments": 2,
+        "parameters": [
+          {
+            "name": "characterId",
+            "kind": "string",
+            "required": true,
+            "variadic": false,
+            "defaultValue": null,
+            "referenceType": "characters",
+            "allowedValues": []
+          },
+          {
+            "name": "value",
+            "kind": "number",
+            "required": true,
+            "variadic": false,
+            "defaultValue": null,
+            "referenceType": null,
+            "allowedValues": []
+          }
+        ]
+      },
+      {
+        "name": "grant_point",
+        "aliases": [
+          "get_point"
+        ],
+        "minimumArguments": 2,
+        "maximumArguments": 2,
+        "parameters": [
+          {
+            "name": "characterId",
+            "kind": "string",
+            "required": true,
+            "variadic": false,
+            "defaultValue": null,
+            "referenceType": "characters",
+            "allowedValues": []
+          },
+          {
+            "name": "value",
+            "kind": "number",
+            "required": true,
+            "variadic": false,
+            "defaultValue": null,
+            "referenceType": null,
+            "allowedValues": []
+          }
+        ]
+      },
+      {
+        "name": "growtemplate",
+        "aliases": [],
+        "minimumArguments": 2,
+        "maximumArguments": 2,
+        "parameters": [
+          {
+            "name": "characterId",
+            "kind": "string",
+            "required": true,
+            "variadic": false,
+            "defaultValue": null,
+            "referenceType": "characters",
+            "allowedValues": []
+          },
+          {
+            "name": "growTemplateId",
+            "kind": "string",
+            "required": true,
+            "variadic": false,
+            "defaultValue": null,
+            "referenceType": "grow-templates",
+            "allowedValues": []
+          }
+        ]
+      },
+      {
+        "name": "haogan",
+        "aliases": [],
+        "minimumArguments": 1,
+        "maximumArguments": 2,
+        "parameters": [
+          {
+            "name": "args",
+            "kind": "any",
+            "required": false,
+            "variadic": true,
+            "defaultValue": null,
+            "referenceType": null,
+            "allowedValues": []
+          }
+        ]
+      },
+      {
+        "name": "head",
+        "aliases": [],
+        "minimumArguments": 1,
+        "maximumArguments": 1,
+        "parameters": [
+          {
+            "name": "portraitId",
+            "kind": "string",
+            "required": true,
+            "variadic": false,
+            "defaultValue": null,
+            "referenceType": "resources",
+            "allowedValues": []
+          }
+        ]
+      },
+      {
+        "name": "huashan",
+        "aliases": [],
+        "minimumArguments": 0,
+        "maximumArguments": null,
+        "parameters": [
+          {
+            "name": "_",
+            "kind": "any",
+            "required": false,
+            "variadic": true,
+            "defaultValue": null,
+            "referenceType": null,
+            "allowedValues": []
+          }
+        ]
+      },
+      {
+        "name": "input_name",
+        "aliases": [],
+        "minimumArguments": 1,
+        "maximumArguments": 2,
+        "parameters": [
+          {
+            "name": "characterId",
+            "kind": "string",
+            "required": true,
+            "variadic": false,
+            "defaultValue": null,
+            "referenceType": "characters",
+            "allowedValues": []
+          },
+          {
+            "name": "defaultName",
+            "kind": "string",
+            "required": false,
+            "variadic": false,
+            "defaultValue": "",
+            "referenceType": null,
+            "allowedValues": []
+          }
+        ]
+      },
+      {
+        "name": "item",
+        "aliases": [],
+        "minimumArguments": 1,
+        "maximumArguments": 2,
+        "parameters": [
+          {
+            "name": "itemId",
+            "kind": "string",
+            "required": true,
+            "variadic": false,
+            "defaultValue": null,
+            "referenceType": "items",
+            "allowedValues": []
+          },
+          {
+            "name": "quantity",
+            "kind": "number",
+            "required": false,
+            "variadic": false,
+            "defaultValue": 1,
+            "referenceType": null,
+            "allowedValues": []
+          }
+        ]
+      },
+      {
+        "name": "join",
+        "aliases": [],
+        "minimumArguments": 1,
+        "maximumArguments": 1,
+        "parameters": [
+          {
+            "name": "characterId",
+            "kind": "string",
+            "required": true,
+            "variadic": false,
+            "defaultValue": null,
+            "referenceType": "characters",
+            "allowedValues": []
+          }
+        ]
+      },
+      {
+        "name": "learn",
+        "aliases": [],
+        "minimumArguments": 3,
+        "maximumArguments": 4,
+        "parameters": [
+          {
+            "name": "learnType",
+            "kind": "string",
+            "required": true,
+            "variadic": false,
+            "defaultValue": null,
+            "referenceType": null,
+            "allowedValues": [
+              "skill",
+              "external",
+              "internal",
+              "special",
+              "talent"
+            ]
+          },
+          {
+            "name": "characterId",
+            "kind": "string",
+            "required": true,
+            "variadic": false,
+            "defaultValue": null,
+            "referenceType": "characters",
+            "allowedValues": []
+          },
+          {
+            "name": "targetId",
+            "kind": "string",
+            "required": true,
+            "variadic": false,
+            "defaultValue": null,
+            "referenceType": "skills",
+            "allowedValues": []
+          },
+          {
+            "name": "level",
+            "kind": "number",
+            "required": false,
+            "variadic": false,
+            "defaultValue": 1,
+            "referenceType": null,
+            "allowedValues": []
+          }
+        ]
+      },
+      {
+        "name": "leave",
+        "aliases": [],
+        "minimumArguments": 1,
+        "maximumArguments": 1,
+        "parameters": [
+          {
+            "name": "characterIdOrName",
+            "kind": "string",
+            "required": true,
+            "variadic": false,
+            "defaultValue": null,
+            "referenceType": "characters",
+            "allowedValues": []
+          }
+        ]
+      },
+      {
+        "name": "leave_all",
+        "aliases": [],
+        "minimumArguments": 0,
+        "maximumArguments": 0,
+        "parameters": []
+      },
+      {
+        "name": "leave_follow",
+        "aliases": [],
+        "minimumArguments": 1,
+        "maximumArguments": 1,
+        "parameters": [
+          {
+            "name": "characterIdOrName",
+            "kind": "string",
+            "required": true,
+            "variadic": false,
+            "defaultValue": null,
+            "referenceType": "characters",
+            "allowedValues": []
+          }
+        ]
+      },
+      {
+        "name": "levelup",
+        "aliases": [],
+        "minimumArguments": 1,
+        "maximumArguments": 2,
+        "parameters": [
+          {
+            "name": "characterId",
+            "kind": "string",
+            "required": true,
+            "variadic": false,
+            "defaultValue": null,
+            "referenceType": "characters",
+            "allowedValues": []
+          },
+          {
+            "name": "levels",
+            "kind": "number",
+            "required": false,
+            "variadic": false,
+            "defaultValue": 1,
+            "referenceType": null,
+            "allowedValues": []
+          }
+        ]
+      },
+      {
+        "name": "log",
+        "aliases": [],
+        "minimumArguments": 1,
+        "maximumArguments": 1,
+        "parameters": [
+          {
+            "name": "text",
+            "kind": "string",
+            "required": true,
+            "variadic": false,
+            "defaultValue": null,
+            "referenceType": null,
+            "allowedValues": []
+          }
+        ]
+      },
+      {
+        "name": "mainmenu",
+        "aliases": [],
+        "minimumArguments": 0,
+        "maximumArguments": 0,
+        "parameters": []
+      },
+      {
+        "name": "map",
+        "aliases": [
+          "set_map",
+          "tutorial"
+        ],
+        "minimumArguments": 1,
+        "maximumArguments": 1,
+        "parameters": [
+          {
+            "name": "mapId",
+            "kind": "string",
+            "required": true,
+            "variadic": false,
+            "defaultValue": null,
+            "referenceType": "maps",
+            "allowedValues": []
+          }
+        ]
+      },
+      {
+        "name": "maxlevel",
+        "aliases": [],
+        "minimumArguments": 1,
+        "maximumArguments": 3,
+        "parameters": [
+          {
+            "name": "skillId",
+            "kind": "string",
+            "required": true,
+            "variadic": false,
+            "defaultValue": null,
+            "referenceType": "skills",
+            "allowedValues": []
+          },
+          {
+            "name": "level",
+            "kind": "number",
+            "required": false,
+            "variadic": false,
+            "defaultValue": 1,
+            "referenceType": null,
+            "allowedValues": []
+          },
+          {
+            "name": "onceKey",
+            "kind": "string",
+            "required": false,
+            "variadic": false,
+            "defaultValue": null,
+            "referenceType": null,
+            "allowedValues": []
+          }
+        ]
+      },
+      {
+        "name": "menpai",
+        "aliases": [],
+        "minimumArguments": 1,
+        "maximumArguments": 1,
+        "parameters": [
+          {
+            "name": "value",
+            "kind": "string",
+            "required": true,
+            "variadic": false,
+            "defaultValue": null,
+            "referenceType": "sects",
+            "allowedValues": []
+          }
+        ]
+      },
+      {
+        "name": "minus_maxpoints",
+        "aliases": [],
+        "minimumArguments": 2,
+        "maximumArguments": 2,
+        "parameters": [
+          {
+            "name": "characterId",
+            "kind": "string",
+            "required": true,
+            "variadic": false,
+            "defaultValue": null,
+            "referenceType": "characters",
+            "allowedValues": []
+          },
+          {
+            "name": "tenths",
+            "kind": "number",
+            "required": true,
+            "variadic": false,
+            "defaultValue": null,
+            "referenceType": null,
+            "allowedValues": []
+          }
+        ]
+      },
+      {
+        "name": "music",
+        "aliases": [],
+        "minimumArguments": 1,
+        "maximumArguments": null,
+        "parameters": [
+          {
+            "name": "trackIds",
+            "kind": "string",
+            "required": false,
+            "variadic": true,
+            "defaultValue": null,
+            "referenceType": "resources",
+            "allowedValues": []
+          }
+        ]
+      },
+      {
+        "name": "newbie",
+        "aliases": [],
+        "minimumArguments": 0,
+        "maximumArguments": null,
+        "parameters": [
+          {
+            "name": "_",
+            "kind": "any",
+            "required": false,
+            "variadic": true,
+            "defaultValue": null,
+            "referenceType": null,
+            "allowedValues": []
+          }
+        ]
+      },
+      {
+        "name": "nextzhoumu",
+        "aliases": [],
+        "minimumArguments": 0,
+        "maximumArguments": 0,
+        "parameters": []
+      },
+      {
+        "name": "nick",
+        "aliases": [],
+        "minimumArguments": 1,
+        "maximumArguments": 1,
+        "parameters": [
+          {
+            "name": "rawAchievementId",
+            "kind": "string",
+            "required": true,
+            "variadic": false,
+            "defaultValue": null,
+            "referenceType": "achievements",
+            "allowedValues": []
+          }
+        ]
+      },
+      {
+        "name": "random_item",
+        "aliases": [],
+        "minimumArguments": 1,
+        "maximumArguments": 2,
+        "parameters": [
+          {
+            "name": "itemIds",
+            "kind": "stringList",
+            "required": true,
+            "variadic": false,
+            "defaultValue": null,
+            "referenceType": "items",
+            "allowedValues": []
+          },
+          {
+            "name": "quantity",
+            "kind": "number",
+            "required": false,
+            "variadic": false,
+            "defaultValue": 1,
+            "referenceType": null,
+            "allowedValues": []
+          }
+        ]
+      },
+      {
+        "name": "random_join",
+        "aliases": [],
+        "minimumArguments": 1,
+        "maximumArguments": 1,
+        "parameters": [
+          {
+            "name": "characterIds",
+            "kind": "stringList",
+            "required": true,
+            "variadic": false,
+            "defaultValue": null,
+            "referenceType": "characters",
+            "allowedValues": []
+          }
+        ]
+      },
+      {
+        "name": "rank",
+        "aliases": [],
+        "minimumArguments": 0,
+        "maximumArguments": null,
+        "parameters": [
+          {
+            "name": "_",
+            "kind": "any",
+            "required": false,
+            "variadic": true,
+            "defaultValue": null,
+            "referenceType": null,
+            "allowedValues": []
+          }
+        ]
+      },
+      {
+        "name": "remove",
+        "aliases": [],
+        "minimumArguments": 3,
+        "maximumArguments": 3,
+        "parameters": [
+          {
+            "name": "removeType",
+            "kind": "string",
+            "required": true,
+            "variadic": false,
+            "defaultValue": null,
+            "referenceType": null,
+            "allowedValues": [
+              "skill",
+              "external",
+              "internal",
+              "special",
+              "talent"
+            ]
+          },
+          {
+            "name": "characterId",
+            "kind": "string",
+            "required": true,
+            "variadic": false,
+            "defaultValue": null,
+            "referenceType": "characters",
+            "allowedValues": []
+          },
+          {
+            "name": "targetId",
+            "kind": "string",
+            "required": true,
+            "variadic": false,
+            "defaultValue": null,
+            "referenceType": "skills",
+            "allowedValues": []
+          }
+        ]
+      },
+      {
+        "name": "restart",
+        "aliases": [],
+        "minimumArguments": 0,
+        "maximumArguments": 1,
+        "parameters": [
+          {
+            "name": "mode",
+            "kind": "string",
+            "required": false,
+            "variadic": false,
+            "defaultValue": "restart",
+            "referenceType": null,
+            "allowedValues": [
+              "restart"
+            ]
+          }
+        ]
+      },
+      {
+        "name": "roll_stats",
+        "aliases": [],
+        "minimumArguments": 0,
+        "maximumArguments": 0,
+        "parameters": []
+      },
+      {
+        "name": "select_head",
+        "aliases": [],
+        "minimumArguments": 1,
+        "maximumArguments": 1,
+        "parameters": [
+          {
+            "name": "characterId",
+            "kind": "string",
+            "required": true,
+            "variadic": false,
+            "defaultValue": null,
+            "referenceType": "characters",
+            "allowedValues": []
+          }
+        ]
+      },
+      {
+        "name": "select_menpai",
+        "aliases": [
+          "select_sect"
+        ],
+        "minimumArguments": 0,
+        "maximumArguments": 0,
+        "parameters": []
+      },
+      {
+        "name": "set_flag",
+        "aliases": [],
+        "minimumArguments": 1,
+        "maximumArguments": 1,
+        "parameters": [
+          {
+            "name": "variableName",
+            "kind": "string",
+            "required": true,
+            "variadic": false,
+            "defaultValue": null,
+            "referenceType": null,
+            "allowedValues": []
+          }
+        ]
+      },
+      {
+        "name": "set_game_mode",
+        "aliases": [],
+        "minimumArguments": 1,
+        "maximumArguments": 1,
+        "parameters": [
+          {
+            "name": "mode",
+            "kind": "string",
+            "required": true,
+            "variadic": false,
+            "defaultValue": null,
+            "referenceType": null,
+            "allowedValues": [
+              "normal",
+              "hard",
+              "crazy"
+            ]
+          }
+        ]
+      },
+      {
+        "name": "set_round",
+        "aliases": [],
+        "minimumArguments": 1,
+        "maximumArguments": 1,
+        "parameters": [
+          {
+            "name": "round",
+            "kind": "number",
+            "required": true,
+            "variadic": false,
+            "defaultValue": null,
+            "referenceType": null,
+            "allowedValues": []
+          }
+        ]
+      },
+      {
+        "name": "set_time_key",
+        "aliases": [],
+        "minimumArguments": 2,
+        "maximumArguments": 3,
+        "parameters": [
+          {
+            "name": "key",
+            "kind": "string",
+            "required": true,
+            "variadic": false,
+            "defaultValue": null,
+            "referenceType": null,
+            "allowedValues": []
+          },
+          {
+            "name": "limitDays",
+            "kind": "number",
+            "required": true,
+            "variadic": false,
+            "defaultValue": null,
+            "referenceType": null,
+            "allowedValues": []
+          },
+          {
+            "name": "targetStoryId",
+            "kind": "string",
+            "required": false,
+            "variadic": false,
+            "defaultValue": "",
+            "referenceType": null,
+            "allowedValues": []
+          }
+        ]
+      },
+      {
+        "name": "shake",
+        "aliases": [],
+        "minimumArguments": 0,
+        "maximumArguments": 2,
+        "parameters": [
+          {
+            "name": "amplitude",
+            "kind": "number",
+            "required": false,
+            "variadic": false,
+            "defaultValue": 12,
+            "referenceType": null,
+            "allowedValues": []
+          },
+          {
+            "name": "duration",
+            "kind": "number",
+            "required": false,
+            "variadic": false,
+            "defaultValue": 0.22,
+            "referenceType": null,
+            "allowedValues": []
+          }
+        ]
+      },
+      {
+        "name": "shop",
+        "aliases": [],
+        "minimumArguments": 1,
+        "maximumArguments": 1,
+        "parameters": [
+          {
+            "name": "shopId",
+            "kind": "string",
+            "required": true,
+            "variadic": false,
+            "defaultValue": null,
+            "referenceType": "shops",
+            "allowedValues": []
+          }
+        ]
+      },
+      {
+        "name": "suggest",
+        "aliases": [],
+        "minimumArguments": 1,
+        "maximumArguments": 1,
+        "parameters": [
+          {
+            "name": "text",
+            "kind": "string",
+            "required": true,
+            "variadic": false,
+            "defaultValue": null,
+            "referenceType": null,
+            "allowedValues": []
+          }
+        ]
+      },
+      {
+        "name": "toast",
+        "aliases": [],
+        "minimumArguments": 1,
+        "maximumArguments": 1,
+        "parameters": [
+          {
+            "name": "mode",
+            "kind": "string",
+            "required": true,
+            "variadic": false,
+            "defaultValue": null,
+            "referenceType": null,
+            "allowedValues": [
+              "on",
+              "off"
+            ]
+          }
+        ]
+      },
+      {
+        "name": "touch",
+        "aliases": [],
+        "minimumArguments": 0,
+        "maximumArguments": null,
+        "parameters": [
+          {
+            "name": "_",
+            "kind": "any",
+            "required": false,
+            "variadic": true,
+            "defaultValue": null,
+            "referenceType": null,
+            "allowedValues": []
+          }
+        ]
+      },
+      {
+        "name": "tower",
+        "aliases": [],
+        "minimumArguments": 0,
+        "maximumArguments": null,
+        "parameters": [
+          {
+            "name": "_",
+            "kind": "any",
+            "required": false,
+            "variadic": true,
+            "defaultValue": null,
+            "referenceType": null,
+            "allowedValues": []
+          }
+        ]
+      },
+      {
+        "name": "trial",
+        "aliases": [],
+        "minimumArguments": 0,
+        "maximumArguments": null,
+        "parameters": [
+          {
+            "name": "_",
+            "kind": "any",
+            "required": false,
+            "variadic": true,
+            "defaultValue": null,
+            "referenceType": null,
+            "allowedValues": []
+          }
+        ]
+      },
+      {
+        "name": "upgrade",
+        "aliases": [],
+        "minimumArguments": 3,
+        "maximumArguments": 4,
+        "parameters": [
+          {
+            "name": "target",
+            "kind": "string",
+            "required": true,
+            "variadic": false,
+            "defaultValue": null,
+            "referenceType": null,
+            "allowedValues": []
+          },
+          {
+            "name": "characterId",
+            "kind": "string",
+            "required": true,
+            "variadic": false,
+            "defaultValue": null,
+            "referenceType": "characters",
+            "allowedValues": []
+          },
+          {
+            "name": "args",
+            "kind": "any",
+            "required": false,
+            "variadic": true,
+            "defaultValue": null,
+            "referenceType": null,
+            "allowedValues": []
+          }
+        ]
+      },
+      {
+        "name": "world_trigger",
+        "aliases": [],
+        "minimumArguments": 1,
+        "maximumArguments": 1,
+        "parameters": [
+          {
+            "name": "mode",
+            "kind": "string",
+            "required": true,
+            "variadic": false,
+            "defaultValue": null,
+            "referenceType": null,
+            "allowedValues": [
+              "on",
+              "off"
+            ]
+          }
+        ]
+      },
+      {
+        "name": "xilian",
+        "aliases": [],
+        "minimumArguments": 0,
+        "maximumArguments": null,
+        "parameters": [
+          {
+            "name": "_",
+            "kind": "any",
+            "required": false,
+            "variadic": true,
+            "defaultValue": null,
+            "referenceType": null,
+            "allowedValues": []
+          }
+        ]
+      },
+      {
+        "name": "yuanbao",
+        "aliases": [],
+        "minimumArguments": 1,
+        "maximumArguments": 1,
+        "parameters": [
+          {
+            "name": "amount",
+            "kind": "number",
+            "required": true,
+            "variadic": false,
+            "defaultValue": null,
+            "referenceType": null,
+            "allowedValues": []
+          }
+        ]
+      },
+      {
+        "name": "zhenlongqiju",
+        "aliases": [],
+        "minimumArguments": 0,
+        "maximumArguments": null,
+        "parameters": [
+          {
+            "name": "_",
+            "kind": "any",
+            "required": false,
+            "variadic": true,
+            "defaultValue": null,
+            "referenceType": null,
+            "allowedValues": []
+          }
+        ]
+      }
+    ],
+    "predicates": [
+      {
+        "name": "always",
+        "aliases": [],
+        "minimumArguments": 0,
+        "maximumArguments": 0,
+        "parameters": []
+      },
+      {
+        "name": "character_level_less_than",
+        "aliases": [],
+        "minimumArguments": 2,
+        "maximumArguments": 2,
+        "parameters": [
+          {
+            "name": "characterIdOrName",
+            "kind": "string",
+            "required": true,
+            "variadic": false,
+            "defaultValue": null,
+            "referenceType": "characters",
+            "allowedValues": []
+          },
+          {
+            "name": "threshold",
+            "kind": "number",
+            "required": true,
+            "variadic": false,
+            "defaultValue": null,
+            "referenceType": null,
+            "allowedValues": []
+          }
+        ]
+      },
+      {
+        "name": "character_skill_less_than",
+        "aliases": [
+          "skill_less_than"
+        ],
+        "minimumArguments": 3,
+        "maximumArguments": 3,
+        "parameters": [
+          {
+            "name": "characterIdOrName",
+            "kind": "string",
+            "required": true,
+            "variadic": false,
+            "defaultValue": null,
+            "referenceType": "characters",
+            "allowedValues": []
+          },
+          {
+            "name": "skillId",
+            "kind": "string",
+            "required": true,
+            "variadic": false,
+            "defaultValue": null,
+            "referenceType": "skills",
+            "allowedValues": []
+          },
+          {
+            "name": "threshold",
+            "kind": "number",
+            "required": true,
+            "variadic": false,
+            "defaultValue": null,
+            "referenceType": null,
+            "allowedValues": []
+          }
+        ]
+      },
+      {
+        "name": "character_skill_more_than",
+        "aliases": [
+          "skill_more_than"
+        ],
+        "minimumArguments": 3,
+        "maximumArguments": 3,
+        "parameters": [
+          {
+            "name": "characterIdOrName",
+            "kind": "string",
+            "required": true,
+            "variadic": false,
+            "defaultValue": null,
+            "referenceType": "characters",
+            "allowedValues": []
+          },
+          {
+            "name": "skillId",
+            "kind": "string",
+            "required": true,
+            "variadic": false,
+            "defaultValue": null,
+            "referenceType": "skills",
+            "allowedValues": []
+          },
+          {
+            "name": "threshold",
+            "kind": "number",
+            "required": true,
+            "variadic": false,
+            "defaultValue": null,
+            "referenceType": null,
+            "allowedValues": []
+          }
+        ]
+      },
+      {
+        "name": "current_map",
+        "aliases": [],
+        "minimumArguments": 1,
+        "maximumArguments": 1,
+        "parameters": [
+          {
+            "name": "mapId",
+            "kind": "string",
+            "required": true,
+            "variadic": false,
+            "defaultValue": null,
+            "referenceType": "maps",
+            "allowedValues": []
+          }
+        ]
+      },
+      {
+        "name": "daode_less_than",
+        "aliases": [],
+        "minimumArguments": 1,
+        "maximumArguments": 1,
+        "parameters": [
+          {
+            "name": "threshold",
+            "kind": "number",
+            "required": true,
+            "variadic": false,
+            "defaultValue": null,
+            "referenceType": null,
+            "allowedValues": []
+          }
+        ]
+      },
+      {
+        "name": "daode_more_than",
+        "aliases": [],
+        "minimumArguments": 1,
+        "maximumArguments": 1,
+        "parameters": [
+          {
+            "name": "threshold",
+            "kind": "number",
+            "required": true,
+            "variadic": false,
+            "defaultValue": null,
+            "referenceType": null,
+            "allowedValues": []
+          }
+        ]
+      },
+      {
+        "name": "daofa_less_than",
+        "aliases": [],
+        "minimumArguments": 2,
+        "maximumArguments": 2,
+        "parameters": [
+          {
+            "name": "characterIdOrName",
+            "kind": "string",
+            "required": true,
+            "variadic": false,
+            "defaultValue": null,
+            "referenceType": "characters",
+            "allowedValues": []
+          },
+          {
+            "name": "threshold",
+            "kind": "number",
+            "required": true,
+            "variadic": false,
+            "defaultValue": null,
+            "referenceType": null,
+            "allowedValues": []
+          }
+        ]
+      },
+      {
+        "name": "dingli_greater_than",
+        "aliases": [],
+        "minimumArguments": 2,
+        "maximumArguments": 2,
+        "parameters": [
+          {
+            "name": "characterIdOrName",
+            "kind": "string",
+            "required": true,
+            "variadic": false,
+            "defaultValue": null,
+            "referenceType": "characters",
+            "allowedValues": []
+          },
+          {
+            "name": "threshold",
+            "kind": "number",
+            "required": true,
+            "variadic": false,
+            "defaultValue": null,
+            "referenceType": null,
+            "allowedValues": []
+          }
+        ]
+      },
+      {
+        "name": "dingli_less_than",
+        "aliases": [],
+        "minimumArguments": 2,
+        "maximumArguments": 2,
+        "parameters": [
+          {
+            "name": "characterIdOrName",
+            "kind": "string",
+            "required": true,
+            "variadic": false,
+            "defaultValue": null,
+            "referenceType": "characters",
+            "allowedValues": []
+          },
+          {
+            "name": "threshold",
+            "kind": "number",
+            "required": true,
+            "variadic": false,
+            "defaultValue": null,
+            "referenceType": null,
+            "allowedValues": []
+          }
+        ]
+      },
+      {
+        "name": "event_completed",
+        "aliases": [
+          "event_finished"
+        ],
+        "minimumArguments": 1,
+        "maximumArguments": 1,
+        "parameters": [
+          {
+            "name": "eventKey",
+            "kind": "string",
+            "required": true,
+            "variadic": false,
+            "defaultValue": null,
+            "referenceType": null,
+            "allowedValues": []
+          }
+        ]
+      },
+      {
+        "name": "event_not_completed",
+        "aliases": [
+          "event_not_finished"
+        ],
+        "minimumArguments": 1,
+        "maximumArguments": 1,
+        "parameters": [
+          {
+            "name": "eventKey",
+            "kind": "string",
+            "required": true,
+            "variadic": false,
+            "defaultValue": null,
+            "referenceType": null,
+            "allowedValues": []
+          }
+        ]
+      },
+      {
+        "name": "exceed_day",
+        "aliases": [],
+        "minimumArguments": 1,
+        "maximumArguments": 1,
+        "parameters": [
+          {
+            "name": "days",
+            "kind": "number",
+            "required": true,
+            "variadic": false,
+            "defaultValue": null,
+            "referenceType": null,
+            "allowedValues": []
+          }
+        ]
+      },
+      {
+        "name": "follow_story",
+        "aliases": [],
+        "minimumArguments": 1,
+        "maximumArguments": 1,
+        "parameters": [
+          {
+            "name": "storyId",
+            "kind": "string",
+            "required": true,
+            "variadic": false,
+            "defaultValue": null,
+            "referenceType": "story",
+            "allowedValues": []
+          }
+        ]
+      },
+      {
+        "name": "friendCount",
+        "aliases": [],
+        "minimumArguments": 1,
+        "maximumArguments": 1,
+        "parameters": [
+          {
+            "name": "count",
+            "kind": "number",
+            "required": true,
+            "variadic": false,
+            "defaultValue": null,
+            "referenceType": null,
+            "allowedValues": []
+          }
+        ]
+      },
+      {
+        "name": "game_mode",
+        "aliases": [],
+        "minimumArguments": 1,
+        "maximumArguments": 1,
+        "parameters": [
+          {
+            "name": "modeId",
+            "kind": "string",
+            "required": true,
+            "variadic": false,
+            "defaultValue": null,
+            "referenceType": null,
+            "allowedValues": [
+              "normal",
+              "hard",
+              "crazy"
+            ]
+          }
+        ]
+      },
+      {
+        "name": "gold_at_least",
+        "aliases": [],
+        "minimumArguments": 1,
+        "maximumArguments": 1,
+        "parameters": [
+          {
+            "name": "amount",
+            "kind": "number",
+            "required": true,
+            "variadic": false,
+            "defaultValue": null,
+            "referenceType": null,
+            "allowedValues": []
+          }
+        ]
+      },
+      {
+        "name": "haogan_less_than",
+        "aliases": [],
+        "minimumArguments": 1,
+        "maximumArguments": 2,
+        "parameters": [
+          {
+            "name": "args",
+            "kind": "any",
+            "required": false,
+            "variadic": true,
+            "defaultValue": null,
+            "referenceType": null,
+            "allowedValues": []
+          }
+        ]
+      },
+      {
+        "name": "haogan_more_than",
+        "aliases": [],
+        "minimumArguments": 1,
+        "maximumArguments": 2,
+        "parameters": [
+          {
+            "name": "args",
+            "kind": "any",
+            "required": false,
+            "variadic": true,
+            "defaultValue": null,
+            "referenceType": null,
+            "allowedValues": []
+          }
+        ]
+      },
+      {
+        "name": "has_time_key",
+        "aliases": [],
+        "minimumArguments": 1,
+        "maximumArguments": 1,
+        "parameters": [
+          {
+            "name": "key",
+            "kind": "string",
+            "required": true,
+            "variadic": false,
+            "defaultValue": null,
+            "referenceType": null,
+            "allowedValues": []
+          }
+        ]
+      },
+      {
+        "name": "have_item",
+        "aliases": [],
+        "minimumArguments": 1,
+        "maximumArguments": 2,
+        "parameters": [
+          {
+            "name": "itemId",
+            "kind": "string",
+            "required": true,
+            "variadic": false,
+            "defaultValue": null,
+            "referenceType": "items",
+            "allowedValues": []
+          },
+          {
+            "name": "quantity",
+            "kind": "number",
+            "required": false,
+            "variadic": false,
+            "defaultValue": 1,
+            "referenceType": null,
+            "allowedValues": []
+          }
+        ]
+      },
+      {
+        "name": "have_money",
+        "aliases": [
+          "silver_at_least"
+        ],
+        "minimumArguments": 1,
+        "maximumArguments": 1,
+        "parameters": [
+          {
+            "name": "amount",
+            "kind": "number",
+            "required": true,
+            "variadic": false,
+            "defaultValue": null,
+            "referenceType": null,
+            "allowedValues": []
+          }
+        ]
+      },
+      {
+        "name": "have_yuanbao",
+        "aliases": [],
+        "minimumArguments": 1,
+        "maximumArguments": 1,
+        "parameters": [
+          {
+            "name": "amount",
+            "kind": "number",
+            "required": true,
+            "variadic": false,
+            "defaultValue": null,
+            "referenceType": null,
+            "allowedValues": []
+          }
+        ]
+      },
+      {
+        "name": "in_menpai",
+        "aliases": [
+          "in_sect"
+        ],
+        "minimumArguments": 1,
+        "maximumArguments": 1,
+        "parameters": [
+          {
+            "name": "sectId",
+            "kind": "string",
+            "required": true,
+            "variadic": false,
+            "defaultValue": null,
+            "referenceType": "sects",
+            "allowedValues": []
+          }
+        ]
+      },
+      {
+        "name": "in_newbie_task",
+        "aliases": [],
+        "minimumArguments": 0,
+        "maximumArguments": 0,
+        "parameters": []
+      },
+      {
+        "name": "in_round",
+        "aliases": [],
+        "minimumArguments": 1,
+        "maximumArguments": 1,
+        "parameters": [
+          {
+            "name": "round",
+            "kind": "number",
+            "required": true,
+            "variadic": false,
+            "defaultValue": null,
+            "referenceType": null,
+            "allowedValues": []
+          }
+        ]
+      },
+      {
+        "name": "in_team",
+        "aliases": [],
+        "minimumArguments": 1,
+        "maximumArguments": 1,
+        "parameters": [
+          {
+            "name": "characterName",
+            "kind": "string",
+            "required": true,
+            "variadic": false,
+            "defaultValue": null,
+            "referenceType": "characters",
+            "allowedValues": []
+          }
+        ]
+      },
+      {
+        "name": "jianfa_less_than",
+        "aliases": [],
+        "minimumArguments": 2,
+        "maximumArguments": 2,
+        "parameters": [
+          {
+            "name": "characterIdOrName",
+            "kind": "string",
+            "required": true,
+            "variadic": false,
+            "defaultValue": null,
+            "referenceType": "characters",
+            "allowedValues": []
+          },
+          {
+            "name": "threshold",
+            "kind": "number",
+            "required": true,
+            "variadic": false,
+            "defaultValue": null,
+            "referenceType": null,
+            "allowedValues": []
+          }
+        ]
+      },
+      {
+        "name": "key_in_team",
+        "aliases": [],
+        "minimumArguments": 1,
+        "maximumArguments": 1,
+        "parameters": [
+          {
+            "name": "characterId",
+            "kind": "string",
+            "required": true,
+            "variadic": false,
+            "defaultValue": null,
+            "referenceType": "characters",
+            "allowedValues": []
+          }
+        ]
+      },
+      {
+        "name": "key_not_in_team",
+        "aliases": [],
+        "minimumArguments": 1,
+        "maximumArguments": 1,
+        "parameters": [
+          {
+            "name": "characterId",
+            "kind": "string",
+            "required": true,
+            "variadic": false,
+            "defaultValue": null,
+            "referenceType": "characters",
+            "allowedValues": []
+          }
+        ]
+      },
+      {
+        "name": "level_greater_than",
+        "aliases": [],
+        "minimumArguments": 2,
+        "maximumArguments": 2,
+        "parameters": [
+          {
+            "name": "characterIdOrName",
+            "kind": "string",
+            "required": true,
+            "variadic": false,
+            "defaultValue": null,
+            "referenceType": "characters",
+            "allowedValues": []
+          },
+          {
+            "name": "threshold",
+            "kind": "number",
+            "required": true,
+            "variadic": false,
+            "defaultValue": null,
+            "referenceType": null,
+            "allowedValues": []
+          }
+        ]
+      },
+      {
+        "name": "not_exceed_day",
+        "aliases": [],
+        "minimumArguments": 1,
+        "maximumArguments": 1,
+        "parameters": [
+          {
+            "name": "days",
+            "kind": "number",
+            "required": true,
+            "variadic": false,
+            "defaultValue": null,
+            "referenceType": null,
+            "allowedValues": []
+          }
+        ]
+      },
+      {
+        "name": "not_has_time_key",
+        "aliases": [],
+        "minimumArguments": 1,
+        "maximumArguments": 1,
+        "parameters": [
+          {
+            "name": "key",
+            "kind": "string",
+            "required": true,
+            "variadic": false,
+            "defaultValue": null,
+            "referenceType": null,
+            "allowedValues": []
+          }
+        ]
+      },
+      {
+        "name": "not_have_item",
+        "aliases": [],
+        "minimumArguments": 1,
+        "maximumArguments": 2,
+        "parameters": [
+          {
+            "name": "itemId",
+            "kind": "string",
+            "required": true,
+            "variadic": false,
+            "defaultValue": null,
+            "referenceType": "items",
+            "allowedValues": []
+          },
+          {
+            "name": "quantity",
+            "kind": "number",
+            "required": false,
+            "variadic": false,
+            "defaultValue": 1,
+            "referenceType": null,
+            "allowedValues": []
+          }
+        ]
+      },
+      {
+        "name": "not_in_menpai",
+        "aliases": [
+          "not_in_sect"
+        ],
+        "minimumArguments": 1,
+        "maximumArguments": 1,
+        "parameters": [
+          {
+            "name": "sectId",
+            "kind": "string",
+            "required": true,
+            "variadic": false,
+            "defaultValue": null,
+            "referenceType": "sects",
+            "allowedValues": []
+          }
+        ]
+      },
+      {
+        "name": "not_in_round",
+        "aliases": [],
+        "minimumArguments": 1,
+        "maximumArguments": 1,
+        "parameters": [
+          {
+            "name": "round",
+            "kind": "number",
+            "required": true,
+            "variadic": false,
+            "defaultValue": null,
+            "referenceType": null,
+            "allowedValues": []
+          }
+        ]
+      },
+      {
+        "name": "not_in_team",
+        "aliases": [],
+        "minimumArguments": 1,
+        "maximumArguments": 1,
+        "parameters": [
+          {
+            "name": "characterName",
+            "kind": "string",
+            "required": true,
+            "variadic": false,
+            "defaultValue": null,
+            "referenceType": "characters",
+            "allowedValues": []
+          }
+        ]
+      },
+      {
+        "name": "not_in_time",
+        "aliases": [],
+        "minimumArguments": 1,
+        "maximumArguments": null,
+        "parameters": [
+          {
+            "name": "timeSlots",
+            "kind": "string",
+            "required": false,
+            "variadic": true,
+            "defaultValue": null,
+            "referenceType": null,
+            "allowedValues": [
+              "Zi",
+              "Chou",
+              "Yin",
+              "Mao",
+              "Chen",
+              "Si",
+              "Wu",
+              "Wei",
+              "Shen",
+              "You",
+              "Xu",
+              "Hai",
+              "子",
+              "丑",
+              "寅",
+              "卯",
+              "辰",
+              "巳",
+              "午",
+              "未",
+              "申",
+              "酉",
+              "戌",
+              "亥"
+            ]
+          }
+        ]
+      },
+      {
+        "name": "probability",
+        "aliases": [],
+        "minimumArguments": 1,
+        "maximumArguments": 1,
+        "parameters": [
+          {
+            "name": "percentage",
+            "kind": "number",
+            "required": true,
+            "variadic": false,
+            "defaultValue": null,
+            "referenceType": null,
+            "allowedValues": []
+          }
+        ]
+      },
+      {
+        "name": "qimen_less_than",
+        "aliases": [],
+        "minimumArguments": 2,
+        "maximumArguments": 2,
+        "parameters": [
+          {
+            "name": "characterIdOrName",
+            "kind": "string",
+            "required": true,
+            "variadic": false,
+            "defaultValue": null,
+            "referenceType": "characters",
+            "allowedValues": []
+          },
+          {
+            "name": "threshold",
+            "kind": "number",
+            "required": true,
+            "variadic": false,
+            "defaultValue": null,
+            "referenceType": null,
+            "allowedValues": []
+          }
+        ]
+      },
+      {
+        "name": "quanzhang_less_than",
+        "aliases": [],
+        "minimumArguments": 2,
+        "maximumArguments": 2,
+        "parameters": [
+          {
+            "name": "characterIdOrName",
+            "kind": "string",
+            "required": true,
+            "variadic": false,
+            "defaultValue": null,
+            "referenceType": "characters",
+            "allowedValues": []
+          },
+          {
+            "name": "threshold",
+            "kind": "number",
+            "required": true,
+            "variadic": false,
+            "defaultValue": null,
+            "referenceType": null,
+            "allowedValues": []
+          }
+        ]
+      },
+      {
+        "name": "rank",
+        "aliases": [],
+        "minimumArguments": 1,
+        "maximumArguments": 1,
+        "parameters": [
+          {
+            "name": "threshold",
+            "kind": "number",
+            "required": true,
+            "variadic": false,
+            "defaultValue": null,
+            "referenceType": null,
+            "allowedValues": []
+          }
+        ]
+      },
+      {
+        "name": "shenfa_greater_than",
+        "aliases": [],
+        "minimumArguments": 2,
+        "maximumArguments": 2,
+        "parameters": [
+          {
+            "name": "characterIdOrName",
+            "kind": "string",
+            "required": true,
+            "variadic": false,
+            "defaultValue": null,
+            "referenceType": "characters",
+            "allowedValues": []
+          },
+          {
+            "name": "threshold",
+            "kind": "number",
+            "required": true,
+            "variadic": false,
+            "defaultValue": null,
+            "referenceType": null,
+            "allowedValues": []
+          }
+        ]
+      },
+      {
+        "name": "should_finish",
+        "aliases": [],
+        "minimumArguments": 1,
+        "maximumArguments": 1,
+        "parameters": [
+          {
+            "name": "storyId",
+            "kind": "string",
+            "required": true,
+            "variadic": false,
+            "defaultValue": null,
+            "referenceType": "story",
+            "allowedValues": []
+          }
+        ]
+      },
+      {
+        "name": "should_not_finish",
+        "aliases": [],
+        "minimumArguments": 1,
+        "maximumArguments": 1,
+        "parameters": [
+          {
+            "name": "storyId",
+            "kind": "string",
+            "required": true,
+            "variadic": false,
+            "defaultValue": null,
+            "referenceType": "story",
+            "allowedValues": []
+          }
+        ]
+      },
+      {
+        "name": "time_slot",
+        "aliases": [
+          "in_time"
+        ],
+        "minimumArguments": 1,
+        "maximumArguments": null,
+        "parameters": [
+          {
+            "name": "timeSlots",
+            "kind": "string",
+            "required": false,
+            "variadic": true,
+            "defaultValue": null,
+            "referenceType": null,
+            "allowedValues": [
+              "Zi",
+              "Chou",
+              "Yin",
+              "Mao",
+              "Chen",
+              "Si",
+              "Wu",
+              "Wei",
+              "Shen",
+              "You",
+              "Xu",
+              "Hai",
+              "子",
+              "丑",
+              "寅",
+              "卯",
+              "辰",
+              "巳",
+              "午",
+              "未",
+              "申",
+              "酉",
+              "戌",
+              "亥"
+            ]
+          }
+        ]
+      },
+      {
+        "name": "wuxing_greater_than",
+        "aliases": [],
+        "minimumArguments": 2,
+        "maximumArguments": 2,
+        "parameters": [
+          {
+            "name": "characterIdOrName",
+            "kind": "string",
+            "required": true,
+            "variadic": false,
+            "defaultValue": null,
+            "referenceType": "characters",
+            "allowedValues": []
+          },
+          {
+            "name": "threshold",
+            "kind": "number",
+            "required": true,
+            "variadic": false,
+            "defaultValue": null,
+            "referenceType": null,
+            "allowedValues": []
+          }
+        ]
+      },
+      {
+        "name": "wuxing_less_than",
+        "aliases": [],
+        "minimumArguments": 2,
+        "maximumArguments": 2,
+        "parameters": [
+          {
+            "name": "characterIdOrName",
+            "kind": "string",
+            "required": true,
+            "variadic": false,
+            "defaultValue": null,
+            "referenceType": "characters",
+            "allowedValues": []
+          },
+          {
+            "name": "threshold",
+            "kind": "number",
+            "required": true,
+            "variadic": false,
+            "defaultValue": null,
+            "referenceType": null,
+            "allowedValues": []
+          }
+        ]
+      },
+      {
+        "name": "zhoumu_greater_than",
+        "aliases": [],
+        "minimumArguments": 1,
+        "maximumArguments": 1,
+        "parameters": [
+          {
+            "name": "round",
+            "kind": "number",
+            "required": true,
+            "variadic": false,
+            "defaultValue": null,
+            "referenceType": null,
+            "allowedValues": []
+          }
+        ]
+      }
+    ],
+    "variables": [
+      {
+        "name": "money",
+        "kind": "number"
+      },
+      {
+        "name": "silver",
+        "kind": "number"
+      },
+      {
+        "name": "yuanbao",
+        "kind": "number"
+      },
+      {
+        "name": "gold",
+        "kind": "number"
+      },
+      {
+        "name": "round",
+        "kind": "number"
+      },
+      {
+        "name": "game_mode",
+        "kind": "string"
+      },
+      {
+        "name": "menpai",
+        "kind": "string"
+      },
+      {
+        "name": "daode",
+        "kind": "number"
+      },
+      {
+        "name": "haogan",
+        "kind": "number"
+      },
+      {
+        "name": "rank",
+        "kind": "number"
+      },
+      {
+        "name": "zhenlong_level",
+        "kind": "number"
+      },
+      {
+        "name": "last_trial_count",
+        "kind": "number"
+      }
+    ],
+    "operators": [
+      "==",
+      "!=",
+      ">",
+      ">=",
+      "<",
+      "<=",
+      "and",
+      "or",
+      "not"
+    ]
   }
 }

@@ -47,6 +47,8 @@ app.Use(async (context, next) =>
 
 app.MapGet("/api/workspace", () => Results.Ok(workspaceSession.Describe()));
 
+app.MapGet("/api/content-contract", () => Results.Ok(contentContractCatalog.Contract));
+
 app.MapPost("/api/workspace/open", IResult (OpenWorkspaceRequest request) =>
 {
     try
@@ -100,6 +102,7 @@ app.MapPut("/api/data/file", IResult (SaveFileRequest request, string? modId) =>
 
         var filePath = modWorkspace.ResolveDataFile(request.Path);
         var formatted = FormatJson(request.Content);
+        var baselineValidation = ValidateContent(modWorkspace, contentContractCatalog);
         var backupPath = BackupFile(modWorkspace, filePath);
         ValidationResponse? validation = null;
         using var transaction = new FileWriteTransaction();
@@ -107,12 +110,12 @@ app.MapPut("/api/data/file", IResult (SaveFileRequest request, string? modId) =>
         var committed = transaction.TryCommit(() =>
         {
             validation = ValidateContent(modWorkspace, contentContractCatalog);
-            return validation.Ok;
+            return HasNoNewValidationErrors(baselineValidation, validation);
         });
         if (!committed)
         {
             return Results.BadRequest(new ErrorResponse(
-                $"Content validation failed; the original file was restored: {validation?.Message}"));
+                $"The change introduced new content errors; the original file was restored: {validation?.Message}"));
         }
 
         return Results.Ok(new SaveFileResponse(request.Path, formatted, backupPath, validation!));
@@ -208,6 +211,7 @@ app.MapPut("/api/characters", IResult (SaveCharactersRequest request, string? mo
         }
 
         var backupPaths = new List<string>();
+        var baselineValidation = ValidateContent(modWorkspace, contentContractCatalog);
         ValidationResponse? validation = null;
         using var transaction = new FileWriteTransaction();
         var charactersBackup = BackupFile(modWorkspace, charactersPath);
@@ -223,12 +227,12 @@ app.MapPut("/api/characters", IResult (SaveCharactersRequest request, string? mo
         var committed = transaction.TryCommit(() =>
         {
             validation = ValidateContent(modWorkspace, contentContractCatalog);
-            return validation.Ok;
+            return HasNoNewValidationErrors(baselineValidation, validation);
         });
         if (!committed)
         {
             return Results.BadRequest(new ErrorResponse(
-                $"Content validation failed; characters and biographies were restored: {validation?.Message}"));
+                $"The change introduced new content errors; characters and biographies were restored: {validation?.Message}"));
         }
 
         var changedFiles = resourcesChanged
@@ -301,6 +305,7 @@ app.MapPut("/api/story-systems", IResult (SaveStorySystemsRequest request, strin
 
         var formattedResources = FormatJson(resources.ToJsonString());
         var formattedWorldTriggers = FormatJson(worldTriggers.ToJsonString());
+        var baselineValidation = ValidateContent(modWorkspace, contentContractCatalog);
         var resourcesPath = modWorkspace.ResolveDataFile("resources.json");
         var triggersPath = modWorkspace.ResolveDataFile("world-triggers.json");
         var backupPaths = new List<string>();
@@ -316,12 +321,12 @@ app.MapPut("/api/story-systems", IResult (SaveStorySystemsRequest request, strin
         var committed = transaction.TryCommit(() =>
         {
             validation = ValidateContent(modWorkspace, contentContractCatalog);
-            return validation.Ok;
+            return HasNoNewValidationErrors(baselineValidation, validation);
         });
         if (!committed)
         {
             return Results.BadRequest(new ErrorResponse(
-                $"Content validation failed; achievements and world triggers were restored: {validation?.Message}"));
+                $"The change introduced new content errors; achievements and world triggers were restored: {validation?.Message}"));
         }
 
         return Results.Ok(new SaveStorySystemsResponse(
@@ -354,23 +359,34 @@ app.MapPut("/api/story/source", IResult (SaveStorySourceRequest request, string?
         var compiledRelativePath = GetCompiledStoryJsonPath(request.Path);
         var compiledPath = modWorkspace.ResolveDataFile(compiledRelativePath);
         var formattedJson = FormatJson(request.CompiledJson);
+        var normalizedSource = NormalizeTextFile(request.Content);
+        var baselineValidation = ValidateContent(modWorkspace, contentContractCatalog);
         var sourceBackupPath = BackupFile(modWorkspace, sourcePath);
         var jsonBackupPath = BackupFile(modWorkspace, compiledPath);
 
-        Directory.CreateDirectory(Path.GetDirectoryName(sourcePath)!);
-        Directory.CreateDirectory(Path.GetDirectoryName(compiledPath)!);
-        File.WriteAllText(sourcePath, NormalizeTextFile(request.Content), Encoding.UTF8);
-        File.WriteAllText(compiledPath, formattedJson, Encoding.UTF8);
+        ValidationResponse? validation = null;
+        using var transaction = new FileWriteTransaction();
+        transaction.StageText(sourcePath, normalizedSource, Encoding.UTF8);
+        transaction.StageText(compiledPath, formattedJson, Encoding.UTF8);
+        var committed = transaction.TryCommit(() =>
+        {
+            validation = ValidateContent(modWorkspace, contentContractCatalog);
+            return HasNoNewValidationErrors(baselineValidation, validation);
+        });
+        if (!committed)
+        {
+            return Results.BadRequest(new ErrorResponse(
+                $"The change introduced new content errors; Story source and compiled JSON were restored: {validation?.Message}"));
+        }
 
-        var validation = ValidateContent(modWorkspace, contentContractCatalog);
         return Results.Ok(new SaveStorySourceResponse(
             request.Path,
-            NormalizeTextFile(request.Content),
+            normalizedSource,
             compiledRelativePath,
             formattedJson,
             sourceBackupPath,
             jsonBackupPath,
-            validation));
+            validation!));
     }
     catch (JsonException ex)
     {
@@ -402,22 +418,33 @@ app.MapPost("/api/story/source/from-json", IResult (SaveStoryJsonAsSourceRequest
         }
 
         var formattedJson = FormatJson(request.CompiledJson);
+        var normalizedSource = NormalizeTextFile(request.Content);
+        var baselineValidation = ValidateContent(modWorkspace, contentContractCatalog);
         var jsonBackupPath = BackupFile(modWorkspace, compiledPath);
 
-        Directory.CreateDirectory(Path.GetDirectoryName(sourcePath)!);
-        Directory.CreateDirectory(Path.GetDirectoryName(compiledPath)!);
-        File.WriteAllText(sourcePath, NormalizeTextFile(request.Content), Encoding.UTF8);
-        File.WriteAllText(compiledPath, formattedJson, Encoding.UTF8);
+        ValidationResponse? validation = null;
+        using var transaction = new FileWriteTransaction();
+        transaction.StageText(sourcePath, normalizedSource, Encoding.UTF8);
+        transaction.StageText(compiledPath, formattedJson, Encoding.UTF8);
+        var committed = transaction.TryCommit(() =>
+        {
+            validation = ValidateContent(modWorkspace, contentContractCatalog);
+            return HasNoNewValidationErrors(baselineValidation, validation);
+        });
+        if (!committed)
+        {
+            return Results.BadRequest(new ErrorResponse(
+                $"The change introduced new content errors; Story source and compiled JSON were restored: {validation?.Message}"));
+        }
 
-        var validation = ValidateContent(modWorkspace, contentContractCatalog);
         return Results.Ok(new SaveStorySourceResponse(
             sourceRelativePath,
-            NormalizeTextFile(request.Content),
+            normalizedSource,
             compiledRelativePath,
             formattedJson,
             null,
             jsonBackupPath,
-            validation));
+            validation!));
     }
     catch (JsonException ex)
     {
@@ -535,6 +562,7 @@ app.MapPost("/api/static/battle/rename", IResult (RenameBattleRequest request, s
         }
 
         var backupPaths = new List<string>();
+        var baselineValidation = ValidateContent(modWorkspace, contentContractCatalog);
         ValidationResponse? validation = null;
         using var transaction = new FileWriteTransaction();
         foreach (var (relativePath, content) in changedFiles)
@@ -547,12 +575,12 @@ app.MapPost("/api/static/battle/rename", IResult (RenameBattleRequest request, s
         var committed = transaction.TryCommit(() =>
         {
             validation = ValidateContent(modWorkspace, contentContractCatalog);
-            return validation.Ok;
+            return HasNoNewValidationErrors(baselineValidation, validation);
         });
         if (!committed)
         {
             return Results.BadRequest(new ErrorResponse(
-                $"Content validation failed; all renamed files were restored: {validation?.Message}"));
+                $"The change introduced new content errors; all renamed files were restored: {validation?.Message}"));
         }
 
         return Results.Ok(new RenameBattleResponse(
@@ -1435,6 +1463,37 @@ static ValidationResponse ValidateContent(WorkspacePaths workspace, ContentContr
             new ValidationSummary(0, contentContractCatalog.Contract.ContractVersion, 1, 0, 0),
             [issue]);
     }
+}
+
+static bool HasNoNewValidationErrors(ValidationResponse baseline, ValidationResponse candidate)
+{
+    var remainingBaselineErrors = baseline.Issues
+        .Where(static issue => string.Equals(issue.Severity, "error", StringComparison.Ordinal))
+        .GroupBy(static issue => (issue.Code, Path: ValidationDocumentPath(issue.Path), issue.DefinitionId))
+        .ToDictionary(static group => group.Key, static group => group.Count());
+
+    foreach (var issue in candidate.Issues.Where(static issue =>
+                 string.Equals(issue.Severity, "error", StringComparison.Ordinal)))
+    {
+        var key = (issue.Code, Path: ValidationDocumentPath(issue.Path), issue.DefinitionId);
+        if (!remainingBaselineErrors.TryGetValue(key, out var count) || count == 0)
+        {
+            return false;
+        }
+
+        remainingBaselineErrors[key] = count - 1;
+    }
+
+    return true;
+}
+
+static string? ValidationDocumentPath(string? issuePath)
+{
+    if (issuePath is null) return null;
+    var storyJsonEnd = issuePath.IndexOf(".story.json", StringComparison.OrdinalIgnoreCase);
+    if (storyJsonEnd >= 0) return issuePath[..(storyJsonEnd + ".story.json".Length)];
+    var jsonEnd = issuePath.IndexOf(".json", StringComparison.OrdinalIgnoreCase);
+    return jsonEnd >= 0 ? issuePath[..(jsonEnd + ".json".Length)] : issuePath;
 }
 
 static JsonArray ReadJsonArray(string path, string displayName)

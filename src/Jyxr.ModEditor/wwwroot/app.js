@@ -94,6 +94,12 @@ import {
 } from "./domain/resource-catalog.js?v=20260726-biography-1";
 import { renderResourcesWorkspace } from "./workspaces/resources.js?v=20260711-stage5b-2";
 import { renderAchievementWorkspace } from "./workspaces/achievements.js?v=20260726-achievements-1";
+import {
+  collectStoryDeclaredVariablesFromJson,
+  getStoryCommandNames,
+  getStoryCommandParameter,
+  validateStoryRuntimeContract,
+} from "./domain/story-runtime-contract.js?v=20260726-story-contract-1";
 import { createResourcePickerModel } from "./domain/resource-picker.js?v=20260711-stage5c-1";
 import { bindResourcePickerKeyboard, restoreResourcePickerKeyboardFocus } from "./ui/resource-picker-keyboard.js?v=20260711-stage5c-1";
 import { bindScrollMemory, resetScrollMemory } from "./ui/scroll-memory.js?v=20260712-search-1";
@@ -596,6 +602,8 @@ const storyDslCommandNames = [
 ];
 
 function getStoryDslCommandNames() {
+  const contractNames = getStoryCommandNames(state.contentContract?.story);
+  if (contractNames.length > 0) return contractNames;
   return [...new Set([
     ...storyDslCommandNames,
     ...(state.storyGraph?.commands || []).map((command) => command.name),
@@ -664,9 +672,27 @@ function storyCommandArgumentCompletionItems(command, argumentIndex, range) {
     options = ["on", "off"].map((id) => ({ id, type: "开关" }));
   } else if (command === "set_time_key" && argumentIndex === 2) {
     return storySegmentCompletionItems(range).suggestions;
+  } else if (command === "music") {
+    options = storyResourceCompletionOptions(["音乐", "战斗音乐"]);
+  } else if (command === "background") {
+    options = storyResourceCompletionOptions(["地图", "场景", ""]);
+  } else if (command === "effect") {
+    options = storyResourceCompletionOptions(["音效"]);
+  } else if (command === "head") {
+    options = storyResourceCompletionOptions(["头像"]);
   } else {
     const typeByCommand = { map: "maps", set_map: "maps", tutorial: "maps", shop: "shops", battle: "battles" };
     if (typeByCommand[command] && argumentIndex === 0) options = storyDefinitionCompletionOptions(typeByCommand[command]);
+  }
+  if (options.length === 0) {
+    const parameter = getStoryCommandParameter(state.contentContract?.story, command, argumentIndex);
+    if (parameter?.allowedValues?.length) {
+      options = parameter.allowedValues.map((id) => ({ id, type: "运行时允许值" }));
+    } else if (parameter?.referenceType === "story") {
+      return storySegmentCompletionItems(range).suggestions;
+    } else if (parameter?.referenceType) {
+      options = storyRuntimeReferenceCompletionOptions(parameter.referenceType);
+    }
   }
   return options
     .filter((option) => option.id)
@@ -679,6 +705,32 @@ function storyCommandArgumentCompletionItems(command, argumentIndex, range) {
       detail: option.type || "内容引用",
       range,
     }));
+}
+
+function storyRuntimeReferenceCompletionOptions(type) {
+  if (type === "characters") return uniqueStoryCharacters();
+  if (type === "skills") return storySkillCompletionOptions("skill")
+    .concat(storyDefinitionCompletionOptions("talents"));
+  if (type === "achievements") {
+    return (state.contentIndex.resourcesByGroup.get("nick") || []).map((resource) => {
+      const id = String(resource.id || "").replace(/^nick\./u, "");
+      return { id, name: id, type: "成就" };
+    });
+  }
+  if (type === "resources") {
+    return state.contentIndex.resourceRecords
+      .map((resource) => ({ id: resource.id, name: resource.value, type: resource.group || "资源" }));
+  }
+  if (type.startsWith("resource:")) {
+    return (state.contentIndex.resourcesByGroup.get(type.slice("resource:".length)) || [])
+      .map((resource) => ({ id: resource.id, name: resource.value, type: "资源" }));
+  }
+  return storyDefinitionCompletionOptions(type);
+}
+
+function storyResourceCompletionOptions(groups) {
+  return groups.flatMap((group) => state.contentIndex.resourcesByGroup.get(group) || [])
+    .map((resource) => ({ id: resource.id, name: resource.value, type: resource.group || "资源" }));
 }
 
 function completedStoryCommandArgument(command, argumentIndex) {
@@ -964,7 +1016,13 @@ async function boot() {
 
     setWorkspaceLauncherStatus("正在载入工作区...", "busy");
     await loadWorkspace(workspace);
-    await Promise.all([loadDataFiles(), initializeMonacoEditor()]);
+    const [, contract] = await Promise.all([
+      loadDataFiles(),
+      requestJson("/api/content-contract"),
+      initializeMonacoEditor(),
+    ]);
+    state.contentContract = contract;
+    window.StoryDsl.configureRuntimeContract(contract?.story);
     state.recentEntries = recentItemsStore.read(state.activeModId);
     await rebuildContentIndex();
     rememberCurrentWorkspace();
@@ -6343,6 +6401,10 @@ function updateStoryDslAnalysis({ showSuccess }) {
   const diagnostics = [
     ...baseAnalysis.diagnostics,
     ...analyzeStoryDslReferences(baseAnalysis.ast),
+    ...validateStoryRuntimeContract(baseAnalysis.ast, state.contentContract?.story, {
+      hasReference: hasStoryRuntimeReference,
+      knownVariables: state.contentIndex.storyVariableNames,
+    }),
   ];
   const hasErrors = diagnostics.some((item) => item.severity === "error");
   const analysis = {
@@ -6412,11 +6474,12 @@ function analyzeStoryDslStatements(statements, diagnostics, knownStorySegmentIds
         }
         break;
       case "command":
-        analyzeStoryDslCommand(statement, diagnostics);
         break;
       case "choice":
-        for (const option of statement.options || []) {
-          analyzeStoryDslStatements(option.statements, diagnostics, knownStorySegmentIds);
+        for (const group of statement.groups || []) {
+          for (const option of group.options || []) {
+            analyzeStoryDslStatements(option.statements, diagnostics, knownStorySegmentIds);
+          }
         }
         break;
       case "if":
@@ -6518,6 +6581,29 @@ function hasDefinitionOfType(id, type) {
 
   const definitions = state.contentIndex.definitionsById.get(normalizedId) || [];
   return definitions.some((definition) => definition.type === type);
+}
+
+function hasStoryRuntimeReference(type, value) {
+  const normalized = String(value || "").trim();
+  if (!normalized) return false;
+  if (type === "resources") {
+    return state.contentIndex.resourcesById.has(normalized);
+  }
+  if (type.startsWith("resource:")) {
+    return (state.contentIndex.resourcesByGroup.get(type.slice("resource:".length)) || [])
+      .some((resource) => resource.id === normalized);
+  }
+  if (type === "achievements") {
+    return state.contentIndex.resourcesById.get(`nick.${normalized}`)?.group === "nick";
+  }
+  if (type === "characters") {
+    return state.contentIndex.charactersByIdOrName.has(normalized);
+  }
+  if (type === "skills") {
+    return ["external-skills", "internal-skills", "special-skills", "talents"]
+      .some((definitionType) => hasDefinitionOfType(normalized, definitionType));
+  }
+  return hasDefinitionOfType(normalized, type);
 }
 
 function renderStoryDslStatus() {
@@ -9704,6 +9790,7 @@ async function rebuildContentIndex() {
   const referencesByValue = new Map();
   const battleReferencesById = new Map();
   const achievementSources = [];
+  const storyVariableNames = new Set();
 
   for (const file of state.dataFiles) {
     if (isStorySourceFile(file.path)) {
@@ -9764,6 +9851,7 @@ async function rebuildContentIndex() {
       }
 
       if (file.path.endsWith(".story.json")) {
+        collectStoryDeclaredVariablesFromJson(json, storyVariableNames);
         for (const speaker of ExtractStorySpeakers(file.path, response.content, json, lineIndex)) {
           storySpeakers.set(speaker.Name, (storySpeakers.get(speaker.Name) || 0) + 1);
         }
@@ -9803,6 +9891,7 @@ async function rebuildContentIndex() {
     referencesByValue,
     battleReferencesById,
     achievementSourcesById: indexAchievementUnlockSources(achievementSources),
+    storyVariableNames,
   };
   invalidateContentAnalysis();
   state.resourceValues = resourceValues;

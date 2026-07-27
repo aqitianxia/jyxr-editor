@@ -16,6 +16,30 @@ public sealed record ResourceContract(
     IReadOnlyList<string> SkillAnimationExtensions,
     string AtlasTextureDirectory);
 
+public sealed record StoryParameterContract(
+    string Name,
+    string Kind,
+    bool Required,
+    bool Variadic,
+    object? DefaultValue,
+    string? ReferenceType,
+    IReadOnlyList<string> AllowedValues);
+
+public sealed record StoryInvocationContract(
+    string Name,
+    IReadOnlyList<string> Aliases,
+    int MinimumArguments,
+    int? MaximumArguments,
+    IReadOnlyList<StoryParameterContract> Parameters);
+
+public sealed record StoryVariableContract(string Name, string Kind);
+
+public sealed record StoryRuntimeContract(
+    IReadOnlyList<StoryInvocationContract> Commands,
+    IReadOnlyList<StoryInvocationContract> Predicates,
+    IReadOnlyList<StoryVariableContract> Variables,
+    IReadOnlyList<string> Operators);
+
 public sealed record EditorContentContract(
     string Format,
     int ContractVersion,
@@ -23,7 +47,8 @@ public sealed record EditorContentContract(
     IReadOnlyDictionary<string, DefinitionContract> Definitions,
     IReadOnlyDictionary<string, PolymorphicTypeContract> PolymorphicTypes,
     IReadOnlyDictionary<string, string[]> Enums,
-    ResourceContract Resources);
+    ResourceContract Resources,
+    StoryRuntimeContract Story);
 
 public sealed record ContentContractIssue(
     string Code,
@@ -103,12 +128,41 @@ public sealed class ContentContractCatalog
                 .OrderBy(static path => path, StringComparer.OrdinalIgnoreCase)
                 .ToArray()
             : [];
-        foreach (var jsonFile in jsonFiles)
+        var parsedDocuments = new List<(string RelativePath, JsonDocument Document)>();
+        try
         {
-            var relativePath = Path.GetRelativePath(dataPath, jsonFile).Replace('\\', '/');
-            try
+            foreach (var jsonFile in jsonFiles)
             {
-                using var document = JsonDocument.Parse(File.ReadAllText(jsonFile));
+                var relativePath = Path.GetRelativePath(dataPath, jsonFile).Replace('\\', '/');
+                try
+                {
+                    parsedDocuments.Add((relativePath, JsonDocument.Parse(File.ReadAllText(jsonFile))));
+                }
+                catch (JsonException exception)
+                {
+                    issues.Add(new ContentContractIssue(
+                        "syntax.json",
+                        "error",
+                        "syntax",
+                        $"JSON 语法错误：{exception.Message}",
+                        relativePath,
+                        exception.LineNumber is null ? 1 : checked((int)exception.LineNumber.Value + 1)));
+                }
+            }
+
+            var storyReferences = BuildStoryReferences(parsedDocuments);
+            var declaredVariables = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var (relativePath, document) in parsedDocuments)
+            {
+                if (relativePath.EndsWith(".story.json", StringComparison.OrdinalIgnoreCase))
+                {
+                    StoryRuntimeContractValidator.CollectDeclaredVariables(document.RootElement, declaredVariables);
+                }
+            }
+
+            var storyValidator = new StoryRuntimeContractValidator(_contract.Story, storyReferences, declaredVariables);
+            foreach (var (relativePath, document) in parsedDocuments)
+            {
                 if (requiredFiles.ContainsKey(relativePath) &&
                     document.RootElement.ValueKind is not JsonValueKind.Array and not JsonValueKind.Object)
                 {
@@ -123,20 +177,116 @@ public sealed class ContentContractCatalog
                 }
 
                 ValidateDocument(relativePath, document.RootElement, issues);
+                if (relativePath.EndsWith(".story.json", StringComparison.OrdinalIgnoreCase))
+                {
+                    storyValidator.Validate(relativePath, document.RootElement, issues);
+                }
             }
-            catch (JsonException exception)
-            {
-                issues.Add(new ContentContractIssue(
-                    "syntax.json",
-                    "error",
-                    "syntax",
-                    $"JSON 语法错误：{exception.Message}",
-                    relativePath,
-                    exception.LineNumber is null ? 1 : checked((int)exception.LineNumber.Value + 1)));
-            }
+        }
+        finally
+        {
+            foreach (var (_, document) in parsedDocuments) document.Dispose();
         }
 
         return new ContentContractValidation(jsonFiles.Length, _contract.ContractVersion, issues);
+    }
+
+    private static IReadOnlyDictionary<string, HashSet<string>> BuildStoryReferences(
+        IReadOnlyList<(string RelativePath, JsonDocument Document)> documents)
+    {
+        var references = new Dictionary<string, HashSet<string>>(StringComparer.Ordinal);
+        foreach (var type in new[]
+                 {
+                     "achievements", "battles", "characters", "grow-templates", "items", "maps",
+                     "resources", "sects", "shops", "skills", "story",
+                 })
+        {
+            references[type] = new HashSet<string>(StringComparer.Ordinal);
+        }
+
+        foreach (var (relativePath, document) in documents)
+        {
+            if (relativePath.EndsWith(".story.json", StringComparison.OrdinalIgnoreCase))
+            {
+                if (document.RootElement.ValueKind == JsonValueKind.Object &&
+                    TryGetPropertyIgnoreCase(document.RootElement, "segments", out var segments) &&
+                    segments.ValueKind == JsonValueKind.Array)
+                {
+                    foreach (var segment in segments.EnumerateArray())
+                    {
+                        AddStringPropertyReference(references, "story", segment, "name");
+                    }
+                }
+
+                continue;
+            }
+
+            if (document.RootElement.ValueKind != JsonValueKind.Array)
+            {
+                continue;
+            }
+
+            var definitionType = Path.GetFileNameWithoutExtension(relativePath);
+            foreach (var definition in document.RootElement.EnumerateArray())
+            {
+                AddStringPropertyReference(references, definitionType, definition, "id");
+                if (string.Equals(definitionType, "characters", StringComparison.Ordinal))
+                {
+                    AddStringPropertyReference(references, "characters", definition, "name");
+                }
+                else if (string.Equals(definitionType, "resources", StringComparison.Ordinal))
+                {
+                    if (TryGetPropertyIgnoreCase(definition, "id", out var id) &&
+                        id.ValueKind == JsonValueKind.String &&
+                        TryGetPropertyIgnoreCase(definition, "group", out var group) &&
+                        group.ValueKind == JsonValueKind.String &&
+                        string.Equals(group.GetString(), "nick", StringComparison.Ordinal) &&
+                        id.GetString() is { } resourceId &&
+                        resourceId.StartsWith("nick.", StringComparison.Ordinal) &&
+                        resourceId.Length > "nick.".Length)
+                    {
+                        AddReference(references, "achievements", resourceId["nick.".Length..]);
+                    }
+                }
+            }
+        }
+
+        foreach (var skillType in new[] { "external-skills", "internal-skills", "special-skills", "talents" })
+        {
+            if (!references.TryGetValue(skillType, out var skillIds)) continue;
+            foreach (var skillId in skillIds) AddReference(references, "skills", skillId);
+        }
+
+        return references;
+    }
+
+    private static void AddStringPropertyReference(
+        Dictionary<string, HashSet<string>> references,
+        string type,
+        JsonElement owner,
+        string propertyName)
+    {
+        if (owner.ValueKind == JsonValueKind.Object &&
+            TryGetPropertyIgnoreCase(owner, propertyName, out var value) &&
+            value.ValueKind == JsonValueKind.String)
+        {
+            AddReference(references, type, value.GetString());
+        }
+    }
+
+    private static void AddReference(
+        Dictionary<string, HashSet<string>> references,
+        string type,
+        string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return;
+        if (!references.TryGetValue(type, out var values))
+        {
+            values = new HashSet<string>(StringComparer.Ordinal);
+            references[type] = values;
+        }
+
+        values.Add(value);
     }
 
     private void ValidateDocument(string relativePath, JsonElement root, List<ContentContractIssue> issues)
