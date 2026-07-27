@@ -95,7 +95,7 @@ public sealed class ContentContractCatalog
 
         var contract = JsonSerializer.Deserialize<EditorContentContract>(
             File.ReadAllText(path),
-            new JsonSerializerOptions { PropertyNameCaseInsensitive = true })
+            EditorJson.SerializerOptions)
             ?? throw new InvalidDataException($"Editor content contract is empty: {path}");
         if (!string.Equals(contract.Format, "jyxr-content", StringComparison.Ordinal) || contract.ContractVersion <= 0)
         {
@@ -136,7 +136,7 @@ public sealed class ContentContractCatalog
                 var relativePath = Path.GetRelativePath(dataPath, jsonFile).Replace('\\', '/');
                 try
                 {
-                    parsedDocuments.Add((relativePath, JsonDocument.Parse(File.ReadAllText(jsonFile))));
+                    parsedDocuments.Add((relativePath, EditorJson.ParseDocument(File.ReadAllText(jsonFile))));
                 }
                 catch (JsonException exception)
                 {
@@ -176,7 +176,7 @@ public sealed class ContentContractCatalog
                     continue;
                 }
 
-                ValidateDocument(relativePath, document.RootElement, issues);
+                ValidateDocument(relativePath, document.RootElement, storyReferences, issues);
                 if (relativePath.EndsWith(".story.json", StringComparison.OrdinalIgnoreCase))
                 {
                     storyValidator.Validate(relativePath, document.RootElement, issues);
@@ -197,8 +197,8 @@ public sealed class ContentContractCatalog
         var references = new Dictionary<string, HashSet<string>>(StringComparer.Ordinal);
         foreach (var type in new[]
                  {
-                     "achievements", "battles", "characters", "grow-templates", "items", "maps",
-                     "resources", "sects", "shops", "skills", "story",
+                     "achievements", "battles", "characters", "grow-templates", "item-tags", "items", "maps",
+                     "resources", "scoped-battle-effects", "sects", "shops", "skills", "story",
                  })
         {
             references[type] = new HashSet<string>(StringComparer.Ordinal);
@@ -289,7 +289,11 @@ public sealed class ContentContractCatalog
         values.Add(value);
     }
 
-    private void ValidateDocument(string relativePath, JsonElement root, List<ContentContractIssue> issues)
+    private void ValidateDocument(
+        string relativePath,
+        JsonElement root,
+        IReadOnlyDictionary<string, HashSet<string>> references,
+        List<ContentContractIssue> issues)
     {
         if (_contentFiles.TryGetValue(relativePath, out var contentFile) &&
             _contract.Definitions.TryGetValue(contentFile.DefinitionType, out var definition))
@@ -313,6 +317,236 @@ public sealed class ContentContractCatalog
         {
             ForEachDefinition(root, (skill, index) =>
                 ValidatePropertyArray(skill, "effects", "battleEffect", $"{relativePath}[{index}]", issues));
+        }
+        else if (string.Equals(relativePath, "scoped-battle-effects.json", StringComparison.OrdinalIgnoreCase))
+        {
+            ForEachDefinition(root, (effect, index) =>
+            {
+                if (effect.ValueKind == JsonValueKind.Object &&
+                    TryGetPropertyIgnoreCase(effect, "scope", out var scope))
+                {
+                    ValidateDiscriminator(scope, "battleTarget", $"{relativePath}[{index}].scope", issues);
+                }
+            });
+        }
+        else if (string.Equals(relativePath, "shops.json", StringComparison.OrdinalIgnoreCase))
+        {
+            ValidateShopProducts(root, relativePath, references, issues);
+        }
+        else if (string.Equals(relativePath, "world-triggers.json", StringComparison.OrdinalIgnoreCase))
+        {
+            ValidateWorldTriggers(root, relativePath, references, issues);
+        }
+
+        ValidateRuntimeReferences(relativePath, root, references, issues);
+    }
+
+    private static void ValidateWorldTriggers(
+        JsonElement root,
+        string relativePath,
+        IReadOnlyDictionary<string, HashSet<string>> references,
+        List<ContentContractIssue> issues)
+    {
+        ForEachDefinition(root, (trigger, index) =>
+        {
+            if (trigger.ValueKind != JsonValueKind.Object ||
+                !TryGetPropertyIgnoreCase(trigger, "type", out var typeValue) ||
+                typeValue.ValueKind != JsonValueKind.String)
+            {
+                return;
+            }
+
+            var path = $"{relativePath}[{index}]";
+            var type = typeValue.GetString();
+            var target = type switch
+            {
+                "story" => (ReferenceType: "story", Label: "剧情"),
+                "shop" => (ReferenceType: "shops", Label: "商店"),
+                "battle" => (ReferenceType: "battles", Label: "战斗"),
+                "xiangzi" => (ReferenceType: "", Label: ""),
+                _ => (ReferenceType: null, Label: null),
+            };
+            if (target.ReferenceType is null)
+            {
+                issues.Add(new ContentContractIssue(
+                    "contract.unknown-world-trigger-type",
+                    "error",
+                    "contract",
+                    $"世界触发器使用了不支持的类型：{type}",
+                    $"{path}.type"));
+            }
+            else if (target.ReferenceType.Length > 0)
+            {
+                ValidatePropertyReference(trigger, "targetId", target.ReferenceType, target.Label!, path, references, issues);
+            }
+        });
+    }
+
+    private void ValidateShopProducts(
+        JsonElement root,
+        string relativePath,
+        IReadOnlyDictionary<string, HashSet<string>> references,
+        List<ContentContractIssue> issues)
+    {
+        ForEachDefinition(root, (shop, shopIndex) =>
+        {
+            if (shop.ValueKind != JsonValueKind.Object ||
+                !TryGetPropertyIgnoreCase(shop, "products", out var products) ||
+                products.ValueKind != JsonValueKind.Array)
+            {
+                return;
+            }
+
+            var productIndex = 0;
+            foreach (var product in products.EnumerateArray())
+            {
+                var productPath = $"{relativePath}[{shopIndex}].products[{productIndex++}]";
+                if (product.ValueKind != JsonValueKind.Object ||
+                    !TryGetPropertyIgnoreCase(product, "reward", out var reward))
+                {
+                    issues.Add(new ContentContractIssue(
+                        "contract.required-field",
+                        "error",
+                        "contract",
+                        "商店商品缺少游戏必填字段“reward”。",
+                        productPath));
+                    continue;
+                }
+
+                var kind = ValidateDiscriminator(reward, "reward", $"{productPath}.reward", issues);
+                if (string.Equals(kind, "item", StringComparison.Ordinal))
+                {
+                    ValidatePropertyReference(reward, "itemId", "items", "物品", $"{productPath}.reward", references, issues);
+                }
+                else if (string.Equals(kind, "skill_max_level", StringComparison.Ordinal))
+                {
+                    var referenceType = TryGetPropertyIgnoreCase(reward, "skillKind", out var skillKind) &&
+                        skillKind.ValueKind == JsonValueKind.String &&
+                        string.Equals(skillKind.GetString(), "internal", StringComparison.Ordinal)
+                            ? "internal-skills"
+                            : "external-skills";
+                    ValidatePropertyReference(reward, "skillId", referenceType, "武学", $"{productPath}.reward", references, issues);
+                }
+            }
+        });
+    }
+
+    private static void ValidatePropertyReference(
+        JsonElement owner,
+        string propertyName,
+        string referenceType,
+        string label,
+        string ownerPath,
+        IReadOnlyDictionary<string, HashSet<string>> references,
+        List<ContentContractIssue> issues)
+    {
+        var value = TryGetPropertyIgnoreCase(owner, propertyName, out var propertyValue)
+            ? propertyValue
+            : default;
+        ValidateReference(value, referenceType, $"{ownerPath}.{propertyName}", label, references, issues);
+    }
+
+    private void ValidateRuntimeReferences(
+        string relativePath,
+        JsonElement root,
+        IReadOnlyDictionary<string, HashSet<string>> references,
+        List<ContentContractIssue> issues)
+    {
+        if (string.Equals(relativePath, "items.json", StringComparison.OrdinalIgnoreCase))
+        {
+            ForEachDefinition(root, (item, index) =>
+            {
+                if (item.ValueKind != JsonValueKind.Object ||
+                    !TryGetPropertyIgnoreCase(item, "tagIds", out var tagIds) ||
+                    tagIds.ValueKind != JsonValueKind.Array)
+                {
+                    return;
+                }
+
+                var tagIndex = 0;
+                foreach (var tagId in tagIds.EnumerateArray())
+                {
+                    ValidateReference(
+                        tagId,
+                        "item-tags",
+                        $"{relativePath}[{index}].tagIds[{tagIndex}]",
+                        "物品标签",
+                        references,
+                        issues);
+                    tagIndex++;
+                }
+            });
+        }
+
+        WalkRuntimeReferences(root, relativePath, references, issues);
+    }
+
+    private void WalkRuntimeReferences(
+        JsonElement element,
+        string path,
+        IReadOnlyDictionary<string, HashSet<string>> references,
+        List<ContentContractIssue> issues)
+    {
+        if (element.ValueKind == JsonValueKind.Array)
+        {
+            var index = 0;
+            foreach (var item in element.EnumerateArray())
+            {
+                WalkRuntimeReferences(item, $"{path}[{index++}]", references, issues);
+            }
+
+            return;
+        }
+
+        if (element.ValueKind != JsonValueKind.Object) return;
+        if (TryGetPropertyIgnoreCase(element, "type", out var type) &&
+            type.ValueKind == JsonValueKind.String &&
+            string.Equals(type.GetString(), "grant_scoped_battle_effect", StringComparison.Ordinal) &&
+            TryGetPropertyIgnoreCase(element, "effectId", out var effectId))
+        {
+            ValidateReference(
+                effectId,
+                "scoped-battle-effects",
+                $"{path}.effectId",
+                "范围战斗效果",
+                references,
+                issues);
+        }
+
+        foreach (var property in element.EnumerateObject())
+        {
+            WalkRuntimeReferences(property.Value, $"{path}.{property.Name}", references, issues);
+        }
+    }
+
+    private static void ValidateReference(
+        JsonElement value,
+        string referenceType,
+        string path,
+        string label,
+        IReadOnlyDictionary<string, HashSet<string>> references,
+        List<ContentContractIssue> issues)
+    {
+        if (value.ValueKind != JsonValueKind.String || string.IsNullOrWhiteSpace(value.GetString()))
+        {
+            issues.Add(new ContentContractIssue(
+                "contract.reference-kind",
+                "error",
+                "contract",
+                $"{label}引用必须是非空文本。",
+                path));
+            return;
+        }
+
+        var id = value.GetString()!;
+        if (!references.TryGetValue(referenceType, out var ids) || !ids.Contains(id))
+        {
+            issues.Add(new ContentContractIssue(
+                "contract.reference-missing",
+                "error",
+                "contract",
+                $"引用的{label}不存在：{id}",
+                path));
         }
     }
 

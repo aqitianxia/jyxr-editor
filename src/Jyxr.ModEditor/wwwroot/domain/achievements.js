@@ -1,5 +1,14 @@
+import { getMapConditionValueIssue } from "./maps.js?v=20260718-map-runtime-keys-1";
+
 export const achievementGroup = "nick";
 export const achievementPrefix = `${achievementGroup}.`;
+
+export const worldTriggerTypes = Object.freeze([
+  { value: "story", label: "播放剧情", referenceType: "story" },
+  { value: "shop", label: "打开商店", referenceType: "shops" },
+  { value: "xiangzi", label: "打开储物箱", referenceType: "" },
+  { value: "battle", label: "进入战斗", referenceType: "battles" },
+].map(Object.freeze));
 
 export function getAchievementTitle(resource) {
   const id = String(resource?.id || "").trim();
@@ -24,6 +33,40 @@ export function createWorldTriggerDefinition(id = "新世界触发器") {
     repeatMode: "once",
     conditions: [],
   };
+}
+
+export function getWorldTriggerIssues(trigger, targetOptions = {}, allTriggers = []) {
+  const issues = [];
+  const id = String(trigger?.id || "").trim();
+  const type = String(trigger?.type || "");
+  const typeDefinition = worldTriggerTypes.find((entry) => entry.value === type);
+  if (!id) issues.push("缺少触发器 ID");
+  if (id && allTriggers.filter((entry) => entry?.id === id).length > 1) issues.push("触发器 ID 重复");
+  if (!typeDefinition) {
+    issues.push(`不支持的触发类型：${type || "空"}`);
+  } else if (typeDefinition.referenceType) {
+    const targets = targetOptions[type] || [];
+    if (!String(trigger?.targetId || "").trim()) issues.push("缺少目标 ID");
+    else if (!targets.some((option) => option.id === trigger.targetId)) issues.push(`目标${typeDefinition.label.slice(2)}不存在`);
+  }
+  const probability = trigger?.probability ?? 100;
+  if (!Number.isInteger(probability) || probability < 0 || probability > 100) issues.push("概率必须是 0 到 100 的整数");
+  const repeatMode = trigger?.repeatMode ?? "once";
+  if (!["once", "infinite"].includes(repeatMode)) issues.push("触发次数必须是 once 或 infinite");
+  if (!Array.isArray(trigger?.conditions)) issues.push("触发条件必须是数组");
+  for (const condition of Array.isArray(trigger?.conditions) ? trigger.conditions : []) {
+    const issue = getMapConditionValueIssue(condition);
+    if (issue) issues.push(`${condition.type || "条件"}：${issue}`);
+  }
+  return issues;
+}
+
+export function moveWorldTrigger(triggers, index, direction) {
+  const target = index + direction;
+  if (!Array.isArray(triggers) || index < 0 || index >= triggers.length || target < 0 || target >= triggers.length) return triggers;
+  const moved = [...triggers];
+  [moved[index], moved[target]] = [moved[target], moved[index]];
+  return moved;
 }
 
 export function collectAchievementUnlockSources(path, root) {

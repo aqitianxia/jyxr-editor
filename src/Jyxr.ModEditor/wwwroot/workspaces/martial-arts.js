@@ -1,4 +1,5 @@
 import { bindImeSafeInput } from "../core/input-composition.js?v=20260712-search-1";
+import { parseJsonc } from "../core/jsonc.js?v=20260727-jsonc-1";
 import { createEmbeddedJsonEditor, disposeEmbeddedCodeEditors } from "../ui/code-editor.js?v=20260711-stage6-1";
 import { bindScrollMemory } from "../ui/scroll-memory.js?v=20260712-search-1";
 import {
@@ -24,7 +25,7 @@ import {
   specialEffectTypes,
   targetSelectorTypes,
   weaponTypes,
-} from "../domain/martial-arts.js?v=20260713-adapt-1";
+} from "../domain/martial-arts.js?v=20260727-runtime-contract-2";
 
 const tabs = Object.freeze([
   ["overview", "概要"], ["combat", "战斗参数"], ["growth", "招式与成长"],
@@ -505,21 +506,23 @@ function renderSpecialEffects(parent, context, record) {
   toolbar.append(el("strong", "", `${list.length} 项`), button("＋ 添加效果", "button secondary", () => { list.push(createSpecialEffect()); context.onMutate(); }));
   node.appendChild(toolbar);
   list.forEach((entry, index) => {
-    const target = entry.target || { type: "target" };
+    const target = entry.target;
     const row = el("div", "martial-effect-row");
-    row.append(field("效果", select(entry.type, specialEffectTypes, (value) => { const replacement = createSpecialEffect(value); Object.keys(entry).forEach((key) => delete entry[key]); Object.assign(entry, replacement); context.onMutate(); })), field("目标", select(target.type, targetSelectorTypes, (value) => nestedPatch(context, entry, "target", { type: value }))));
-    if ("effectId" in entry) row.appendChild(field("效果 ID", input(entry.effectId, (value) => patchObject(context, entry, { effectId: value }), { placeholder: "运行时已注册的 effectId" })));
+    row.appendChild(field("效果", select(entry.type, specialEffectTypes, (value) => { const replacement = createSpecialEffect(value); Object.keys(entry).forEach((key) => delete entry[key]); Object.assign(entry, replacement); context.onMutate(); })));
+    if (target) row.appendChild(field("目标", select(target.type, targetSelectorTypes.filter(([type]) => type !== "explicit_units"), (value) => nestedPatch(context, entry, "target", { type: value }))));
+    if (entry.type === "grant_scoped_battle_effect") row.appendChild(field("范围效果", select(entry.effectId, context.options.scopedEffects, (value) => patchObject(context, entry, { effectId: value }), "请选择")));
+    else if ("effectId" in entry) row.appendChild(field("效果 ID", input(entry.effectId, (value) => patchObject(context, entry, { effectId: value }), { placeholder: "运行时已注册的 effectId" })));
     if ("buffId" in entry) row.appendChild(field("Buff", select(entry.buffId, context.options.buffs, (value) => patchObject(context, entry, { buffId: value }), "请选择")));
     if ("value" in entry) row.appendChild(field("数值", input(entry.value, (value) => patchObject(context, entry, { value }), { type: "number" })));
     if ("level" in entry) row.appendChild(field("等级", input(entry.level, (value) => patchObject(context, entry, { level: value }), { type: "number" })));
     if ("duration" in entry) row.appendChild(field("持续", input(entry.duration, (value) => patchObject(context, entry, { duration: value }), { type: "number" })));
     if ("chance" in entry) row.appendChild(field("概率 %", input(entry.chance, (value) => patchObject(context, entry, { chance: value }), { type: "number", min: 0, max: 100 })));
-    if (target.type === "nearby_allies" || target.type === "nearby_enemies") row.appendChild(field("半径", input(target.radius ?? 2, (value) => nestedPatch(context, entry, "target", { radius: value }), { type: "number", min: 0 })));
-    if (target.type === "all_allies" || target.type === "nearby_allies") row.appendChild(checkbox(target.includeSelf ?? true, (value) => nestedPatch(context, entry, "target", { includeSelf: value }), "包含自己"));
+    if (target?.type === "nearby_allies" || target?.type === "nearby_enemies") row.appendChild(field("半径", input(target.radius ?? 2, (value) => nestedPatch(context, entry, "target", { radius: value }), { type: "number", min: 0 })));
+    if (target?.type === "all_allies" || target?.type === "nearby_allies") row.appendChild(checkbox(target.includeSelf ?? true, (value) => nestedPatch(context, entry, "target", { includeSelf: value }), "包含自己"));
     if ("parameters" in entry) {
       const parameters = input(JSON.stringify(entry.parameters ?? {}, null, 2), (value) => {
         try {
-          const parsed = JSON.parse(value || "{}");
+          const parsed = parseJsonc(value || "{}");
           if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error("自定义效果参数必须是 JSON 对象。");
           entry.parameters = parsed;
           context.onMutate();

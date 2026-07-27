@@ -15,11 +15,13 @@ const contract = JSON.parse(await readFile(
 )).story;
 globalThis.StoryDsl.configureRuntimeContract(contract);
 
-test("Story 运行时契约覆盖全部生产命令并包含 random_join", () => {
+test("Story 运行时契约提供唯一命令名并包含稳定版调试别名", () => {
   const commandNames = getStoryCommandNames(contract);
-  assert.equal(commandNames.length, 68);
+  assert.equal(commandNames.length, new Set(commandNames).size);
+  assert.ok(contract.commands.every((command) => command.name && Array.isArray(command.aliases)));
   assert.ok(commandNames.includes("random_join"));
-  assert.ok(!commandNames.includes("debug_battle"));
+  assert.ok(commandNames.includes("debug_battle"));
+  assert.ok(commandNames.includes("dbattle"));
 });
 
 test("契约校验命令拼写、参数数量和参数类型", () => {

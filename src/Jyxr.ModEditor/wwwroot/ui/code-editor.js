@@ -1,3 +1,5 @@
+import { parseJsonc } from "../core/jsonc.js?v=20260727-jsonc-1";
+
 const activeEditors = new Set();
 let modelSequence = 0;
 
@@ -79,7 +81,7 @@ export function createEmbeddedJsonEditor({ value, modelPath = "record", onApply,
 
   formatButton.addEventListener("click", async () => {
     try {
-      const parsed = JSON.parse(getText());
+      const parsed = parseJsonc(getText());
       suppressChange = true;
       setText(JSON.stringify(parsed, null, 2));
       suppressChange = false;
@@ -99,7 +101,7 @@ export function createEmbeddedJsonEditor({ value, modelPath = "record", onApply,
   });
   applyButton.addEventListener("click", () => {
     try {
-      const parsed = JSON.parse(getText());
+      const parsed = parseJsonc(getText());
       validate?.(parsed);
       onApply(parsed);
       status.className = "embedded-code-editor-status ok";

@@ -72,7 +72,7 @@ export function createEditorState() {
       resources: [],
       worldTriggers: [],
       sourcesById: new Map(),
-      storyOptions: [],
+      triggerTargetOptions: {},
     },
     growthWorkspace: {
       search: "",

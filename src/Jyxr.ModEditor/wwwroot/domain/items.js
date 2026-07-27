@@ -4,13 +4,17 @@ export const itemTypes = Object.freeze([
   ["booster", "强化道具"], ["utility", "功能物品"],
 ]);
 export const itemSlots = Object.freeze([["weapon", "武器"], ["armor", "护甲"], ["accessory", "饰品"]]);
-export const requirementTypes = Object.freeze([["stat", "属性要求"], ["talent", "天赋要求"]]);
+export const requirementTypes = Object.freeze([["stat", "属性要求"], ["talent", "天赋要求"], ["gender", "性别要求"]]);
+export const genderChoices = Object.freeze([
+  ["male", "男"], ["female", "女"], ["neutral", "中立"], ["animal", "动物"], ["eunuch", "阉人"],
+]);
 export const effectTypes = Object.freeze([
   ["add_hp", "回复生命"], ["add_mp", "回复内力"], ["add_hp_percent", "回复生命百分比"],
   ["add_mp_percent", "回复内力百分比"], ["add_maxhp", "提升生命上限"], ["add_maxmp", "提升内力上限"],
   ["add_rage", "增加怒气"], ["detoxify", "解毒"], ["add_buff", "添加 Buff"],
   ["external_skill", "学习外功"], ["internal_skill", "学习内功"], ["special_skill", "学习绝技"],
   ["grant_talent", "获得天赋"],
+  ["set_gender", "设置性别"], ["reduce_max_resource_ratio", "降低资源上限"],
 ]);
 export const affixTypes = Object.freeze([
   ["stat_modifier", "属性加成"], ["grant_talent", "获得天赋"], ["grant_model", "战斗外观"],
@@ -48,8 +52,10 @@ export function createItemDefinition(type = "consumable", id = "新物品") {
     price: 0,
     cooldown: 0,
     canDrop: true,
+    consumeOnUse: true,
     description: "",
     picture: "",
+    tagIds: [],
     requirements: [],
     useEffects: [],
     ...(equipment ? { slotType: "weapon", affixes: [] } : {}),
@@ -66,13 +72,17 @@ export function applyItemType(record, type) {
 }
 
 export function createRequirement(type = "stat") {
-  return type === "talent" ? { type, talentId: "" } : { type: "stat", statId: "wuxing", value: 10 };
+  if (type === "talent") return { type, talentId: "" };
+  if (type === "gender") return { type, genders: ["male"] };
+  return { type: "stat", statId: "wuxing", value: 10 };
 }
 
 export function createEffect(type = "add_hp") {
   if (type === "external_skill" || type === "internal_skill") return { type, skillId: "", level: 1 };
   if (type === "special_skill") return { type, skillId: "" };
   if (type === "grant_talent") return { type, talentId: "" };
+  if (type === "set_gender") return { type, gender: "eunuch" };
+  if (type === "reduce_max_resource_ratio") return { type, statId: "max_hp", ratio: 0.1 };
   if (type === "add_buff") return { type, buffId: "", level: 1, duration: 3 };
   if (type === "detoxify") return { type, values: [5, 5] };
   return { type, value: 0 };

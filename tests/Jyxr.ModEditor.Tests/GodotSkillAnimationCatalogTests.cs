@@ -107,22 +107,78 @@ public sealed class ContentContractCatalogTests : IDisposable
     [Fact]
     public void Validate_AcceptsTypesExportedByTheGameContract()
     {
+        File.WriteAllText(Path.Combine(_root, "scoped-battle-effects.json"), """
+            [
+              {"id": "formation", "scope": {"type": "explicit_units"}},
+            ]
+            """);
         File.WriteAllText(Path.Combine(_root, "talents.json"), """
-            [{
+            [/* JSONC is accepted by the game loader. */ {
               "id": "test",
               "name": "test",
               "affixes": [{
-                "type": "hook",
-                "timing": "BeforeDamageCalculation",
+                "type": "hook", // stable runtime timing
+                "timing": "OnDefeated",
                 "conditions": [{"type": "context_skill_source_id", "sourceSkillIds": ["skill"]}],
-                "effects": [{"type": "modify_damage_context", "field": "final_damage", "op": "add", "delta": 1}]
+                "effects": [{"type": "grant_scoped_battle_effect", "effectId": "formation"}]
               }]
-            }]
+            },]
             """);
 
         var result = _catalog.Validate(_root);
 
         Assert.Equal(0, result.ErrorCount);
+    }
+
+    [Fact]
+    public void Validate_ReportsMissingItemTagScopedEffectAndShopRewardReferences()
+    {
+        File.WriteAllText(Path.Combine(_root, "items.json"), """
+            [{
+              "category": "normal", "id": "item", "name": "item", "consumeOnUse": true,
+              "tagIds": ["missing-tag"]
+            }]
+            """);
+        File.WriteAllText(Path.Combine(_root, "talents.json"), """
+            [{
+              "id": "talent", "name": "talent",
+              "affixes": [{"type": "hook", "timing": "OnBattleStart", "effects": [
+                {"type": "grant_scoped_battle_effect", "effectId": "missing-effect"}
+              ]}]
+            }]
+            """);
+        File.WriteAllText(Path.Combine(_root, "shops.json"), """
+            [{
+              "id": "shop", "name": "shop",
+              "products": [{"reward": {"kind": "item", "itemId": "missing-shop-item", "quantity": 1}}]
+            }]
+            """);
+
+        var result = _catalog.Validate(_root);
+
+        Assert.Contains(result.Issues, issue => issue.Code == "contract.reference-missing" && issue.Message.Contains("missing-tag"));
+        Assert.Contains(result.Issues, issue => issue.Code == "contract.reference-missing" && issue.Message.Contains("missing-effect"));
+        Assert.Contains(result.Issues, issue => issue.Code == "contract.reference-missing" && issue.Message.Contains("missing-shop-item"));
+    }
+
+    [Fact]
+    public void Validate_ReportsMissingWorldTriggerTargetsAndUnknownTypes()
+    {
+        File.WriteAllText(Path.Combine(_root, "world-triggers.json"), """
+            [
+              {"id": "shop", "type": "shop", "targetId": "missing-shop"},
+              {"id": "battle", "type": "battle", "targetId": "missing-battle"},
+              {"id": "future", "type": "future", "targetId": "target"},
+              {"id": "chest", "type": "xiangzi"}
+            ]
+            """);
+
+        var result = _catalog.Validate(_root);
+
+        Assert.Contains(result.Issues, issue => issue.Code == "contract.reference-missing" && issue.Message.Contains("missing-shop"));
+        Assert.Contains(result.Issues, issue => issue.Code == "contract.reference-missing" && issue.Message.Contains("missing-battle"));
+        Assert.Contains(result.Issues, issue => issue.Code == "contract.unknown-world-trigger-type");
+        Assert.DoesNotContain(result.Issues, issue => issue.Path == "world-triggers.json[3].targetId");
     }
 
     [Fact]

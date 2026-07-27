@@ -3,7 +3,9 @@ import {
   achievementPrefix,
   getAchievementTitle,
   getMissingAchievementReferences,
-} from "../domain/achievements.js?v=20260726-achievements-1";
+  getWorldTriggerIssues,
+  worldTriggerTypes,
+} from "../domain/achievements.js?v=20260727-world-triggers-1";
 import {
   describeMapCondition,
   getMapConditionValueIssue,
@@ -160,30 +162,15 @@ function renderAchievementDetail(container, options) {
   container.appendChild(sourceSection);
 }
 
-function getWorldTriggerIssues(trigger, storyOptions, allTriggers) {
-  const issues = [];
-  const id = String(trigger?.id || "").trim();
-  if (!id) issues.push("缺少触发器 ID");
-  if (id && allTriggers.filter((entry) => entry?.id === id).length > 1) issues.push("触发器 ID 重复");
-  if (trigger?.type === "story" && !storyOptions.some((option) => option.id === trigger.targetId)) issues.push("目标剧情不存在");
-  const probability = Number(trigger?.probability);
-  if (!Number.isFinite(probability) || probability < 0 || probability > 100) issues.push("概率必须在 0 到 100 之间");
-  for (const condition of trigger?.conditions || []) {
-    const issue = getMapConditionValueIssue(condition);
-    if (issue) issues.push(`${condition.type || "条件"}：${issue}`);
-  }
-  return issues;
-}
-
 function renderTriggerList(container, options) {
-  const { state, worldTriggers, storyOptions, onSearch, onSelectTrigger, onCreateTrigger } = options;
+  const { state, worldTriggers, triggerTargetOptions, onSearch, onSelectTrigger, onCreateTrigger } = options;
   const ws = state.achievementWorkspace;
   const tools = el("div", "achievement-list-tools");
   tools.appendChild(button("＋ 新建", "button primary", onCreateTrigger));
   const search = input(ws.search, (value) => {
     resetScrollMemory(state.workspaceScrollPositions, "world-triggers:list");
     rerenderPreservingInput(search, () => onSearch(value), () => container.querySelector("input[type=search]"));
-  }, { live: true, placeholder: "搜索 ID、目标剧情或条件" });
+  }, { live: true, placeholder: "搜索 ID、目标或条件" });
   search.type = "search";
   tools.appendChild(search);
   container.appendChild(tools);
@@ -192,11 +179,12 @@ function renderTriggerList(container, options) {
   container.appendChild(el("div", "achievement-list-summary", `显示 ${visible.length} / ${worldTriggers.length}`));
   const list = el("div", "achievement-record-list");
   for (const { trigger, index } of visible) {
-    const issues = getWorldTriggerIssues(trigger, storyOptions, worldTriggers);
+    const issues = getWorldTriggerIssues(trigger, triggerTargetOptions, worldTriggers);
     const row = button("", "achievement-record-row", () => onSelectTrigger(index));
     row.classList.toggle("active", ws.selectedTriggerIndex === index);
     const copy = el("span", "achievement-record-copy");
-    copy.append(el("strong", "", trigger.id || "未命名触发器"), el("small", "", trigger.targetId || "尚未选择目标剧情"));
+    const typeLabel = worldTriggerTypes.find((entry) => entry.value === trigger.type)?.label || trigger.type || "未知类型";
+    copy.append(el("strong", "", trigger.id || "未命名触发器"), el("small", "", `#${index + 1} · ${typeLabel} · ${trigger.targetId || (trigger.type === "xiangzi" ? "无需目标" : "尚未选择目标")}`));
     row.append(copy, issues.length ? el("span", "achievement-issue-count", String(issues.length)) : el("span", "achievement-source-count", `${trigger.conditions?.length || 0} 条件`));
     list.appendChild(row);
   }
@@ -243,17 +231,23 @@ function renderConditionEditor(parent, trigger, options) {
 }
 
 function renderTriggerDetail(container, options) {
-  const { state, worldTriggers, storyOptions, onMutateTrigger, onDeleteTrigger, onReplaceTrigger } = options;
+  const { state, worldTriggers, triggerTargetOptions, onMutateTrigger, onDeleteTrigger, onReplaceTrigger, onMoveTrigger } = options;
   const trigger = worldTriggers[state.achievementWorkspace.selectedTriggerIndex] || worldTriggers[0];
   if (!trigger) {
     container.appendChild(el("div", "achievement-empty detail", "新建世界触发器后即可编辑。"));
     return;
   }
-  const issues = getWorldTriggerIssues(trigger, storyOptions, worldTriggers);
+  const issues = getWorldTriggerIssues(trigger, triggerTargetOptions, worldTriggers);
   const header = el("div", "achievement-detail-header");
   const heading = el("div");
   heading.append(el("span", "achievement-eyebrow", "世界触发器"), el("h2", "", trigger.id || "未命名触发器"), el("code", "", trigger.targetId || "缺少目标"));
-  header.append(heading, button("删除", "button danger", () => onDeleteTrigger(trigger)));
+  const actions = el("div", "achievement-detail-actions");
+  const up = button("↑", "icon-button", () => onMoveTrigger(-1), "提高触发优先级");
+  const down = button("↓", "icon-button", () => onMoveTrigger(1), "降低触发优先级");
+  up.disabled = state.achievementWorkspace.selectedTriggerIndex <= 0;
+  down.disabled = state.achievementWorkspace.selectedTriggerIndex >= worldTriggers.length - 1;
+  actions.append(up, down, button("删除", "button danger", () => onDeleteTrigger(trigger)));
+  header.append(heading, actions);
   container.appendChild(header);
   if (issues.length) {
     const list = el("ul", "achievement-issues");
@@ -264,16 +258,19 @@ function renderTriggerDetail(container, options) {
   const basic = el("section", "achievement-detail-section");
   basic.appendChild(el("h3", "", "触发设置"));
   const grid = el("div", "achievement-field-grid");
+  const type = document.createElement("select");
+  type.className = "input";
+  for (const definition of worldTriggerTypes) type.appendChild(new Option(definition.label, definition.value));
+  if (!worldTriggerTypes.some((definition) => definition.value === trigger.type)) type.appendChild(new Option(`${trigger.type || "未知"} 未支持`, trigger.type || ""));
+  type.value = trigger.type || "";
+  type.addEventListener("change", () => {
+    trigger.type = type.value;
+    trigger.targetId = "";
+    onMutateTrigger(true);
+  });
   grid.append(
     field("触发器 ID", input(trigger.id, (value) => { trigger.id = value.trim(); onMutateTrigger(true); })),
-    field("目标剧情", createReferencePicker({
-      value: trigger.targetId || "",
-      options: storyOptions,
-      placeholder: "搜索剧情段 ID",
-      compact: true,
-      showSelected: true,
-      onSelect: (value) => { trigger.type = "story"; trigger.targetId = value; onMutateTrigger(true); },
-    })),
+    field("触发类型", type),
     field("触发概率 %", input(trigger.probability ?? 100, (value) => { trigger.probability = Math.max(0, Math.min(100, Number(value) || 0)); onMutateTrigger(true); }, { type: "number", min: 0, max: 100 })),
   );
   const repeat = document.createElement("select");
@@ -282,7 +279,25 @@ function renderTriggerDetail(container, options) {
   repeat.value = trigger.repeatMode || "once";
   repeat.addEventListener("change", () => { trigger.repeatMode = repeat.value; onMutateTrigger(true); });
   grid.appendChild(field("触发次数", repeat));
+  if (trigger.type === "xiangzi") {
+    grid.appendChild(field("目标", el("div", "achievement-target-empty", "储物箱使用玩家存档中的公共箱子，无需目标 ID。")));
+  } else {
+    const typeDefinition = worldTriggerTypes.find((entry) => entry.value === trigger.type);
+    grid.appendChild(field("目标", createReferencePicker({
+      value: trigger.targetId || "",
+      options: triggerTargetOptions[trigger.type] || [],
+      placeholder: typeDefinition ? `搜索${typeDefinition.label.slice(2)} ID` : "选择目标 ID",
+      compact: true,
+      showSelected: true,
+      onSelect: (value) => { trigger.targetId = value; onMutateTrigger(true); },
+    })));
+  }
   basic.appendChild(grid);
+  const description = document.createElement("textarea");
+  description.className = "input achievement-trigger-description";
+  description.value = trigger.description ?? "";
+  bindImeSafeInput(description, (value) => { trigger.description = value || null; onMutateTrigger(false); });
+  basic.appendChild(field("交互说明", description, "运行时会把这段文本作为世界交互提示；不需要时可留空。"));
   container.appendChild(basic);
   renderConditionEditor(container, trigger, options);
 

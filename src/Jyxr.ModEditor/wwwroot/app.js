@@ -18,6 +18,7 @@ import {
 import { bindImeSafeInput, rerenderPreservingInput } from "./core/input-composition.js?v=20260712-search-1";
 import { createProblem, summarizeProblems } from "./core/problems.js?v=20260711-core-17";
 import { createRecentItemsStore } from "./core/recent-items.js?v=20260711-core-17";
+import { parseJsonc } from "./core/jsonc.js?v=20260727-jsonc-1";
 import { createButton } from "./ui/buttons.js?v=20260711-core-17";
 import { confirmAction, createDialogController } from "./ui/dialogs.js?v=20260711-core-17";
 import { createField, createTextInput } from "./ui/fields.js?v=20260711-core-17";
@@ -46,11 +47,12 @@ import {
   getMissingAchievementReferences,
   indexAchievementUnlockSources,
   isAchievementResource,
-} from "./domain/achievements.js?v=20260726-achievements-1";
-import { createItemDefinition, effectTypes, statChoices, weaponTypes } from "./domain/items.js?v=20260711-stage6-1";
-import { renderItemWorkspace } from "./workspaces/items.js?v=20260711-stage6-2";
-import { createShopDefinition, createShopProduct, ensureShopShape as ensureShopWorkspaceShape, moveShopProduct as moveShopProductEntry } from "./domain/shops.js?v=20260711-stage7-1";
-import { renderShopWorkspace } from "./workspaces/shops.js?v=20260711-stage7-2";
+  moveWorldTrigger,
+} from "./domain/achievements.js?v=20260727-world-triggers-1";
+import { createItemDefinition, effectTypes, genderChoices, statChoices, weaponTypes } from "./domain/items.js?v=20260727-runtime-contract-2";
+import { renderItemWorkspace } from "./workspaces/items.js?v=20260727-runtime-contract-2";
+import { createShopDefinition, createShopProduct, ensureShopShape as ensureShopWorkspaceShape, moveShopProduct as moveShopProductEntry } from "./domain/shops.js?v=20260727-shop-rewards-1";
+import { renderShopWorkspace } from "./workspaces/shops.js?v=20260727-shop-rewards-1";
 import {
   addBattleUnit,
   createBattleDefinition,
@@ -76,15 +78,15 @@ import {
   martialKinds,
   moveEntry as moveMartialEntry,
   resolvePresentation as resolveMartialPresentation,
-} from "./domain/martial-arts.js?v=20260713-adapt-1";
-import { renderMartialArtsWorkspace } from "./workspaces/martial-arts.js?v=20260713-adapt-3";
+} from "./domain/martial-arts.js?v=20260727-runtime-contract-2";
+import { renderMartialArtsWorkspace } from "./workspaces/martial-arts.js?v=20260727-runtime-contract-2";
 import {
   cloneTalent,
   createTalentDefinition,
   ensureTalentShape,
   getTalentIssues,
-} from "./domain/talents.js?v=20260713-talents-2";
-import { renderTalentWorkspace } from "./workspaces/talents.js?v=20260713-talents-2";
+} from "./domain/talents.js?v=20260727-runtime-contract-2";
+import { renderTalentWorkspace } from "./workspaces/talents.js?v=20260727-runtime-contract-2";
 import {
   buildResourceCatalog,
   findAssetPath as findCatalogAssetPath,
@@ -93,7 +95,7 @@ import {
   normalizeArtAssetValue,
 } from "./domain/resource-catalog.js?v=20260726-biography-1";
 import { renderResourcesWorkspace } from "./workspaces/resources.js?v=20260711-stage5b-2";
-import { renderAchievementWorkspace } from "./workspaces/achievements.js?v=20260726-achievements-1";
+import { renderAchievementWorkspace } from "./workspaces/achievements.js?v=20260727-world-triggers-1";
 import {
   collectStoryDeclaredVariablesFromJson,
   getStoryCommandNames,
@@ -125,10 +127,12 @@ const dataFileDisplayNames = new Map([
   ["game-tips.json", "游戏提示"],
   ["grow-templates.json", "成长模板"],
   ["internal-skills.json", "内功"],
+  ["item-tags.json", "物品标签"],
   ["items.json", "物品"],
   ["legend-skills.json", "奥义"],
   ["maps.json", "地图"],
   ["resources.json", "资源"],
+  ["scoped-battle-effects.json", "范围战斗效果"],
   ["sects.json", "门派"],
   ["shops.json", "商店"],
   ["special-skills.json", "绝技"],
@@ -1949,8 +1953,12 @@ async function openAchievementWorkspace() {
     workspace.resources = resources;
     workspace.worldTriggers = worldTriggers;
     workspace.sourcesById = state.contentIndex.achievementSourcesById || new Map();
-    workspace.storyOptions = storyDefinitionCompletionOptions("story")
-      .sort((left, right) => left.id.localeCompare(right.id, "zh-CN"));
+    workspace.triggerTargetOptions = {
+      story: getMapEventTargetOptions("story"),
+      shop: getMapEventTargetOptions("shop"),
+      battle: getMapEventTargetOptions("battle"),
+      xiangzi: [],
+    };
     const achievements = resources.filter(isAchievementResource);
     if (!achievements.some((entry) => entry.id === workspace.selectedAchievementId)) {
       workspace.selectedAchievementId = achievements[0]?.id || "";
@@ -1991,7 +1999,7 @@ function renderAchievementWorkspaceView() {
     achievements: getAchievementWorkspaceRecords(),
     worldTriggers: workspace.worldTriggers,
     sourcesById: workspace.sourcesById,
-    storyOptions: workspace.storyOptions,
+    triggerTargetOptions: workspace.triggerTargetOptions,
     onTab: (tab) => {
       workspace.tab = tab;
       workspace.search = "";
@@ -2045,6 +2053,15 @@ function renderAchievementWorkspaceView() {
     onMutateTrigger: (rerender) => {
       const trigger = workspace.worldTriggers[workspace.selectedTriggerIndex];
       markDirty("world-triggers.json", `世界触发器：${trigger?.id || "未命名"}`, rerender);
+    },
+    onMoveTrigger: (direction) => {
+      const index = workspace.selectedTriggerIndex;
+      const moved = moveWorldTrigger(workspace.worldTriggers, index, direction);
+      if (moved === workspace.worldTriggers) return;
+      workspace.worldTriggers = moved;
+      workspace.selectedTriggerIndex = index + direction;
+      const trigger = workspace.worldTriggers[workspace.selectedTriggerIndex];
+      markDirty("world-triggers.json", `调整世界触发器优先级：${trigger?.id || "未命名"}`, true);
     },
     onDeleteTrigger: (trigger) => {
       if (!confirmAction(`确认删除世界触发器“${trigger.id || "未命名"}”？`)) return;
@@ -2281,6 +2298,7 @@ function createTalentOptions() {
   return {
     talents: state.records.map((record) => [record.id, record.name || record.id]).filter(([id]) => id),
     buffs: definitionsOfType("buffs"),
+    scopedEffects: definitionsOfType("scoped-battle-effects"),
     skills: definitionsOfType("external-skills", "internal-skills", "special-skills", "form-skills"),
     legends: definitionsOfType("legend-skills"),
   };
@@ -2297,6 +2315,7 @@ function getTalentIssueContext() {
     idCounts,
     talentIds: new Set(options.talents.map(([id]) => id)),
     buffIds: new Set(options.buffs.map(([id]) => id)),
+    scopedEffectIds: new Set(options.scopedEffects.map(([id]) => id)),
   };
 }
 
@@ -2495,6 +2514,7 @@ function getItemReferenceOptions() {
   return {
     talents: definitionsOfType("talents", createTalentReferenceOption),
     buffs: definitionsOfType("buffs"),
+    itemTags: definitionsOfType("item-tags"),
     externalSkills,
     internalSkills,
     specialSkills,
@@ -3206,8 +3226,8 @@ function renderShopWorkspaceView() {
   if (record) ensureShopWorkspaceShape(record);
   renderShopWorkspace(elements.shopWorkspaceView, {
     state,
-    itemMap: state.contentIndex.itemsById,
-    itemOptions: getShopItemOptions(),
+    catalog: getShopRewardCatalog(),
+    rewardOptions: getShopRewardOptions(),
     getResourceInfo: (shop, key) => getShopResourceInfo(shop, key, getShopResourceGroup(key)),
     getReferences: getShopReferences,
     onSelectShop: (index) => {
@@ -3274,6 +3294,43 @@ function getShopItemOptions() {
   }
   return Array.from(new Map(options.map((option) => [option.id, option])).values())
     .sort((left, right) => left.name.localeCompare(right.name, "zh-Hans-CN") || left.id.localeCompare(right.id, "zh-Hans-CN"));
+}
+
+function getShopSkillOptions(definitionType, typeLabel) {
+  const options = [];
+  for (const definitions of state.contentIndex.definitionsById.values()) {
+    for (const definition of definitions) {
+      if (definition.type !== definitionType) continue;
+      options.push(createReferenceOption(definition, { typeLabel }));
+    }
+  }
+  return Array.from(new Map(options.map((option) => [option.id, option])).values())
+    .sort((left, right) => left.name.localeCompare(right.name, "zh-Hans-CN") || left.id.localeCompare(right.id, "zh-Hans-CN"));
+}
+
+function getShopRewardOptions() {
+  return {
+    items: getShopItemOptions(),
+    externalSkills: getShopSkillOptions("external-skills", "外功"),
+    internalSkills: getShopSkillOptions("internal-skills", "内功"),
+  };
+}
+
+function getShopRewardCatalog() {
+  const definitionsOfType = (type) => {
+    const entries = [];
+    for (const definitions of state.contentIndex.definitionsById.values()) {
+      for (const definition of definitions) {
+        if (definition.type === type && definition.id) entries.push([definition.id, definition.record]);
+      }
+    }
+    return new Map(entries);
+  };
+  return {
+    items: state.contentIndex.itemsById,
+    externalSkills: definitionsOfType("external-skills"),
+    internalSkills: definitionsOfType("internal-skills"),
+  };
 }
 
 function resetMartialWorkspaceState() {
@@ -3356,6 +3413,7 @@ function createMartialOptions() {
   const forms = [...index.formsById.values()].flat().map((entry) => [entry.id, `${entry.name}（${entry.parent.name || entry.parent.id}）`]);
   return {
     buffs: byType("buffs"),
+    scopedEffects: byType("scoped-battle-effects"),
     icons: Array.from(new Map(state.assetFiles
       .filter((file) => /^art\/icon\//i.test(file.path) && isImageAsset(file.path))
       .map((file) => {
@@ -3433,6 +3491,7 @@ function getMartialIssueContext() {
     audioIds: new Set((state.contentIndex.resourceRecords || []).filter((record) => record.group === "音效").map((record) => record.id)),
     iconExists: (id) => Boolean(getMartialIconPath(id)),
     buffIds: new Set(createMartialOptions().buffs.map(([id]) => id)),
+    scopedEffectIds: new Set(createMartialOptions().scopedEffects.map(([id]) => id)),
     externalIds: ids("external"),
     internalIds: ids("internal"),
     specialIds: ids("special"),
@@ -3638,7 +3697,7 @@ function addWorkspaceShopProduct() {
   const record = state.records[state.selectedRecordIndex];
   if (!record) return;
   ensureShopWorkspaceShape(record);
-  const firstAvailable = getShopItemOptions().find((option) => !record.products.some((product) => product.contentId === option.id));
+  const firstAvailable = getShopItemOptions().find((option) => !record.products.some((product) => product.reward?.kind === "item" && product.reward.itemId === option.id));
   record.products.push(createShopProduct(firstAvailable?.id || ""));
   state.shopWorkspace.selectedProductIndex = record.products.length - 1;
   state.shopWorkspace.tab = "products";
@@ -3678,7 +3737,8 @@ function duplicateWorkspaceShopProduct(index) {
 function deleteWorkspaceShopProduct(index) {
   const record = state.records[state.selectedRecordIndex];
   const product = record?.products?.[index];
-  if (!product || !confirmAction(`确认从当前商店删除商品「${product.contentId || "未命名商品"}」？`)) return;
+  const rewardName = product?.reward?.itemId || product?.reward?.skillId || (product?.reward?.kind === "yuanbao" ? `${product.reward.amount ?? 0} 元宝` : "未命名商品");
+  if (!product || !confirmAction(`确认从当前商店删除商品「${rewardName}」？`)) return;
   record.products.splice(index, 1);
   state.shopWorkspace.selectedProductIndex = Math.max(0, Math.min(index, record.products.length - 1));
   syncRecordsToEditor();
@@ -8999,6 +9059,22 @@ function getItemValidationIssues(record) {
     issues.push(createCharacterIssue("error", "装备类型物品缺少 slotType。"));
   }
 
+  if (typeof record.consumeOnUse !== "boolean") {
+    issues.push(createCharacterIssue("error", "consumeOnUse 必须是布尔值。"));
+  }
+
+  if (!Array.isArray(record.tagIds)) {
+    issues.push(createCharacterIssue("error", "tagIds 不是数组。"));
+  } else {
+    for (const tagId of record.tagIds) {
+      if (typeof tagId !== "string" || !tagId.trim()) {
+        issues.push(createCharacterIssue("error", "tagIds 包含空值或非文本值。"));
+      } else if (!hasDefinitionOfType(tagId, "item-tags")) {
+        issues.push(createCharacterIssue("error", `物品标签不存在：${tagId}`, tagId, ["item-tags"]));
+      }
+    }
+  }
+
   for (const [key, label] of [["level", "等级"], ["price", "价格"], ["cooldown", "冷却"]]) {
     if (!Number.isFinite(record[key])) {
       issues.push(createCharacterIssue("error", `${label} 不是数字：${key}`));
@@ -9038,6 +9114,15 @@ function appendItemRequirementIssues(issues, requirements) {
         issues.push(createCharacterIssue("error", "天赋要求缺少 talentId。"));
       } else if (!hasDefinitionOfType(talentId, "talents")) {
         issues.push(createCharacterIssue("error", `天赋要求不存在：${talentId}`, talentId, ["talents"]));
+      }
+      continue;
+    }
+
+    if (requirement?.type === "gender") {
+      const genders = Array.isArray(requirement.genders) ? requirement.genders : [];
+      const allowed = new Set(genderChoices.map(([value]) => value));
+      if (!genders.length || genders.some((gender) => !allowed.has(gender))) {
+        issues.push(createCharacterIssue("error", "性别要求 genders 必须包含至少一个有效性别。"));
       }
       continue;
     }
@@ -9090,6 +9175,23 @@ function appendItemEffectIssues(issues, effects) {
       const values = Array.isArray(effect.values) ? effect.values : [];
       if (values.length !== 2 || values.some((value) => !Number.isFinite(value))) {
         issues.push(createCharacterIssue("error", "detoxify 需要两个数字 values。"));
+      }
+      continue;
+    }
+
+    if (effectType === "set_gender") {
+      if (!genderChoices.some(([value]) => value === effect.gender)) {
+        issues.push(createCharacterIssue("error", `set_gender 的 gender 无效：${effect.gender || "空"}`));
+      }
+      continue;
+    }
+
+    if (effectType === "reduce_max_resource_ratio") {
+      if (!["max_hp", "max_mp"].includes(effect.statId)) {
+        issues.push(createCharacterIssue("error", `reduce_max_resource_ratio 的 statId 无效：${effect.statId || "空"}`));
+      }
+      if (!Number.isFinite(effect.ratio) || effect.ratio < 0 || effect.ratio > 1) {
+        issues.push(createCharacterIssue("error", "reduce_max_resource_ratio 的 ratio 必须是 0 至 1 之间的数字。"));
       }
       continue;
     }
@@ -12734,7 +12836,7 @@ function formatJsonError(error) {
 }
 
 function parseJsonText(text) {
-  return JSON.parse(String(text ?? "").replace(/^\uFEFF/u, ""));
+  return parseJsonc(text);
 }
 
 function isImage(path) {

@@ -3,8 +3,11 @@ import fs from "node:fs";
 import test from "node:test";
 import {
   abilityEffectTypes,
+  createAbilityEffect,
+  createTargetSelector,
   hookConditionTypes,
   hookEffectTypes,
+  hookTimings,
   targetSelectorTypes,
 } from "../wwwroot/domain/battle-authoring.js";
 import { createItemDefinition, effectTypes as itemEffectTypes, requirementTypes } from "../wwwroot/domain/items.js";
@@ -39,6 +42,7 @@ test("编辑器表单类型与游戏导出的契约一致", () => {
     [...contract.polymorphicTypes.battleEffect.values].sort(),
   );
   assert.deepEqual(values(targetSelectorTypes), [...contract.polymorphicTypes.battleTarget.values].sort());
+  assert.deepEqual(values(hookTimings), [...contract.enums["Game.Core.Affix.HookTiming"]].sort());
   assert.deepEqual(values(requirementTypes), [...contract.polymorphicTypes.itemRequirement.values].sort());
   assert.deepEqual(values(itemEffectTypes), [...contract.polymorphicTypes.itemUseEffect.values].sort());
   assert.deepEqual(
@@ -76,7 +80,23 @@ test("Hook 条件与效果覆盖当前天赋数据能力", () => {
   assert.equal(createHookEffect("modify_damage_context").field, "final_damage");
   assert.equal(createHookEffect("custom").effectId, "");
   assert.equal(createHookEffect("add_action_gauge").target.type, "target");
+  assert.deepEqual(createHookEffect("grant_scoped_battle_effect"), { type: "grant_scoped_battle_effect", effectId: "" });
+  assert.deepEqual(createAbilityEffect("grant_scoped_battle_effect"), { type: "grant_scoped_battle_effect", effectId: "" });
+  assert.deepEqual(createTargetSelector("explicit_units"), { type: "explicit_units" });
   assert.deepEqual(createHookEffect("extra_strike").damageFactors, [1]);
+});
+
+test("天赋诊断校验范围战斗效果引用", () => {
+  const record = createTalentDefinition("阵法");
+  const hook = createTalentAffix("hook");
+  hook.effects.push(createHookEffect("grant_scoped_battle_effect"));
+  record.affixes.push(hook);
+
+  assert.ok(getTalentIssues(record, { scopedEffectIds: new Set(["存在"]) }).includes("范围战斗效果缺少 effectId"));
+  hook.effects[0].effectId = "缺失";
+  assert.ok(getTalentIssues(record, { scopedEffectIds: new Set(["存在"]) }).includes("范围战斗效果不存在：缺失"));
+  hook.effects[0].effectId = "存在";
+  assert.equal(getTalentIssues(record, { scopedEffectIds: new Set(["存在"]) }).some((issue) => issue.includes("范围战斗效果")), false);
 });
 
 test("天赋诊断识别重复、坏引用和空 Hook", () => {

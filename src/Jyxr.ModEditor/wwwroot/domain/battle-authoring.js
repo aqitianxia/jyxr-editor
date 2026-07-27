@@ -14,13 +14,14 @@ export const abilityEffectTypes = Object.freeze([
   ["set_action_gauge", "设置行动值"],
   ["add_hp", "恢复生命"],
   ["add_mp", "恢复内力"],
+  ["grant_scoped_battle_effect", "授予范围战斗效果"],
   ["custom_ability", "自定义绝技效果"],
 ]);
 
 export const hookTimings = Object.freeze([
   "OnBattleStart", "BeforeActionReadiness", "BeforeActionStart", "AfterActionEnd", "AfterBuffRound",
   "BeforeMove", "AfterMove", "BeforeSkillCost", "BeforeHitResolved", "BeforeDamageCalculation",
-  "BeforeDamageApplied", "BeforeDefeated", "BeforeSkillCast", "AfterSkillCast", "OnHitConfirmed",
+  "BeforeDamageApplied", "BeforeDefeated", "OnDefeated", "BeforeSkillCast", "AfterSkillCast", "OnHitConfirmed",
   "BeforeItemUse", "AfterItemUse", "BeforeRest", "AfterRest", "BeforeBuffApplied", "OnBuffApplied",
   "OnBuffRemoved", "OnDamageTaken", "OnDamageDealt", "BeforeRecoveryResolved",
 ].map((value) => Object.freeze([value, value])));
@@ -69,6 +70,7 @@ export const targetSelectorTypes = Object.freeze([
   ["all_enemies", "全体敌军"],
   ["nearby_allies", "附近友军"],
   ["nearby_enemies", "附近敌军"],
+  ["explicit_units", "显式单位集合"],
 ]);
 
 export function createTargetSelector(type = "target") {
@@ -79,6 +81,7 @@ export function createTargetSelector(type = "target") {
 }
 
 export function createAbilityEffect(type = "apply_buff") {
+  if (type === "grant_scoped_battle_effect") return { type, effectId: "" };
   const target = createTargetSelector("target");
   if (type === "apply_buff") return { type, target, buffId: "", level: 1, duration: 3, chance: 100 };
   if (type === "remove_buff") return { type, target, buffId: "" };

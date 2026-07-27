@@ -399,7 +399,7 @@ export function collectAnimationReferences(documents) {
 
 export function getMartialIssues(entry, context = {}) {
   const issues = [];
-  const { animationIds = new Set(), invalidAnimationIds = new Set(), audioIds = new Set(), iconExists = () => true, buffIds = new Set(), externalIds = new Set(), internalIds = new Set(), specialIds = new Set(), talentIds = new Set(), startSkillIds = new Set(), formIdCounts = new Map() } = context;
+  const { animationIds = new Set(), invalidAnimationIds = new Set(), audioIds = new Set(), iconExists = () => true, buffIds = new Set(), scopedEffectIds = new Set(), externalIds = new Set(), internalIds = new Set(), specialIds = new Set(), talentIds = new Set(), startSkillIds = new Set(), formIdCounts = new Map() } = context;
   const record = entry?.record || {};
   if (!record.id) issues.push("缺少 ID");
   if (!record.name) issues.push("缺少名称");
@@ -421,6 +421,7 @@ export function getMartialIssues(entry, context = {}) {
   } else if (entry.kind === "special") {
     checkAnimation(record.animation, "绝技动画"); checkBuffs(record.buffs);
     (record.effects || []).filter((effect) => effect.type === "apply_buff" || effect.type === "remove_buff").forEach((effect) => { if (!buffIds.has(effect.buffId)) issues.push(`战斗效果 Buff 不存在：${effect.buffId || "未填写"}`); });
+    (record.effects || []).filter((effect) => effect.type === "grant_scoped_battle_effect").forEach((effect) => { if (!scopedEffectIds.has(effect.effectId)) issues.push(`范围战斗效果不存在：${effect.effectId || "未填写"}`); });
   } else if (entry.kind === "legend") {
     checkAnimation(record.animation, "奥义全屏特效"); checkBuffs(record.buffs);
     if (!startSkillIds.has(record.startSkill)) issues.push(`起手武学不存在：${record.startSkill || "未填写"}`);
@@ -437,6 +438,6 @@ import {
   createTargetSelector,
   specialSkillIntents,
   targetSelectorTypes,
-} from "./battle-authoring.js?v=20260713-battle-1";
+} from "./battle-authoring.js?v=20260727-runtime-contract-2";
 
 export { specialSkillIntents, targetSelectorTypes };

@@ -28,6 +28,7 @@
 .achievement-detail-header > div { display: grid; min-width: 0; gap: 4px; }
 .achievement-detail-header h2 { margin: 0; font-size: 25px; letter-spacing: 0; }
 .achievement-detail-header code { overflow-wrap: anywhere; color: var(--color-text-muted); }
+.achievement-detail-actions { display: flex; align-items: center; gap: 7px; }
 .achievement-eyebrow { color: var(--color-primary); font-size: 12px; font-weight: 700; }
 .achievement-detail-section { display: grid; gap: 13px; padding: 20px 0; border-top: 1px solid var(--color-border); }
 .achievement-detail-section h3 { margin: 0; font-size: 17px; letter-spacing: 0; }
@@ -46,6 +47,8 @@
 .achievement-empty.detail { min-height: 320px; }
 .achievement-issues { margin: 0 0 12px; padding: 12px 12px 12px 32px; background: var(--color-danger-soft); color: var(--color-danger); font-size: 13px; }
 .achievement-field-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.achievement-target-empty { min-height: 38px; padding: 9px 10px; border: 1px solid var(--color-border); background: var(--color-surface-muted); color: var(--color-text-muted); font-size: 12px; }
+.achievement-trigger-description { min-height: 86px; resize: vertical; line-height: 1.55; }
 .world-trigger-condition-list { display: grid; gap: 7px; }
 .world-trigger-condition-row { display: grid; grid-template-columns: minmax(180px, .55fr) minmax(220px, 1fr) 34px; align-items: start; gap: 7px; }
 .world-trigger-condition-row small { grid-column: 1 / -1; color: var(--color-text-muted); line-height: 1.5; }

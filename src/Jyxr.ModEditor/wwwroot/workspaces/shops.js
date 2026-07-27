@@ -1,12 +1,15 @@
 import { bindImeSafeInput } from "../core/input-composition.js?v=20260712-search-1";
 import {
+  createShopReward,
   createShopProductInfo,
   getShopProductPriceMode,
   getShopStats,
   matchesShopFilter,
   matchesShopSearch,
   shopFilters,
-} from "../domain/shops.js?v=20260711-stage7-1";
+  shopRewardTypes,
+  shopSkillKinds,
+} from "../domain/shops.js?v=20260727-shop-rewards-1";
 import { createEmbeddedJsonEditor, disposeEmbeddedCodeEditors } from "../ui/code-editor.js?v=20260711-stage6-1";
 import { createReferencePicker, createReferenceSummary } from "../ui/reference-picker.js?v=20260711-core-17";
 import { bindScrollMemory } from "../ui/scroll-memory.js?v=20260712-search-1";
@@ -73,7 +76,7 @@ function empty(parent, title, detail) {
 }
 
 function renderShopList(parent, context) {
-  const { state, itemMap, onCreate, onSelectShop, onSearch, onFilter } = context;
+  const { state, catalog, onCreate, onSelectShop, onSearch, onFilter } = context;
   const workspace = state.shopWorkspace;
   const header = el("div", "shop-column-header");
   const title = el("div");
@@ -83,8 +86,8 @@ function renderShopList(parent, context) {
     input(workspace.search, onSearch, { type: "search", placeholder: "搜索名称、ID 或资源…", live: true }),
     select(workspace.filter, shopFilters, onFilter));
 
-  const matches = state.records.map((record, index) => ({ record, index, stats: getShopStats(record, itemMap) }))
-    .filter(({ record }) => matchesShopSearch(record, workspace.search) && matchesShopFilter(record, workspace.filter, itemMap));
+  const matches = state.records.map((record, index) => ({ record, index, stats: getShopStats(record, catalog) }))
+    .filter(({ record }) => matchesShopSearch(record, workspace.search) && matchesShopFilter(record, workspace.filter, catalog));
   parent.appendChild(el("div", "shop-list-summary", `显示 ${matches.length} / ${state.records.length}`));
   const list = el("div", "shop-record-list");
   for (const { record, index, stats } of matches) {
@@ -111,7 +114,7 @@ function productPriceText(product, info) {
 }
 
 function renderProductList(parent, context, record) {
-  const { state, itemMap, itemOptions, onAddProduct, onSelectProduct } = context;
+  const { state, catalog, rewardOptions, onAddProduct, onSelectProduct } = context;
   const products = record.products || [];
   const header = el("div", "shop-column-header");
   const title = el("div");
@@ -122,11 +125,11 @@ function renderProductList(parent, context, record) {
     empty(parent, "暂无商品", "添加商品后可设置价格、限购数量和陈列顺序。");
     return;
   }
-  const optionsById = new Map(itemOptions.map((option) => [option.id, option]));
+  const itemOptionsById = new Map(rewardOptions.items.map((option) => [option.id, option]));
   const list = el("div", "shop-product-list");
   products.forEach((product, index) => {
-    const info = createShopProductInfo(product, itemMap);
-    const option = optionsById.get(product.contentId);
+    const info = createShopProductInfo(product, catalog);
+    const option = info.kind === "item" ? itemOptionsById.get(info.referenceId) : null;
     const row = button("", "shop-product-row", () => onSelectProduct(index));
     row.classList.toggle("active", index === state.shopWorkspace.selectedProductIndex);
     const icon = el("span", "shop-product-icon");
@@ -136,13 +139,13 @@ function renderProductList(parent, context, record) {
       image.alt = option.name || option.id;
       image.loading = "lazy";
       icon.appendChild(image);
-    } else icon.appendChild(el("span", "", info.ignored ? "兼" : "物"));
+    } else icon.appendChild(el("span", "", info.kind === "skill_max_level" ? "武" : info.kind === "yuanbao" ? "元" : "物"));
     const copy = el("span", "shop-product-copy");
-    copy.append(el("strong", "", option?.name || product.contentId || "未选择物品"), el("small", "", productPriceText(product, info)));
+    copy.append(el("strong", "", option?.name || info.displayName), el("small", "", productPriceText(product, info)));
     const meta = el("span", "shop-product-meta");
     if (info.purchaseLimited) meta.appendChild(el("span", "shop-limit-badge", `限 ${product.purchaseLimit}`));
-    if (info.ignored) meta.appendChild(el("span", "shop-ignored-badge", "忽略"));
-    else if (info.issues.length) meta.appendChild(el("span", "shop-warning-count", String(info.issues.length)));
+    if (info.kind !== "item") meta.appendChild(el("span", "shop-ignored-badge", info.kindLabel));
+    if (info.issues.length) meta.appendChild(el("span", "shop-warning-count", String(info.issues.length)));
     row.append(icon, copy, meta);
     list.appendChild(row);
   });
@@ -161,18 +164,22 @@ function segmented(value, choices, onChange) {
 }
 
 function renderProductEditor(parent, context, record) {
-  const { state, itemMap, itemOptions, onPatchProduct, onMoveProduct, onDuplicateProduct, onDeleteProduct } = context;
+  const { state, catalog, rewardOptions, onPatchProduct, onMoveProduct, onDuplicateProduct, onDeleteProduct } = context;
   const index = state.shopWorkspace.selectedProductIndex;
   const product = record.products?.[index];
   if (!product) {
     empty(parent, "请选择商品", "从中间列表选择商品，或添加第一件商品。");
     return;
   }
-  const info = createShopProductInfo(product, itemMap);
-  const option = itemOptions.find((candidate) => candidate.id === product.contentId);
+  const info = createShopProductInfo(product, catalog);
+  const reward = info.reward || {};
+  const referenceOptions = info.kind === "item"
+    ? rewardOptions.items
+    : reward.skillKind === "internal" ? rewardOptions.internalSkills : rewardOptions.externalSkills;
+  const option = referenceOptions.find((candidate) => candidate.id === info.referenceId);
   const summary = el("div", "shop-product-summary");
-  summary.appendChild(createReferenceSummary(option, product.contentId));
-  if (info.ignored) summary.appendChild(el("div", "shop-callout warning", "兼容条目：游戏运行时会忽略“元宝”和名称以“残章”结尾的商品。编辑器会保留原数据。"));
+  if (info.kind === "yuanbao") summary.appendChild(el("div", "shop-callout", `出售内容：${info.displayName}`));
+  else summary.appendChild(createReferenceSummary(option, info.referenceId));
   if (info.issues.length) {
     const issues = el("ul", "shop-issue-list");
     info.issues.forEach((issue) => issues.appendChild(el("li", "", issue)));
@@ -182,20 +189,46 @@ function renderProductEditor(parent, context, record) {
 
   const section = el("section", "shop-editor-section");
   section.appendChild(el("h3", "", "出售内容"));
-  section.appendChild(field("物品", createReferencePicker({
-    value: product.contentId,
-    options: itemOptions,
-    compact: true,
-    showSelected: false,
-    placeholder: "输入物品名称或 ID",
-    onSelect: (value) => onPatchProduct(index, { contentId: value }),
-  }), "保存的是 items.json 中的稳定 ID。"));
+  section.appendChild(field("奖励类型", select(info.kind, shopRewardTypes, (kind) => {
+    const pricing = kind === "yuanbao"
+      ? { price: 0, premiumPrice: null }
+      : kind === "skill_max_level" ? { price: null, premiumPrice: 0 } : { price: null, premiumPrice: null };
+    onPatchProduct(index, { reward: createShopReward(kind), ...pricing });
+  })));
+  if (info.kind === "item") {
+    section.appendChild(field("物品", createReferencePicker({
+      value: reward.itemId,
+      options: rewardOptions.items,
+      compact: true,
+      showSelected: false,
+      placeholder: "输入物品名称或 ID",
+      onSelect: (itemId) => onPatchProduct(index, { reward: { ...reward, itemId } }),
+    }), "保存的是 items.json 中的稳定 ID。"));
+    section.appendChild(field("数量", input(reward.quantity ?? 1, (quantity) => onPatchProduct(index, { reward: { ...reward, quantity } }), { type: "number", min: 1 })));
+  } else if (info.kind === "skill_max_level") {
+    section.appendChild(field("武学类型", select(reward.skillKind, shopSkillKinds, (skillKind) => onPatchProduct(index, {
+      reward: { ...reward, skillKind, skillId: "" },
+    }))));
+    section.appendChild(field("武学", createReferencePicker({
+      value: reward.skillId,
+      options: referenceOptions,
+      compact: true,
+      showSelected: false,
+      placeholder: "输入武学名称或 ID",
+      onSelect: (skillId) => onPatchProduct(index, { reward: { ...reward, skillId } }),
+    }), `保存的是 ${reward.skillKind === "internal" ? "internal-skills.json" : "external-skills.json"} 中的稳定 ID。`));
+    section.appendChild(field("提升等级", input(reward.levels ?? 1, (levels) => onPatchProduct(index, { reward: { ...reward, levels } }), { type: "number", min: 1 })));
+  } else if (info.kind === "yuanbao") {
+    section.appendChild(field("元宝数量", input(reward.amount ?? 1, (amount) => onPatchProduct(index, { reward: { ...reward, amount } }), { type: "number", min: 1 }), "元宝奖励只能使用银两购买。"));
+  }
   parent.appendChild(section);
 
   const pricing = el("section", "shop-editor-section");
   pricing.append(el("h3", "", "售价"), el("p", "shop-section-note", "同一件商品通常只使用一种货币；继承基础价时不写商店价格。"));
   const mode = getShopProductPriceMode(product);
-  const choices = [["base", "使用物品基础价"], ["silver", "银两定价"], ["premium", "元宝定价"]];
+  const choices = info.kind === "item"
+    ? [["base", "使用物品基础价"], ["silver", "银两定价"], ["premium", "元宝定价"]]
+    : info.kind === "yuanbao" ? [["silver", "银两定价"]] : [["silver", "银两定价"], ["premium", "元宝定价"]];
   if (mode === "mixed") choices.push(["mixed", "双价（需处理）"]);
   pricing.appendChild(segmented(mode, choices, (next) => {
     if (next === "base") onPatchProduct(index, { price: null, premiumPrice: null });
@@ -203,11 +236,11 @@ function renderProductEditor(parent, context, record) {
     else if (next === "premium") onPatchProduct(index, { price: null, premiumPrice: product.premiumPrice ?? 0 });
   }));
   const priceFields = el("div", "shop-fields-grid");
-  if (mode === "base") priceFields.appendChild(field("当前物品基础价", input(info.effectiveSilverPrice ?? "", () => {}), "来自 items.json；这里只读。"));
+  if (mode === "base" && info.kind === "item") priceFields.appendChild(field("当前物品基础价", input(info.effectiveSilverPrice ?? "", () => {}), "来自 items.json；这里只读。"));
   if (mode === "silver" || mode === "mixed") priceFields.appendChild(field("银两价格", input(product.price ?? 0, (value) => onPatchProduct(index, { price: value }), { type: "number", min: 0 })));
   if (mode === "premium" || mode === "mixed") priceFields.appendChild(field("元宝价格", input(product.premiumPrice ?? 0, (value) => onPatchProduct(index, { premiumPrice: value }), { type: "number", min: 0 })));
   const readOnly = priceFields.querySelector("input");
-  if (mode === "base" && readOnly) readOnly.readOnly = true;
+  if (mode === "base" && info.kind === "item" && readOnly) readOnly.readOnly = true;
   pricing.appendChild(priceFields);
   parent.appendChild(pricing);
 

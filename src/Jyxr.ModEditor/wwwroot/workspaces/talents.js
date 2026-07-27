@@ -1,4 +1,5 @@
 import { bindImeSafeInput } from "../core/input-composition.js?v=20260712-search-1";
+import { parseJsonc } from "../core/jsonc.js?v=20260727-jsonc-1";
 import { createEmbeddedJsonEditor, disposeEmbeddedCodeEditors } from "../ui/code-editor.js?v=20260711-stage6-1";
 import { bindScrollMemory } from "../ui/scroll-memory.js?v=20260712-search-1";
 import {
@@ -15,13 +16,13 @@ import {
   talentFilters,
   traitTypes,
   weaponTypes,
-} from "../domain/talents.js?v=20260713-talents-2";
+} from "../domain/talents.js?v=20260727-runtime-contract-2";
 import {
   hookConditionTypes,
   hookEffectTypes,
   hookTimings,
   targetSelectorTypes,
-} from "../domain/battle-authoring.js?v=20260718-contract-1";
+} from "../domain/battle-authoring.js?v=20260727-runtime-contract-2";
 
 const tabs = Object.freeze([
   ["overview", "概要"],
@@ -121,7 +122,7 @@ function replaceObject(target, next) {
 function jsonObjectEditor(value, onApply, onError) {
   const node = input(JSON.stringify(value, null, 2), (text) => {
     try {
-      const parsed = JSON.parse(text || "{}");
+      const parsed = parseJsonc(text || "{}");
       if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error("参数必须是 JSON 对象。");
       onApply(parsed);
     } catch (error) {
@@ -250,7 +251,7 @@ function renderSimpleAffix(parent, context, affix) {
 function renderTargetFields(parent, context, effect) {
   const target = effect.target;
   if (!target || typeof target !== "object") return;
-  parent.appendChild(field("目标", select(target.type, targetSelectorTypes, (type) => {
+  parent.appendChild(field("目标", select(target.type, targetSelectorTypes.filter(([type]) => type !== "explicit_units"), (type) => {
     const next = { type };
     if (type === "all_allies") next.includeSelf = true;
     if (type === "nearby_allies") { next.radius = 2; next.includeSelf = true; }
@@ -308,7 +309,11 @@ function renderEffectList(parent, context, hook) {
     const quick = el("div", "talent-hook-quick-fields");
     renderTargetFields(quick, context, effect);
     if ("buffId" in effect) quick.appendChild(field("Buff", select(effect.buffId, context.options.buffs, (value) => { effect.buffId = value; context.onMutate(); }, "请选择")));
-    if ("effectId" in effect) quick.appendChild(field("效果 ID", input(effect.effectId, (value) => { effect.effectId = value; context.onMutate(); })));
+    if (effect.type === "grant_scoped_battle_effect") {
+      quick.appendChild(field("范围效果", select(effect.effectId, context.options.scopedEffects, (value) => { effect.effectId = value; context.onMutate(); }, "请选择")));
+    } else if ("effectId" in effect) {
+      quick.appendChild(field("效果 ID", input(effect.effectId, (value) => { effect.effectId = value; context.onMutate(); })));
+    }
     if ("parameters" in effect) quick.appendChild(field("自定义参数", jsonObjectEditor(effect.parameters ?? {}, (value) => { effect.parameters = value; context.onMutate(); }, context.onJsonError)));
     if (quick.childElementCount) row.appendChild(quick);
     row.appendChild(field("完整效果 JSON", jsonObjectEditor(effect, (value) => { effects[index] = value; context.onMutate(); }, context.onJsonError)));

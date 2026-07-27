@@ -1,4 +1,4 @@
-import { createHookCondition, createHookEffect } from "./battle-authoring.js?v=20260718-contract-1";
+import { createHookCondition, createHookEffect } from "./battle-authoring.js?v=20260727-runtime-contract-2";
 
 export const talentFilters = Object.freeze([
   ["all", "全部天赋"],
@@ -105,6 +105,10 @@ export function getTalentIssues(record, context = {}) {
       if (!hasEffects && !affix.floatText && !affix.speech) issues.push(`Hook ${affix.timing || "未设置"} 没有任何效果或表现`);
       for (const effect of affix.effects || []) {
         if ((effect.type === "custom" || effect.type === "custom_ability") && !String(effect.effectId || "").trim()) issues.push("自定义效果缺少 effectId");
+        if (effect.type === "grant_scoped_battle_effect") {
+          if (!String(effect.effectId || "").trim()) issues.push("范围战斗效果缺少 effectId");
+          else if (context.scopedEffectIds && !context.scopedEffectIds.has(effect.effectId)) issues.push(`范围战斗效果不存在：${effect.effectId}`);
+        }
         if ((effect.type === "apply_buff" || effect.type === "remove_buff") && effect.buffId && context.buffIds && !context.buffIds.has(effect.buffId)) issues.push(`Buff 不存在：${effect.buffId}`);
       }
     } else if (affix.type === "grant_talent" && affix.talentId && context.talentIds && !context.talentIds.has(affix.talentId)) {

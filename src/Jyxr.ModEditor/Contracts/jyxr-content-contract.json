@@ -39,6 +39,10 @@
       "definitionType": "InternalSkillDefinition"
     },
     {
+      "path": "item-tags.json",
+      "definitionType": "ItemTagDefinition"
+    },
+    {
       "path": "items.json",
       "definitionType": "ItemDefinition"
     },
@@ -53,6 +57,10 @@
     {
       "path": "resources.json",
       "definitionType": "ResourceDefinition"
+    },
+    {
+      "path": "scoped-battle-effects.json",
+      "definitionType": "ScopedBattleEffectDefinition"
     },
     {
       "path": "sects.json",
@@ -245,6 +253,11 @@
           "required": false
         },
         {
+          "name": "consumeOnUse",
+          "kind": "boolean",
+          "required": true
+        },
+        {
           "name": "cooldown",
           "kind": "number",
           "required": false
@@ -293,6 +306,11 @@
           "name": "slotType",
           "kind": "enum",
           "required": true
+        },
+        {
+          "name": "tagIds",
+          "kind": "array",
+          "required": false
         },
         {
           "name": "type",
@@ -783,6 +801,11 @@
           "required": false
         },
         {
+          "name": "consumeOnUse",
+          "kind": "boolean",
+          "required": true
+        },
+        {
           "name": "cooldown",
           "kind": "number",
           "required": false
@@ -823,6 +846,11 @@
           "required": false
         },
         {
+          "name": "tagIds",
+          "kind": "array",
+          "required": false
+        },
+        {
           "name": "type",
           "kind": "enum",
           "required": false
@@ -830,6 +858,25 @@
         {
           "name": "useEffects",
           "kind": "array",
+          "required": false
+        }
+      ]
+    },
+    "ItemTagDefinition": {
+      "fields": [
+        {
+          "name": "id",
+          "kind": "string",
+          "required": true
+        },
+        {
+          "name": "name",
+          "kind": "string",
+          "required": true
+        },
+        {
+          "name": "order",
+          "kind": "number",
           "required": false
         }
       ]
@@ -930,6 +977,11 @@
           "required": false
         },
         {
+          "name": "consumeOnUse",
+          "kind": "boolean",
+          "required": true
+        },
+        {
           "name": "cooldown",
           "kind": "number",
           "required": false
@@ -970,6 +1022,11 @@
           "required": false
         },
         {
+          "name": "tagIds",
+          "kind": "array",
+          "required": false
+        },
+        {
           "name": "type",
           "kind": "enum",
           "required": false
@@ -997,6 +1054,50 @@
           "name": "value",
           "kind": "string",
           "required": false
+        }
+      ]
+    },
+    "ScopedBattleEffectDefinition": {
+      "fields": [
+        {
+          "name": "activation",
+          "kind": "enum",
+          "required": false
+        },
+        {
+          "name": "affixes",
+          "kind": "array",
+          "required": false
+        },
+        {
+          "name": "grantMode",
+          "kind": "enum",
+          "required": false
+        },
+        {
+          "name": "id",
+          "kind": "string",
+          "required": true
+        },
+        {
+          "name": "lifetime",
+          "kind": "enum",
+          "required": false
+        },
+        {
+          "name": "providerKind",
+          "kind": "enum",
+          "required": false
+        },
+        {
+          "name": "requiredMembers",
+          "kind": "number",
+          "required": false
+        },
+        {
+          "name": "scope",
+          "kind": "object",
+          "required": true
         }
       ]
     },
@@ -1283,6 +1384,7 @@
         "custom",
         "custom_ability",
         "extra_strike",
+        "grant_scoped_battle_effect",
         "modify_damage",
         "modify_damage_context",
         "modify_lifesteal",
@@ -1326,6 +1428,7 @@
       "values": [
         "all_allies",
         "all_enemies",
+        "explicit_units",
         "nearby_allies",
         "nearby_enemies",
         "self",
@@ -1343,6 +1446,7 @@
     "itemRequirement": {
       "discriminator": "type",
       "values": [
+        "gender",
         "stat",
         "talent"
       ]
@@ -1362,7 +1466,17 @@
         "external_skill",
         "grant_talent",
         "internal_skill",
+        "reduce_max_resource_ratio",
+        "set_gender",
         "special_skill"
+      ]
+    },
+    "reward": {
+      "discriminator": "kind",
+      "values": [
+        "item",
+        "skill_max_level",
+        "yuanbao"
       ]
     }
   },
@@ -1411,6 +1525,7 @@
       "BeforeDamageCalculation",
       "BeforeDamageApplied",
       "BeforeDefeated",
+      "OnDefeated",
       "BeforeSkillCast",
       "AfterSkillCast",
       "OnHitConfirmed",
@@ -1438,6 +1553,7 @@
       "InternalSkill",
       "Talent",
       "Buff",
+      "ScopedEffect",
       "Other"
     ],
     "Game.Core.Affix.SkillTargetingField": [
@@ -1460,6 +1576,31 @@
       "Irascible",
       "DoubleCombatRageGain",
       "CannotMove"
+    ],
+    "Game.Core.Battle.BattleCommandFailureReason": [
+      "UnitAlreadyActing",
+      "UnitDefeated",
+      "UnitNotReady",
+      "NoUnitActing",
+      "WrongActingUnit",
+      "MainActionCommitted",
+      "SkillOwnerMismatch",
+      "SkillInactive",
+      "SkillOnCooldown",
+      "SkillDisabled",
+      "SkillUnavailable",
+      "NotEnoughMp",
+      "NotEnoughRage",
+      "SkillCannotTargetSelf",
+      "TargetOutOfCastRange",
+      "InvalidItemTarget",
+      "ItemCannotTargetEnemy",
+      "ItemCannotTargetAlly",
+      "AllyItemTargetOutOfRange",
+      "ItemOnCooldown",
+      "DestinationUnreachable",
+      "MovementRollbackAfterMainAction",
+      "TimelineAdvanceLimitReached"
     ],
     "Game.Core.Battle.BattleCueKind": [
       "SpeechRequested",
@@ -1490,6 +1631,9 @@
       "RageChanged",
       "ActionGaugeChanged",
       "DefeatPrevented",
+      "UnitDefeated",
+      "ScopedEffectGranted",
+      "ScopedEffectRemoved",
       "SkillLeveledUp",
       "CharacterLeveledUp"
     ],
@@ -1541,6 +1685,14 @@
     "Game.Core.Battle.BattleTraceKind": [
       "HooksTriggered"
     ],
+    "Game.Core.Definitions.BattleEffectActivation": [
+      "Always",
+      "SourceAlive"
+    ],
+    "Game.Core.Definitions.BattleEffectLifetime": [
+      "Battle",
+      "RemoveWhenMemberDefeated"
+    ],
     "Game.Core.Definitions.EquipmentRandomAffixKind": [
       "AttackCombo",
       "DefenceCombo",
@@ -1565,6 +1717,14 @@
     "Game.Core.Definitions.RepeatMode": [
       "Once",
       "Infinite"
+    ],
+    "Game.Core.Definitions.ScopedBattleEffectGrantMode": [
+      "PerProvider",
+      "PerTeamGroup"
+    ],
+    "Game.Core.Definitions.SkillFragmentKind": [
+      "External",
+      "Internal"
     ],
     "Game.Core.Definitions.Skills.SkillImpactType": [
       "Single",
@@ -1683,6 +1843,10 @@
       "Win",
       "Lose",
       "Timeout"
+    ],
+    "Game.Core.Story.ChoiceStyle": [
+      "Regular",
+      "Bold"
     ],
     "Game.Core.Story.ExprBinaryOperator": [
       "And",
@@ -1875,6 +2039,25 @@
           {
             "name": "delta",
             "kind": "number",
+            "required": true,
+            "variadic": false,
+            "defaultValue": null,
+            "referenceType": null,
+            "allowedValues": []
+          }
+        ]
+      },
+      {
+        "name": "debug_battle",
+        "aliases": [
+          "dbattle"
+        ],
+        "minimumArguments": 1,
+        "maximumArguments": 1,
+        "parameters": [
+          {
+            "name": "battleId",
+            "kind": "string",
             "required": true,
             "variadic": false,
             "defaultValue": null,
@@ -2085,18 +2268,8 @@
         "name": "huashan",
         "aliases": [],
         "minimumArguments": 0,
-        "maximumArguments": null,
-        "parameters": [
-          {
-            "name": "_",
-            "kind": "any",
-            "required": false,
-            "variadic": true,
-            "defaultValue": null,
-            "referenceType": null,
-            "allowedValues": []
-          }
-        ]
+        "maximumArguments": 0,
+        "parameters": []
       },
       {
         "name": "input_name",
@@ -2375,7 +2548,7 @@
             "required": true,
             "variadic": false,
             "defaultValue": null,
-            "referenceType": "sects",
+            "referenceType": null,
             "allowedValues": []
           }
         ]
@@ -2569,20 +2742,8 @@
         "name": "restart",
         "aliases": [],
         "minimumArguments": 0,
-        "maximumArguments": 1,
-        "parameters": [
-          {
-            "name": "mode",
-            "kind": "string",
-            "required": false,
-            "variadic": false,
-            "defaultValue": "restart",
-            "referenceType": null,
-            "allowedValues": [
-              "restart"
-            ]
-          }
-        ]
+        "maximumArguments": 0,
+        "parameters": []
       },
       {
         "name": "roll_stats",
@@ -2654,6 +2815,13 @@
             ]
           }
         ]
+      },
+      {
+        "name": "set_no_regret",
+        "aliases": [],
+        "minimumArguments": 0,
+        "maximumArguments": 0,
+        "parameters": []
       },
       {
         "name": "set_round",
@@ -2808,35 +2976,15 @@
         "name": "tower",
         "aliases": [],
         "minimumArguments": 0,
-        "maximumArguments": null,
-        "parameters": [
-          {
-            "name": "_",
-            "kind": "any",
-            "required": false,
-            "variadic": true,
-            "defaultValue": null,
-            "referenceType": null,
-            "allowedValues": []
-          }
-        ]
+        "maximumArguments": 0,
+        "parameters": []
       },
       {
         "name": "trial",
         "aliases": [],
         "minimumArguments": 0,
-        "maximumArguments": null,
-        "parameters": [
-          {
-            "name": "_",
-            "kind": "any",
-            "required": false,
-            "variadic": true,
-            "defaultValue": null,
-            "referenceType": null,
-            "allowedValues": []
-          }
-        ]
+        "maximumArguments": 0,
+        "parameters": []
       },
       {
         "name": "upgrade",
@@ -2897,18 +3045,8 @@
         "name": "xilian",
         "aliases": [],
         "minimumArguments": 0,
-        "maximumArguments": null,
-        "parameters": [
-          {
-            "name": "_",
-            "kind": "any",
-            "required": false,
-            "variadic": true,
-            "defaultValue": null,
-            "referenceType": null,
-            "allowedValues": []
-          }
-        ]
+        "maximumArguments": 0,
+        "parameters": []
       },
       {
         "name": "yuanbao",
@@ -2931,18 +3069,8 @@
         "name": "zhenlongqiju",
         "aliases": [],
         "minimumArguments": 0,
-        "maximumArguments": null,
-        "parameters": [
-          {
-            "name": "_",
-            "kind": "any",
-            "required": false,
-            "variadic": true,
-            "defaultValue": null,
-            "referenceType": null,
-            "allowedValues": []
-          }
-        ]
+        "maximumArguments": 0,
+        "parameters": []
       }
     ],
     "predicates": [
@@ -3436,7 +3564,7 @@
             "required": true,
             "variadic": false,
             "defaultValue": null,
-            "referenceType": "sects",
+            "referenceType": null,
             "allowedValues": []
           }
         ]
@@ -3642,7 +3770,7 @@
             "required": true,
             "variadic": false,
             "defaultValue": null,
-            "referenceType": "sects",
+            "referenceType": null,
             "allowedValues": []
           }
         ]

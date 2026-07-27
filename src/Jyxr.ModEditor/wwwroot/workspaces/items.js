@@ -7,6 +7,7 @@ import {
   createRequirement,
   effectTypes,
   fromAffixDisplayValue,
+  genderChoices,
   itemFilters,
   itemSlots,
   itemTypeLabel,
@@ -19,7 +20,7 @@ import {
   statChoices,
   toAffixDisplayValue,
   weaponTypes,
-} from "../domain/items.js?v=20260711-stage6-1";
+} from "../domain/items.js?v=20260727-runtime-contract-2";
 import { createEmbeddedJsonEditor, disposeEmbeddedCodeEditors } from "../ui/code-editor.js?v=20260711-stage6-1";
 import { bindScrollMemory } from "../ui/scroll-memory.js?v=20260712-search-1";
 import { createReferencePicker, createReferenceSummary } from "../ui/reference-picker.js?v=20260711-core-17";
@@ -245,10 +246,16 @@ function renderOverview(parent, context) {
     field("价格", input(record.price, (value) => mutate("price", value), { type: "number" })),
     field("使用冷却", input(record.cooldown, (value) => mutate("cooldown", value), { type: "number", min: 0 })),
     field("掉落规则", checkbox("允许掉落", record.canDrop, (value) => mutate("canDrop", value))),
+    field("使用规则", checkbox("使用后消耗", record.consumeOnUse, (value) => mutate("consumeOnUse", value))),
   );
   fields.children[3].querySelector("input").readOnly = true;
   basic.node.appendChild(fields);
   basic.node.appendChild(field("描述", textarea(record.description, (value) => mutate("description", value))));
+  basic.node.appendChild(field("物品标签", input(
+    (record.tagIds || []).join(", "),
+    (value) => mutate("tagIds", [...new Set(String(value).split(/[,\n]/u).map((tag) => tag.trim()).filter(Boolean))]),
+    { placeholder: "restore_hp, battle_buff" },
+  ), "标签 ID 来自 item-tags.json，多个值用逗号分隔。"));
   parent.appendChild(basic.node);
 }
 
@@ -282,6 +289,17 @@ function renderRequirements(parent, context) {
     fields.appendChild(field("类型", select(value.type, requirementTypes, (type) => context.replaceNested("requirements", index, createRequirement(type)))));
     if (value.type === "talent") {
       fields.appendChild(field("天赋", reference(value.talentId, context.references.talents, (talentId) => context.patchNested("requirements", index, { talentId }), "搜索天赋名称或 ID")));
+    } else if (value.type === "gender") {
+      const selected = new Set(value.genders || []);
+      const choices = el("div", "item-checkbox-list");
+      for (const [gender, label] of genderChoices) {
+        choices.appendChild(checkbox(label, selected.has(gender), (enabled) => {
+          const next = new Set(value.genders || []);
+          if (enabled) next.add(gender); else next.delete(gender);
+          context.patchNested("requirements", index, { genders: [...next] });
+        }));
+      }
+      fields.appendChild(field("允许性别", choices));
     } else {
       fields.append(field("属性", select(value.statId, statChoices, (statId) => context.patchNested("requirements", index, { statId }))),
         field("最低值", input(value.value, (minimum) => context.patchNested("requirements", index, { value: minimum }), { type: "number" })));
@@ -323,10 +341,18 @@ function renderEffects(parent, context) {
     }
     if (["external_skill", "internal_skill", "add_buff"].includes(value.type)) fields.appendChild(field("等级", input(value.level, (level) => context.patchNested("useEffects", index, { level }), { type: "number", min: 0 })));
     if (value.type === "add_buff") fields.appendChild(field("持续回合", input(value.duration, (duration) => context.patchNested("useEffects", index, { duration }), { type: "number", min: 0 })));
+    else if (value.type === "set_gender") {
+      fields.appendChild(field("目标性别", select(value.gender, genderChoices, (gender) => context.patchNested("useEffects", index, { gender }))));
+    } else if (value.type === "reduce_max_resource_ratio") {
+      fields.append(
+        field("资源上限", select(value.statId, [["max_hp", "生命上限"], ["max_mp", "内力上限"]], (statId) => context.patchNested("useEffects", index, { statId }))),
+        field("降低比例", input(value.ratio, (ratio) => context.patchNested("useEffects", index, { ratio }), { type: "number", min: 0, step: 0.01 })),
+      );
+    }
     else if (value.type === "detoxify") {
       fields.append(field("最小值", input(value.values?.[0], (minimum) => context.patchNested("useEffects", index, { values: [minimum, value.values?.[1] ?? minimum] }), { type: "number" })),
         field("最大值", input(value.values?.[1], (maximum) => context.patchNested("useEffects", index, { values: [value.values?.[0] ?? maximum, maximum] }), { type: "number" })));
-    } else if (!["external_skill", "internal_skill", "special_skill", "grant_talent"].includes(value.type)) {
+    } else if (!["external_skill", "internal_skill", "special_skill", "grant_talent", "set_gender", "reduce_max_resource_ratio"].includes(value.type)) {
       fields.appendChild(field("数值", input(value.value, (amount) => context.patchNested("useEffects", index, { value: amount }), { type: "number" })));
     }
     card.appendChild(fields);
@@ -496,6 +522,7 @@ function collectOutgoing(record, options) {
   (record.requirements || []).forEach((entry, index) => {
     if (entry.type === "talent") add("天赋要求", entry.talentId, options.talents, `requirements[${index}].talentId`);
   });
+  (record.tagIds || []).forEach((tagId, index) => add("物品标签", tagId, options.itemTags, `tagIds[${index}]`));
   (record.useEffects || []).forEach((entry, index) => {
     if (entry.type === "grant_talent") add("获得天赋", entry.talentId, options.talents, `useEffects[${index}].talentId`);
     else if (entry.type === "add_buff") add("添加 Buff", entry.buffId, options.buffs, `useEffects[${index}].buffId`);

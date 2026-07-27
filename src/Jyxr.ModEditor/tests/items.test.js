@@ -13,7 +13,10 @@ import {
 } from "../wwwroot/domain/items.js";
 
 test("新建普通物品和装备只使用运行时支持字段", () => {
-  assert.deepEqual(createItemDefinition("consumable", "药丸").category, "normal");
+  const consumable = createItemDefinition("consumable", "药丸");
+  assert.equal(consumable.category, "normal");
+  assert.equal(consumable.consumeOnUse, true);
+  assert.deepEqual(consumable.tagIds, []);
   const equipment = createItemDefinition("equipment", "木刀");
   assert.equal(equipment.category, "equipment");
   assert.equal(equipment.slotType, "weapon");
@@ -31,7 +34,10 @@ test("切换到装备补齐装备结构但不删除已有数组", () => {
 
 test("需求、效果和词缀默认结构匹配现有 JSON", () => {
   assert.deepEqual(createRequirement("talent"), { type: "talent", talentId: "" });
+  assert.deepEqual(createRequirement("gender"), { type: "gender", genders: ["male"] });
   assert.deepEqual(createEffect("external_skill"), { type: "external_skill", skillId: "", level: 1 });
+  assert.deepEqual(createEffect("set_gender"), { type: "set_gender", gender: "eunuch" });
+  assert.deepEqual(createEffect("reduce_max_resource_ratio"), { type: "reduce_max_resource_ratio", statId: "max_hp", ratio: 0.1 });
   assert.deepEqual(createAffix("grant_talent"), { type: "grant_talent", talentId: "" });
 });
 

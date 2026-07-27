@@ -136,7 +136,7 @@ app.MapPut("/api/characters", IResult (SaveCharactersRequest request, string? mo
     {
         var modWorkspace = workspaceSession.RequireCurrent().ForMod(modId);
         var charactersPath = modWorkspace.ResolveDataFile("characters.json");
-        var characterRoot = JsonNode.Parse(request.Content);
+        var characterRoot = EditorJson.ParseNode(request.Content);
         if (characterRoot is not JsonArray)
         {
             return Results.BadRequest(new ErrorResponse("characters.json must be a top-level array."));
@@ -259,8 +259,8 @@ app.MapPut("/api/story-systems", IResult (SaveStorySystemsRequest request, strin
     try
     {
         var modWorkspace = workspaceSession.RequireCurrent().ForMod(modId);
-        var resourcesRoot = JsonNode.Parse(request.ResourcesContent);
-        var triggersRoot = JsonNode.Parse(request.WorldTriggersContent);
+        var resourcesRoot = EditorJson.ParseNode(request.ResourcesContent);
+        var triggersRoot = EditorJson.ParseNode(request.WorldTriggersContent);
         if (resourcesRoot is not JsonArray resources)
         {
             return Results.BadRequest(new ErrorResponse("resources.json must be a top-level array."));
@@ -510,7 +510,7 @@ app.MapPost("/api/static/battle/rename", IResult (RenameBattleRequest request, s
             return Results.BadRequest(new ErrorResponse("The new battle id is unchanged."));
         }
 
-        var battles = JsonNode.Parse(request.BattlesContent) as JsonArray
+        var battles = EditorJson.ParseNode(request.BattlesContent) as JsonArray
             ?? throw new InvalidOperationException("battles.json must be a top-level JSON array.");
         var sourceMatches = battles.OfType<JsonObject>()
             .Where(record => string.Equals(TryGetStringProperty(record, "id"), oldId, StringComparison.Ordinal))
@@ -552,7 +552,7 @@ app.MapPost("/api/static/battle/rename", IResult (RenameBattleRequest request, s
                 continue;
             }
 
-            var root = JsonNode.Parse(content);
+            var root = EditorJson.ParseNode(content);
             var jsonCount = RenameJsonBattleReferences(root, oldId, newId);
             if (jsonCount > 0)
             {
@@ -1015,6 +1015,7 @@ app.MapPost("/api/assets/item/upload-bind", IResult (UploadItemImageRequest requ
     {
         var workspace = workspaceSession.RequireCurrent();
         var modWorkspace = workspace.ForMod(modId);
+        EnsureLooseAssetWriteAllowed(modWorkspace);
         if (!Directory.Exists(workspace.AssetsPath))
         {
             return Results.BadRequest(new ErrorResponse($"Assets directory was not found: {workspace.AssetsPath}"));
@@ -1104,6 +1105,7 @@ app.MapPost("/api/assets/item/upload-bind/preflight", IResult (ItemImageUploadPr
     {
         var workspace = workspaceSession.RequireCurrent();
         var modWorkspace = workspace.ForMod(modId);
+        EnsureLooseAssetWriteAllowed(modWorkspace);
         if (!Directory.Exists(workspace.AssetsPath))
         {
             return Results.BadRequest(new ErrorResponse($"Assets directory was not found: {workspace.AssetsPath}"));
@@ -1179,6 +1181,15 @@ static ItemImageUploadPreflightResponse BuildItemImageUploadPreflight(
         assetInfo.Exists ? assetInfo.LastWriteTimeUtc : null);
 }
 
+static void EnsureLooseAssetWriteAllowed(WorkspacePaths modWorkspace)
+{
+    if (!string.Equals(modWorkspace.ModId, WorkspacePaths.DefaultModId, StringComparison.Ordinal))
+    {
+        throw new InvalidOperationException(
+            "非基础 MOD 的资源必须通过 mod.json packs 中的 PCK 提供，不能写入工作区根 assets/。");
+    }
+}
+
 static IReadOnlyList<FileEntry> ListFiles(string rootPath, string pattern, bool includeImportFiles)
 {
     return Directory.EnumerateFiles(rootPath, pattern, SearchOption.AllDirectories)
@@ -1219,7 +1230,7 @@ static IReadOnlyList<FileEntry> ListDataFiles(string rootPath)
 
 static string FormatJson(string json)
 {
-    using var document = JsonDocument.Parse(json);
+    using var document = EditorJson.ParseDocument(json);
     using var stream = new MemoryStream();
     using (var writer = new Utf8JsonWriter(stream, new JsonWriterOptions
     {
@@ -1498,7 +1509,7 @@ static string? ValidationDocumentPath(string? issuePath)
 
 static JsonArray ReadJsonArray(string path, string displayName)
 {
-    var root = JsonNode.Parse(File.ReadAllText(path, Encoding.UTF8));
+    var root = EditorJson.ParseNode(File.ReadAllText(path, Encoding.UTF8));
     if (root is not JsonArray array)
     {
         throw new InvalidOperationException($"{displayName} must be a top-level JSON array.");
@@ -1910,7 +1921,7 @@ static PortraitCheckResponse CheckPortraits(WorkspacePaths workspace)
     {
         var relativeStoryPath = ToRelativePath(workspace.DataPath, storyPath);
         var storyContent = File.ReadAllText(storyPath, Encoding.UTF8);
-        var storyRoot = JsonNode.Parse(storyContent);
+        var storyRoot = EditorJson.ParseNode(storyContent);
         foreach (var speaker in ExtractStorySpeakers(relativeStoryPath, storyContent, storyRoot))
         {
             if (IsKnownNarratorSpeaker(speaker.Name))
@@ -2367,7 +2378,7 @@ static StoryGraphResponse BuildStoryGraph(WorkspacePaths workspace)
     {
         var relativePath = ToRelativePath(workspace.DataPath, storyPath);
         var content = File.ReadAllText(storyPath, Encoding.UTF8);
-        var root = JsonNode.Parse(content) as JsonObject;
+        var root = EditorJson.ParseNode(content) as JsonObject;
         var segments = root?["segments"] as JsonArray;
         if (segments is null)
         {
@@ -2950,7 +2961,7 @@ static void ExtractInitialStoryEntrypoint(WorkspacePaths workspace, List<StoryEn
 
     var relativePath = ToRelativePath(workspace.DataPath, path);
     var content = File.ReadAllText(path, Encoding.UTF8);
-    if (JsonNode.Parse(content) is not JsonObject root)
+    if (EditorJson.ParseNode(content) is not JsonObject root)
     {
         return;
     }
@@ -2984,7 +2995,7 @@ static void ExtractMapStoryEntrypoints(
 
     var relativePath = ToRelativePath(workspace.DataPath, path);
     var content = File.ReadAllText(path, Encoding.UTF8);
-    if (JsonNode.Parse(content) is not JsonArray maps)
+    if (EditorJson.ParseNode(content) is not JsonArray maps)
     {
         return;
     }
@@ -3050,7 +3061,7 @@ static void ExtractWorldTriggerStoryEntrypoints(
 
     var relativePath = ToRelativePath(workspace.DataPath, path);
     var content = File.ReadAllText(path, Encoding.UTF8);
-    if (JsonNode.Parse(content) is not JsonArray triggers)
+    if (EditorJson.ParseNode(content) is not JsonArray triggers)
     {
         return;
     }
@@ -3426,14 +3437,12 @@ sealed class WorkspacePaths
         var normalized = NormalizeModId(modId);
         var discoveredMod = DiscoverMods()
             .FirstOrDefault(mod => string.Equals(mod.Id, normalized, StringComparison.Ordinal));
-        var modPath = discoveredMod is null
-            ? ResolveChildPath(ModsPath, normalized)
-            : ResolveChildPath(RootPath, discoveredMod.Path);
-        if (!File.Exists(Path.Combine(modPath, "mod.json")))
+        if (discoveredMod is null)
         {
-            throw new InvalidOperationException($"当前工作区中找不到 MOD：{normalized}");
+            throw new InvalidOperationException($"当前工作区中找不到运行时可加载的 MOD：{normalized}");
         }
 
+        var modPath = ResolveChildPath(RootPath, discoveredMod.Path);
         return new WorkspacePaths(RootPath, normalized, modPath);
     }
 
@@ -3456,27 +3465,22 @@ sealed class WorkspacePaths
 
             try
             {
-                var manifest = JsonNode.Parse(File.ReadAllText(manifestPath, Encoding.UTF8)) as JsonObject;
-                var id = TryGetManifestStringProperty(manifest, "id");
-                if (string.IsNullOrWhiteSpace(id))
-                {
-                    id = Path.GetFileName(modPath);
-                }
+                var manifest = EditorModManifest.Load(manifestPath, modPath);
+                if (!Directory.Exists(Path.Combine(modPath, "data"))) continue;
 
                 mods.Add(new ModSummary(
-                    id,
-                    TryGetManifestStringProperty(manifest, "name") ?? id,
-                    TryGetManifestStringProperty(manifest, "version") ?? "",
-                    TryGetManifestStringProperty(manifest, "author") ?? "",
-                    TryGetManifestStringProperty(manifest, "date") ?? "",
-                    TryGetManifestStringProperty(manifest, "description") ?? "",
+                    manifest.Id,
+                    manifest.Name,
+                    manifest.Version,
+                    manifest.Author ?? "",
+                    manifest.Date ?? "",
+                    manifest.Description ?? "",
                     ToRelativeWorkspacePath(RootPath, modPath),
-                    Directory.Exists(Path.Combine(modPath, "data"))));
+                    true));
             }
             catch
             {
-                var id = Path.GetFileName(modPath);
-                mods.Add(new ModSummary(id, id, "", "", "", "mod.json 解析失败", ToRelativeWorkspacePath(RootPath, modPath), false));
+                // Match the runtime registry: invalid manifests are not discoverable.
             }
         }
 
@@ -3521,16 +3525,6 @@ sealed class WorkspacePaths
     }
 
     public string ResolveAssetFile(string relativePath) => ResolveChildPath(AssetsPath, relativePath);
-
-    private static string? TryGetManifestStringProperty(JsonObject? obj, string propertyName)
-    {
-        return obj is not null &&
-            obj.TryGetPropertyValue(propertyName, out var node) &&
-            node is JsonValue value &&
-            value.TryGetValue<string>(out var text)
-                ? text
-                : null;
-    }
 
     private static string ToRelativeWorkspacePath(string rootPath, string path) =>
         Path.GetRelativePath(rootPath, path).Replace('\\', '/');

@@ -27,6 +27,7 @@ test("武学默认结构匹配四类运行时定义", () => {
   assert.equal(createSpecialEffect("apply_buff").target.type, "target");
   assert.equal(createSpecialEffect("add_action_gauge").value, 0);
   assert.deepEqual(createSpecialEffect("custom_ability").parameters, {});
+  assert.deepEqual(createSpecialEffect("grant_scoped_battle_effect"), { type: "grant_scoped_battle_effect", effectId: "" });
 });
 
 test("统一索引保留源文件和嵌套招式父级", () => {
@@ -91,6 +92,17 @@ test("诊断缺失表现资源和重复嵌套招式", () => {
   assert.ok(issues.some((issue) => issue.includes("音效资源不存在")));
   assert.ok(issues.some((issue) => issue.includes("无法在 Web 预览")));
   assert.ok(issues.some((issue) => issue.includes("招式 ID 重复")));
+});
+
+test("绝技诊断校验范围战斗效果引用", () => {
+  const record = createMartialDefinition("special", "阵法");
+  record.effects.push({ type: "grant_scoped_battle_effect", effectId: "缺失" });
+
+  const issues = getMartialIssues({ kind: "special", record }, {
+    scopedEffectIds: new Set(["存在"]),
+  });
+
+  assert.ok(issues.includes("范围战斗效果不存在：缺失"));
 });
 
 test("新建模板只生成运行时已有字段", () => {
