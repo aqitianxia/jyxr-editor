@@ -99,6 +99,15 @@ cd src/Jyxr.ModEditor
 npm test
 ```
 
+Story DSL 的唯一 TypeScript 内核位于仓库根目录 `packages/story-dsl-core`。修改 DSL 后运行：
+
+```powershell
+cd src/Jyxr.ModEditor
+npm run build:story-dsl
+```
+
+该命令会重新生成浏览器加载的 `wwwroot/story-dsl.js`，不要直接编辑生成文件。
+
 如果只是改 JSON 内容，通常只需要启动编辑器并使用页面右上角的“检查”按钮；改了工具代码后再运行独立仓的构建和前端测试。
 
 ## 基本使用流程
@@ -234,6 +243,15 @@ DSL 支持剧情段、对白、命令、选择、条件、战斗分支和跳转�
 
 # 书剑结束
 南贤：结束。
+```
+
+对白或选择提示可以在正文开头指定展示样式，样式会进入 Story IR v2：
+
+```text
+胡斐：[#style=怒气.强调]你骗我！
+掌柜：[#style=shop-cards]客官需要什么？
+- 购买
+  jump buy
 ```
 
 列表参数使用 `[甲, 乙, 丙]`，中英文逗号都可以；保存后会编译为运行时支持的 `["list", "甲", "乙", "丙"]`。需要保留空格或 `//` 的字符串参数可以使用 JSON 风格双引号。

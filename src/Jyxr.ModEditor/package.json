@@ -2,6 +2,10 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node --test tests/*.test.js"
+    "build:story-dsl": "esbuild frontend/story-dsl-browser.ts --bundle --platform=browser --format=iife --target=es2022 --outfile=wwwroot/story-dsl.js",
+    "test": "npm run build:story-dsl && node --test tests/*.test.js"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.0"
   }
 }

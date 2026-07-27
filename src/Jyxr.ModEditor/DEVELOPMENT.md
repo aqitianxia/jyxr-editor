@@ -111,7 +111,7 @@ The frontend is plain HTML/CSS/JavaScript:
 - `wwwroot/styles.css`
   - Legacy/base desktop tool styling while staged styles continue to migrate.
 
-There is no frontend build step or npm runtime dependency. Cytoscape.js 3.34.0 and cytoscape-dagre 4.0.0 are vendored as ESM files under `wwwroot/vendor` with their licenses and loaded only when the flow view opens. New browser dependencies require the same explicit version, license, local vendoring, and lazy-loading discipline.
+The application UI has no general frontend build step or npm runtime dependency. Story DSL is the exception: `npm run build:story-dsl` bundles the canonical TypeScript core from `packages/story-dsl-core` into `wwwroot/story-dsl.js`. Cytoscape.js 3.34.0 and cytoscape-dagre 4.0.0 are vendored as ESM files under `wwwroot/vendor` with their licenses and loaded only when the flow view opens. New browser dependencies require the same explicit version, license, local vendoring, and lazy-loading discipline.
 
 ## Story Workspace Rules
 

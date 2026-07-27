@@ -6,6 +6,7 @@ artifacts/
 # Local editor state
 .idea/
 .vscode/
+.logs/
 *.user
 *.suo
 
@@ -16,6 +17,8 @@ Thumbs.db
 # Test and coverage output
 TestResults/
 coverage/
+node_modules/
+/packages/story-dsl-core/dist/
 
 # Local MOD workspaces
 workspaces/

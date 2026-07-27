@@ -274,6 +274,10 @@ body.story-mode .primary-navigation {
   grid-template-rows: auto auto minmax(0, 1fr);
 }
 
+.story-code-stage.readonly-preview {
+  grid-template-rows: auto minmax(0, 1fr);
+}
+
 .story-source-note {
   min-height: 34px;
   display: flex;

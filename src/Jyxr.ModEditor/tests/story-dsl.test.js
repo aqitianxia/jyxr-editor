@@ -29,6 +29,25 @@ test("Story DSL 把简洁选择编译为 IR v2 无条件组", () => {
   });
 });
 
+test("Story DSL 使用核心语法编译并往返保留展示样式", () => {
+  const result = analyzeStory(`# Start
+胡斐：[#style=怒气.强调]你骗我！
+掌柜：[#style=shop-cards]客官需要什么？
+- 购买
+  jump buy
+`);
+
+  assert.deepEqual(result.diagnostics, []);
+  assert.equal(result.ir.segments[0].steps[0].style, "怒气.强调");
+  assert.equal(result.ir.segments[0].steps[0].text, "你骗我！");
+  assert.equal(result.ir.segments[0].steps[1].style, "shop-cards");
+
+  const source = decompileStoryJson(result.ir);
+  assert.match(source, /胡斐：\[#style=怒气\.强调\]你骗我！/u);
+  assert.match(source, /掌柜：\[#style=shop-cards\]客官需要什么？/u);
+  assert.deepEqual(analyzeStory(source).ir, result.ir);
+});
+
 test("Story DSL 往返保留条件选择组、call 和 return", () => {
   const story = {
     version: 2,

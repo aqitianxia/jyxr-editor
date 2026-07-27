@@ -8,7 +8,7 @@
   }
   document.documentElement.dataset.theme = theme;
 
-  const entryUrl = "/app.js?v=20260727-warm-theme-2";
+  const entryUrl = "/app.js?v=20260727-story-json-layout-1";
   const status = document.getElementById("coreLoadState");
   const errorBox = document.getElementById("coreLoadError");
   const errorMessage = document.getElementById("coreLoadErrorMessage");

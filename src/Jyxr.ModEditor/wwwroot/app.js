@@ -553,6 +553,8 @@ function registerStoryDslMonacoLanguage() {
         [/^(\s*)(if|elif|else|when|battle|jump|call|return)\b/, ["", "keyword"]],
         [/^(\s*)([A-Za-z_][\w.]*)\b/, ["", "identifier"]],
         [/^(\s*)([^:：\s][^:：]*)([:：])/, ["", "type.identifier", "delimiter"]],
+        [/\[#\s*style\s*=\s*[\p{L}\p{N}_.-]+\s*\]/u, "annotation"],
+        [/\[\/?color(?:=[A-Za-z]+)?\]/, "tag"],
         [/\$[A-Za-z_][\w\u4e00-\u9fa5]*/, "variable"],
         [/[+-]?\d+(?:\.\d+)?/, "number"],
         [/[=!<>]=?|&&|\|\||!/, "operator"],
@@ -5226,6 +5228,7 @@ function createStoryWorkspaceStage(documentModel, workspaceGraph) {
   const note = document.createElement("div");
   note.className = "story-source-note";
   const isWritable = state.storyWorkspace.view === documentModel.sourceKind;
+  codeStage.classList.toggle("readonly-preview", !isWritable);
   const label = document.createElement("strong");
   label.textContent = isWritable ? "可编辑源" : "只读预览";
   const detail = document.createElement("span");
