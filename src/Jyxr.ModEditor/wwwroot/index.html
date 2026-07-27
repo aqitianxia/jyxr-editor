@@ -1,14 +1,14 @@
 <!doctype html>
-<html lang="zh-CN">
+<html lang="zh-CN" data-theme="warm">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>JYXR MOD 编辑器 · v0.9.0</title>
   <link rel="stylesheet" data-name="vs/editor/editor.main" href="/vendor/monaco/vs/editor/editor.main.css?v=20260708-monaco-1">
   <link rel="stylesheet" href="/styles.css?v=20260716-map-events-2">
-  <link rel="stylesheet" href="/styles/tokens.css?v=20260711-shell-1">
-  <link rel="stylesheet" href="/styles/components.css?v=20260711-shell-1">
-  <link rel="stylesheet" href="/styles/shell.css?v=20260718-workspace-toolbar-1">
+  <link rel="stylesheet" href="/styles/tokens.css?v=20260727-warm-theme-1">
+  <link rel="stylesheet" href="/styles/components.css?v=20260727-warm-theme-1">
+  <link rel="stylesheet" href="/styles/shell.css?v=20260727-warm-theme-1">
   <link rel="stylesheet" href="/styles/stage3.css?v=20260711-stage3-1">
   <link rel="stylesheet" href="/styles/stage4.css?v=20260726-richtext-1">
   <link rel="stylesheet" href="/styles/stage5.css?v=20260711-stage5b-1">
@@ -102,6 +102,9 @@
         <button id="undoButton" type="button" class="icon-button" aria-label="撤销" title="撤销 (Ctrl/Cmd+Z)" disabled>↶</button>
         <button id="redoButton" type="button" class="icon-button" aria-label="重做" title="重做 (Ctrl/Cmd+Shift+Z)" disabled>↷</button>
         <button id="saveButton" type="button" class="button primary">保存</button>
+        <button id="themeToggleButton" type="button" class="icon-button theme-toggle active" aria-label="切换到明亮主题" aria-pressed="true" title="切换到明亮主题">
+          <span aria-hidden="true">☀</span>
+        </button>
         <details class="topbar-more">
           <summary class="icon-button" aria-label="更多操作" title="更多操作">•••</summary>
           <div class="topbar-menu">
@@ -362,6 +365,6 @@
   <script src="/vendor/konva/konva.min.js?v=10.3.0"></script>
   <script src="/vendor/monaco/vs/loader.js?v=20260708-monaco-1"></script>
   <script src="/story-dsl.js?v=20260726-story-contract-1"></script>
-  <script src="/bootstrap.js?v=20260727-world-triggers-1"></script>
+  <script src="/bootstrap.js?v=20260727-warm-theme-2"></script>
 </body>
 </html>

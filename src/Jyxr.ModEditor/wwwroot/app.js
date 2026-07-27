@@ -5,7 +5,7 @@ import { createCommandRegistry } from "./core/commands.js?v=20260711-core-17";
 import { createDocumentHistory } from "./core/document-history.js?v=20260716-map-data-safety-1";
 import { createDirtyStateController } from "./core/dirty-state.js?v=20260711-core-17";
 import { createEventBus } from "./core/events.js?v=20260711-core-17";
-import { createPreferences, storageKeys } from "./core/preferences.js?v=20260718-workspace-launcher-1";
+import { createPreferences, storageKeys } from "./core/preferences.js?v=20260727-warm-theme-1";
 import { rememberDataDocumentSelection, restoreDataDocumentSelection } from "./core/data-document-context.js?v=20260714-workspace-context-1";
 import { normalizeWorkspaceMode } from "./core/router.js?v=20260726-achievements-1";
 import { createJsonPropertyLineIndex } from "./domain/json-source-index.js?v=20260712-performance-1";
@@ -212,6 +212,7 @@ const elements = {
   formatButton: document.getElementById("formatButton"),
   validateButton: document.getElementById("validateButton"),
   saveButton: document.getElementById("saveButton"),
+  themeToggleButton: document.getElementById("themeToggleButton"),
   undoButton: document.getElementById("undoButton"),
   redoButton: document.getElementById("redoButton"),
   dataTab: document.getElementById("dataTab"),
@@ -365,6 +366,9 @@ elements.saveStorySourceButton.addEventListener("click", saveCurrentStoryJsonAsS
 elements.formatButton.addEventListener("click", formatCurrentJson);
 elements.validateButton.addEventListener("click", runProjectChecks);
 elements.saveButton.addEventListener("click", saveCurrentFile);
+elements.themeToggleButton.addEventListener("click", () => {
+  setEditorTheme(document.documentElement.dataset.theme === "warm" ? "light" : "warm");
+});
 elements.undoButton.addEventListener("click", undoMapEdit);
 elements.redoButton.addEventListener("click", redoMapEdit);
 elements.newStoryButton.addEventListener("click", openNewStoryDialog);
@@ -411,6 +415,7 @@ elements.editor.addEventListener("select", () => {
   renderSelectionLookup();
 });
 
+setEditorTheme(document.documentElement.dataset.theme, false);
 initializeShell();
 
 window.addEventListener("keydown", handleGlobalKeydown);
@@ -427,6 +432,22 @@ boot();
 
 function initializeShell() {
   shellController.initialize();
+}
+
+function setEditorTheme(theme, persist = true) {
+  const normalizedTheme = theme === "light" ? "light" : "warm";
+  const isWarm = normalizedTheme === "warm";
+  const switchLabel = isWarm ? "切换到明亮主题" : "切换到暖色主题";
+
+  document.documentElement.dataset.theme = normalizedTheme;
+  elements.themeToggleButton.classList.toggle("active", isWarm);
+  elements.themeToggleButton.setAttribute("aria-pressed", String(isWarm));
+  elements.themeToggleButton.setAttribute("aria-label", switchLabel);
+  elements.themeToggleButton.title = switchLabel;
+
+  if (persist) {
+    preferences.set(storageKeys.theme, normalizedTheme);
+  }
 }
 
 function setNavigationCollapsed(collapsed, options = {}) {

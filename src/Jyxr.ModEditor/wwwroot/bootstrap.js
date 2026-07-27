@@ -1,5 +1,14 @@
 (() => {
-  const entryUrl = "/app.js?v=20260727-world-triggers-1";
+  const themeStorageKey = "jyxr-json-editor:theme";
+  let theme = "warm";
+  try {
+    theme = window.localStorage.getItem(themeStorageKey) === "light" ? "light" : "warm";
+  } catch {
+    // Keep the warm default when browser storage is unavailable.
+  }
+  document.documentElement.dataset.theme = theme;
+
+  const entryUrl = "/app.js?v=20260727-warm-theme-2";
   const status = document.getElementById("coreLoadState");
   const errorBox = document.getElementById("coreLoadError");
   const errorMessage = document.getElementById("coreLoadErrorMessage");

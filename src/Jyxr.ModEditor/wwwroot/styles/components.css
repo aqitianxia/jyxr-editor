@@ -55,9 +55,9 @@ button.primary:hover:not(:disabled),
 
 button.secondary,
 .button.secondary {
-  border-color: #aebbd0;
+  border-color: var(--color-secondary-border);
   background: var(--color-surface);
-  color: #25415f;
+  color: var(--color-secondary-text);
 }
 
 button.ghost,
@@ -99,6 +99,12 @@ button.danger,
   width: var(--control-height-sm);
   min-width: var(--control-height-sm);
   min-height: var(--control-height-sm);
+}
+
+.theme-toggle.active {
+  border-color: var(--color-navigation-active-border);
+  background: var(--color-primary-soft);
+  color: var(--color-primary);
 }
 
 .status-badge {
