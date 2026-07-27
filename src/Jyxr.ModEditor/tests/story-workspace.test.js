@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  appendStoryDiagnostics,
   buildDraftStoryGraph,
   buildStoryDocuments,
   buildStoryGraphProjection,
@@ -9,6 +10,21 @@ import {
   mergeDraftStoryGraph,
   resolveStoryDocument,
 } from "../wwwroot/domain/story-workspace.js";
+
+test("附加项目诊断不会丢弃核心编译生成的 JSON", () => {
+  const baseAnalysis = {
+    diagnostics: [],
+    ir: { version: 2, segments: [] },
+    jsonText: "{\n  \"version\": 2,\n  \"segments\": []\n}\n",
+  };
+  const projectError = { severity: "error", code: "missing-reference", message: "引用不存在" };
+  const analysis = appendStoryDiagnostics(baseAnalysis, [projectError]);
+
+  assert.equal(analysis.jsonText, baseAnalysis.jsonText);
+  assert.equal(analysis.ir, baseAnalysis.ir);
+  assert.deepEqual(analysis.diagnostics, [projectError]);
+  assert.deepEqual(baseAnalysis.diagnostics, []);
+});
 
 test("剧情目录把 DSL 与编译 JSON 合并为一个文档", () => {
   const files = [

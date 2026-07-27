@@ -17,6 +17,16 @@ export function getStorySourcePath(jsonPath) {
   return isStoryJsonPath(jsonPath) ? jsonPath.slice(0, -".json".length) : "";
 }
 
+export function appendStoryDiagnostics(analysis, additionalDiagnostics) {
+  return {
+    ...analysis,
+    diagnostics: [
+      ...(Array.isArray(analysis?.diagnostics) ? analysis.diagnostics : []),
+      ...(Array.isArray(additionalDiagnostics) ? additionalDiagnostics : []),
+    ],
+  };
+}
+
 export function buildStoryDocuments(dataFiles, graph) {
   const files = Array.isArray(dataFiles) ? dataFiles : [];
   const paths = new Set(files.map((file) => file.path));

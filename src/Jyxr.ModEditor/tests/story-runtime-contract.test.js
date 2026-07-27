@@ -74,6 +74,22 @@ if $未声明 > 0
   assert.ok(!diagnostics.some((item) => item.message.includes("$money")));
   assert.ok(!diagnostics.some((item) => item.message.includes("$last_trial_count")));
   assert.ok(!diagnostics.some((item) => item.message.includes("$已开启")));
+  assert.ok(!diagnostics.some((item) => item.code === "invalid-condition"));
   assert.ok(diagnostics.some((item) => item.code === "unknown-predicate" && item.message.includes("typo_predicate")));
   assert.ok(diagnostics.some((item) => item.code === "unknown-variable" && item.message.includes("$未声明")));
+});
+
+test("契约校验只允许比较操作数使用非布尔字面量", () => {
+  const parsed = globalThis.StoryDsl.parseStory(`# Start
+if 500
+  log 错误
+if $money >= 500
+  log 正常
+`);
+  const diagnostics = validateStoryRuntimeContract(parsed.ast, contract);
+  const invalidConditions = diagnostics.filter((item) => item.code === "invalid-condition");
+
+  assert.equal(invalidConditions.length, 1);
+  assert.match(invalidConditions[0].message, /500/u);
+  assert.equal(invalidConditions[0].span.start.line, 2);
 });

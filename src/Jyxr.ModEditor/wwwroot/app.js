@@ -101,11 +101,12 @@ import {
   getStoryCommandNames,
   getStoryCommandParameter,
   validateStoryRuntimeContract,
-} from "./domain/story-runtime-contract.js?v=20260726-story-contract-1";
+} from "./domain/story-runtime-contract.js?v=20260727-story-contract-2";
 import { createResourcePickerModel } from "./domain/resource-picker.js?v=20260711-stage5c-1";
 import { bindResourcePickerKeyboard, restoreResourcePickerKeyboardFocus } from "./ui/resource-picker-keyboard.js?v=20260711-stage5c-1";
 import { bindScrollMemory, resetScrollMemory } from "./ui/scroll-memory.js?v=20260712-search-1";
 import {
+  appendStoryDiagnostics,
   buildDraftStoryGraph,
   buildStoryDocuments,
   buildStoryGraphProjection,
@@ -113,7 +114,7 @@ import {
   matchesStoryDocument,
   mergeDraftStoryGraph,
   resolveStoryDocument,
-} from "./domain/story-workspace.js?v=20260714-workspace-context-1";
+} from "./domain/story-workspace.js?v=20260727-story-preview-1";
 import { destroyStoryGraph, fitStoryGraph, focusStoryGraph, renderStoryGraph } from "./ui/story-graph.js?v=20260712-stage12-2";
 
 const dataFileDisplayNames = new Map([
@@ -1910,7 +1911,9 @@ async function openStoryWorkspace() {
   state.storyWorkspace.view = restoreDocumentContext && ["dsl", "json", "flow"].includes(selectedView)
     ? selectedView
     : document.sourceKind;
-  if (state.storyWorkspace.view !== "flow") setViewMode(state.storyWorkspace.view);
+  if (state.storyWorkspace.view !== "flow") {
+    state.storyWorkspace.view = setViewMode(state.storyWorkspace.view);
+  }
   setMode("story");
   if (restoreDocumentContext && state.storyWorkspace.view !== "flow" && state.storyWorkspace.selectedSegmentId) {
     selectStorySegment(state.storyWorkspace.selectedSegmentId);
@@ -5453,7 +5456,8 @@ function getCurrentStoryJsonText() {
 }
 
 function setStoryWorkspaceView(view) {
-  if (!["dsl", "json", "flow"].includes(view) || view === state.storyWorkspace.view) return;
+  if (!["dsl", "json", "flow"].includes(view)) return;
+  if (view === state.storyWorkspace.view && (view === "flow" || view === state.viewMode)) return;
   if (view === "flow") {
     try {
       getCurrentStoryJsonText();
@@ -5464,8 +5468,7 @@ function setStoryWorkspaceView(view) {
     renderStoryView();
     return;
   }
-  state.storyWorkspace.view = view;
-  setViewMode(view);
+  state.storyWorkspace.view = setViewMode(view);
   renderStoryView();
 }
 
@@ -6482,20 +6485,15 @@ function updateStoryDslAnalysis({ showSuccess }) {
   const sourceText = state.viewMode === "json" ? state.storySource.text : getEditorValue();
   state.storySource.text = sourceText;
   const baseAnalysis = window.StoryDsl.analyzeStory(sourceText);
-  const diagnostics = [
-    ...baseAnalysis.diagnostics,
+  const additionalDiagnostics = [
     ...analyzeStoryDslReferences(baseAnalysis.ast),
     ...validateStoryRuntimeContract(baseAnalysis.ast, state.contentContract?.story, {
       hasReference: hasStoryRuntimeReference,
       knownVariables: state.contentIndex.storyVariableNames,
     }),
   ];
-  const hasErrors = diagnostics.some((item) => item.severity === "error");
-  const analysis = {
-    ...baseAnalysis,
-    diagnostics,
-    jsonText: hasErrors ? null : baseAnalysis.jsonText,
-  };
+  const analysis = appendStoryDiagnostics(baseAnalysis, additionalDiagnostics);
+  const diagnostics = analysis.diagnostics;
   state.storySource.diagnostics = diagnostics;
   state.storySource.jsonText = analysis.jsonText || "";
   projectProblemsCache = null;
@@ -6788,7 +6786,7 @@ function setViewMode(mode) {
     renderEditorOutline();
     renderCursorState();
     updateStorySourceButton();
-    return;
+    return state.viewMode;
   }
 
   mode = "json";
@@ -6798,6 +6796,7 @@ function setViewMode(mode) {
   setTextEditorVisible(true);
   renderEditorOutline();
   updateStorySourceButton();
+  return state.viewMode;
 }
 
 function refreshRecordsFromEditor() {

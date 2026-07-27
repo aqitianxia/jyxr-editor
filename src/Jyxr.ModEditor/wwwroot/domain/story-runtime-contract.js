@@ -89,7 +89,7 @@ export function validateStoryRuntimeContract(ast, contract, context = {}) {
       validateArgument(arg, parameterAt(invocation.parameters || [], index), display, node.span);
     }
   };
-  const validateExpression = (expr, fallbackSpan) => {
+  const validateExpression = (expr, fallbackSpan, requiresBoolean = true) => {
     if (!expr) return;
     if (expr.type === "predicate") {
       validateInvocation(expr, predicates, "条件谓词");
@@ -100,13 +100,18 @@ export function validateStoryRuntimeContract(ast, contract, context = {}) {
       return;
     }
     if (expr.type === "literal") {
-      if (typeof expr.value !== "boolean") {
+      if (requiresBoolean && typeof expr.value !== "boolean") {
         add(`条件表达式不是有效谓词或布尔比较：${String(expr.value)}`, expr.span || fallbackSpan, "invalid-condition");
       }
       return;
     }
-    validateExpression(expr.left || expr.operand, fallbackSpan);
-    validateExpression(expr.right, fallbackSpan);
+    if (expr.type === "comparison") {
+      validateExpression(expr.left, fallbackSpan, false);
+      validateExpression(expr.right, fallbackSpan, false);
+      return;
+    }
+    validateExpression(expr.left || expr.operand, fallbackSpan, true);
+    validateExpression(expr.right, fallbackSpan, true);
   };
   const walkStatements = (statements) => {
     for (const statement of statements || []) {
