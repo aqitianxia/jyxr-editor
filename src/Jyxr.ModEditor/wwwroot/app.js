@@ -5011,7 +5011,11 @@ function renderStoryView() {
     setTextEditorVisible(false);
     const empty = document.createElement("div");
     empty.className = "story-workspace-empty";
-    empty.textContent = "当前 MOD 没有可创作的 .story 或 .story.json 文档。";
+    const message = document.createElement("span");
+    message.textContent = "当前 MOD 没有可创作的 .story 或 .story.json 文档。";
+    const create = createActionButton("新建 Story", openNewStoryDialog);
+    create.classList.add("primary");
+    empty.append(message, create);
     elements.storyView.appendChild(empty);
     return;
   }
@@ -5122,7 +5126,9 @@ function createStoryWorkspaceHeader(documentModel, segmentCount) {
   badge.textContent = documentModel.sourceKind === "dsl" ? "DSL 是可写源" : "JSON 是可写源";
   const actions = document.createElement("div");
   actions.className = "story-document-actions";
-  actions.appendChild(badge);
+  const create = createActionButton("新建 Story", openNewStoryDialog);
+  create.classList.add("primary");
+  actions.append(create, badge);
   if (documentModel.sourceKind === "json") {
     const convert = document.createElement("button");
     convert.type = "button";
@@ -6881,6 +6887,11 @@ function renderMapWorkspaceView(renderOptions = {}) {
     }
   }
   const record = state.records[state.selectedRecordIndex];
+  const preserveInspectorScroll = inspector.dataset.mapId === String(record?.id || "")
+    && inspector.dataset.mapTab === state.mapEditor.tab;
+  const inspectorScrollTop = preserveInspectorScroll
+    ? inspector.querySelector(".map-workspace-inspector-body")?.scrollTop || 0
+    : 0;
   if (!record) {
     destroyActiveMapCanvas();
     stage.replaceChildren();
@@ -6910,6 +6921,13 @@ function renderMapWorkspaceView(renderOptions = {}) {
     disposeEmbeddedCodeEditors(inspector);
     inspector.replaceChildren();
     renderMapWorkspaceInspector(inspector, record);
+    const inspectorBody = inspector.querySelector(".map-workspace-inspector-body");
+    if (inspectorBody) {
+      inspectorBody.scrollTop = inspectorScrollTop;
+      requestAnimationFrame(() => {
+        if (inspectorBody.isConnected) inspectorBody.scrollTop = inspectorScrollTop;
+      });
+    }
   }
   renderMapResourcePicker();
 }
@@ -7080,6 +7098,8 @@ function renderMapWorkspaceInspector(parent, record) {
     ["review", "检查与 JSON"],
   ];
   if (!tabs.some(([id]) => id === state.mapEditor.tab)) state.mapEditor.tab = "locations";
+  parent.dataset.mapId = String(record.id || "");
+  parent.dataset.mapTab = state.mapEditor.tab;
   const nav = document.createElement("div");
   nav.className = "map-workspace-tabs";
   for (const [id, label] of tabs) {
@@ -10501,8 +10521,13 @@ function openNewStoryDialog() {
       closeToolDialog();
       dirtyStateController.markClean({ render: false });
       renderDirtyState();
-      setMode("data");
       await openDataFile(result.path);
+      state.storyWorkspace.selectedDocumentPath = result.path;
+      state.storyWorkspace.selectedSegmentId = "";
+      state.storyWorkspace.selectedGraphNodeId = "";
+      state.storyWorkspace.view = "dsl";
+      setMode("story");
+      renderFileList();
       showValidation(true, `已创建 ${result.path}，保存后会生成 ${result.compiledJsonPath}。`);
     } catch (error) {
       status.className = "static-tool-status bad";
